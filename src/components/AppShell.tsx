@@ -17,11 +17,11 @@ import {
   Loader2,
   LogOut,
   Navigation,
+  Package,
   ReceiptText,
   ShoppingBag,
   Store,
   UserRound,
-  UtensilsCrossed,
 } from "lucide-react";
 import {
   useEffect,
@@ -47,7 +47,7 @@ const BUYER_NAV: NavItem[] = [
 const BUSINESS_NAV: NavItem[] = [
   { to: "/business", label: "Panel", icon: LayoutDashboard },
   { to: "/business?tab=orders", label: "Pedidos", icon: ClipboardList },
-  { to: "/business?tab=menu", label: "Carta", icon: UtensilsCrossed },
+  { to: "/business?tab=menu", label: "Productos", icon: Package },
   { to: "/profile", label: "Perfil", icon: UserRound },
 ];
 

@@ -66,6 +66,7 @@ const schema = defineSchema(
       ownerId: v.optional(v.id("users")),
       name: v.string(),
       slug: v.string(),
+      department: v.string(),
       category: v.string(),
       tagline: v.string(),
       image: v.string(),
@@ -82,15 +83,19 @@ const schema = defineSchema(
 
     products: defineTable({
       businessId: v.id("businesses"),
+      department: v.string(),
       name: v.string(),
       description: v.string(),
       price: v.number(),
       image: v.string(),
       category: v.string(),
+      attributes: v.array(v.object({ key: v.string(), value: v.string() })),
       tags: v.array(v.string()),
       isAvailable: v.boolean(),
       isDemo: v.optional(v.boolean()),
-    }).index("by_business", ["businessId"]),
+    })
+      .index("by_business", ["businessId"])
+      .index("by_department", ["department"]),
 
     swipes: defineTable({
       userId: v.id("users"),

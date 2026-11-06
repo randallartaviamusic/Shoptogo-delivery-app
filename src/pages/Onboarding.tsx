@@ -12,9 +12,10 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
+import { DEPARTMENTS, getDepartment } from "@/lib/departments";
 import { ROLE_HOME, ROLE_LABEL } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -44,7 +45,7 @@ const OPTIONS = [
     title: "Tengo un local",
     subtitle: "Negocio",
     description:
-      "Publicá tu carta, recibí pedidos en tiempo real y actualizá el estado de cada uno.",
+      "Publicá tu catálogo, recibí pedidos en tiempo real y actualizá el estado de cada uno.",
     icon: Store,
     cta: "Cargar mi negocio",
   },
@@ -65,7 +66,6 @@ export default function OnboardingPage() {
   const [params] = useSearchParams();
   const setRole = useMutation(api.profiles.setRole);
   const createBusiness = useMutation(api.businesses.create);
-  const categories = useQuery(api.businesses.categories);
 
   const startInBusiness = params.get("role") === "business";
   const [mode, setMode] = useState<"role" | "business">(
@@ -75,6 +75,7 @@ export default function OnboardingPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({
     name: "",
+    department: "comida",
     category: "Hamburguesas",
     tagline: "",
     address: user?.address ?? "",
@@ -126,6 +127,7 @@ export default function OnboardingPage() {
     try {
       await createBusiness({
         name: form.name,
+        department: form.department,
         category: form.category,
         tagline: form.tagline,
         address: form.address,
@@ -267,8 +269,8 @@ export default function OnboardingPage() {
                 Cargá los datos de tu local
               </h1>
               <p className="mt-2 max-w-lg text-sm text-muted-foreground">
-                Con esto tu carta ya puede aparecer en el mazo. Podés editar
-                todo después desde el panel.
+                Con esto tu catálogo ya puede aparecer en el mazo. Elegí el
+                departamento correcto para que llegue a las personas indicadas.
               </p>
 
               <form
@@ -290,20 +292,48 @@ export default function OnboardingPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label>Categoría</Label>
+                    <Label>Departamento</Label>
+                    <Select
+                      value={form.department}
+                      onValueChange={(value) => {
+                        const next = getDepartment(value);
+                        setForm({
+                          ...form,
+                          department: value,
+                          category: next.subcategories[0] ?? "General",
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DEPARTMENTS.map((item) => (
+                          <SelectItem key={item.slug} value={item.slug}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Rubro</Label>
                     <Select
                       value={form.category}
                       onValueChange={(value) => setForm({ ...form, category: value })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Elegí una categoría" />
+                        <SelectValue placeholder="Elegí un rubro" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(categories ?? ["Otro"]).map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
+                        {getDepartment(form.department).subcategories.map(
+                          (category) => (
+                            <SelectItem key={category} value={category}>
+                              {category}
+                            </SelectItem>
+                          ),
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -362,7 +392,9 @@ export default function OnboardingPage() {
 
                 <div className="flex items-center justify-between rounded-xl border border-border/70 bg-black/25 p-3">
                   <div>
-                    <p className="text-sm font-semibold">Cargar carta de ejemplo</p>
+                    <p className="text-sm font-semibold">
+                      Cargar catálogo de ejemplo
+                    </p>
                     <p className="text-[11px] text-muted-foreground">
                       Sumamos 3 productos para que puedas probar el flujo.
                     </p>

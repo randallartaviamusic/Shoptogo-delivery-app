@@ -1,0 +1,17 @@
+{
+  "name": "Whimy — Desliza tu antojo",
+  "short_name": "Whimy",
+  "description": "El delivery que se desliza. Descubrí antojos de distintos negocios y pedí con un swipe.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0b",
+  "theme_color": "#0a0a0b",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

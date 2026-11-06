@@ -138,7 +138,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <span className="text-gradient-whim">en camino.</span>
           </motion.h2>
           <p className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Comprá deslizando, vendé tu carta al azar de la ciudad o tomá
+            Comprá deslizando, vendé tu catálogo al azar de la ciudad o tomá
             entregas cuando te convenga. Todo en la misma cuenta.
           </p>
 
@@ -172,8 +172,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <Flame className="size-4" />
           </span>
           <p>
-            <span className="font-semibold text-foreground">40+ antojos</span> de
-            10 locales esperando tu decisión. Sin menús infinitos.
+            <span className="font-semibold text-foreground">100+ productos</span>{" "}
+            de 30+ locales y 13 rubros esperando tu decisión. Sin listas
+            infinitas.
           </p>
         </div>
       </aside>

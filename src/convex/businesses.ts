@@ -6,31 +6,58 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 type DbCtx = QueryCtx | MutationCtx;
 
-const CATEGORY_IMAGES: Record<string, string> = {
-  Hamburguesas:
-    "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=900&q=80",
-  Pizza:
-    "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=900&q=80",
-  Sushi:
-    "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=900&q=80",
-  Mexicana:
-    "https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?auto=format&fit=crop&w=900&q=80",
-  Asiática:
-    "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=900&q=80",
-  Postres:
-    "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=900&q=80",
-  Saludable:
-    "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=900&q=80",
-  Café:
-    "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80",
-  "Pollo frito":
-    "https://images.unsplash.com/photo-1562967914-608f82629710?auto=format&fit=crop&w=900&q=80",
-  Pasta:
-    "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?auto=format&fit=crop&w=900&q=80",
-  Otro: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80",
+const DEFAULT_DEPARTMENT = "comida";
+
+const DEPARTMENT_IMAGES: Record<string, string> = {
+  comida:
+    "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80",
+  ropa: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=900&q=80",
+  zapatos:
+    "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&w=900&q=80",
+  perfumes:
+    "https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=900&q=80",
+  belleza:
+    "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=900&q=80",
+  "cuidado-personal":
+    "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=900&q=80",
+  farmacia:
+    "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&w=900&q=80",
+  electronicos:
+    "https://images.unsplash.com/photo-1498049794561-7780e7231661?auto=format&fit=crop&w=900&q=80",
+  electrodomesticos:
+    "https://images.unsplash.com/photo-1556911220-bff31c812dba?auto=format&fit=crop&w=900&q=80",
+  muebles:
+    "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=900&q=80",
+  instrumentos:
+    "https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=900&q=80",
+  herramientas:
+    "https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=900&q=80",
+  supermercado:
+    "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=80",
 };
 
-const DEFAULT_IMAGE = CATEGORY_IMAGES.Otro;
+/** The main facet of each department, used for the starter catalog. */
+const PRIMARY_FACET: Record<string, string> = {
+  comida: "cocina",
+  ropa: "tipo",
+  zapatos: "tipo",
+  perfumes: "familia",
+  belleza: "tipo",
+  "cuidado-personal": "tipo",
+  farmacia: "tipo",
+  electronicos: "tipo",
+  electrodomesticos: "tipo",
+  muebles: "ambiente",
+  instrumentos: "tipo",
+  herramientas: "tipo",
+  supermercado: "pasillo",
+};
+
+const DEPARTMENT_SLUGS = Object.keys(DEPARTMENT_IMAGES);
+
+function departmentImage(department: string) {
+  return DEPARTMENT_IMAGES[department] ?? DEPARTMENT_IMAGES[DEFAULT_DEPARTMENT];
+}
 
 function slugify(value: string) {
   return value
@@ -73,14 +100,10 @@ export const mine = query({
   },
 });
 
-export const categories = query({
-  args: {},
-  handler: async () => Object.keys(CATEGORY_IMAGES),
-});
-
 export const create = mutation({
   args: {
     name: v.string(),
+    department: v.string(),
     category: v.string(),
     tagline: v.string(),
     address: v.string(),
@@ -98,14 +121,19 @@ export const create = mutation({
     if (args.address.trim().length < 5) {
       throw new Error("Necesitamos una dirección del local");
     }
+    const department = DEPARTMENT_SLUGS.includes(args.department)
+      ? args.department
+      : DEFAULT_DEPARTMENT;
+    const category = args.category.trim() || "General";
 
     const businessId = await ctx.db.insert("businesses", {
       ownerId: userId,
       name,
       slug: `${slugify(name) || "whimy"}-${Math.floor(Math.random() * 900 + 100)}`,
-      category: args.category,
-      tagline: args.tagline.trim() || "Antojos hechos en casa",
-      image: CATEGORY_IMAGES[args.category] ?? DEFAULT_IMAGE,
+      department,
+      category,
+      tagline: args.tagline.trim() || "Productos elegidos con criterio",
+      image: departmentImage(department),
       address: args.address.trim(),
       deliveryFee: Math.max(0, Math.round(args.deliveryFee)),
       etaMinutes: Math.max(5, Math.round(args.etaMinutes)),
@@ -121,41 +149,67 @@ export const create = mutation({
     });
 
     if (args.addStarterMenu !== false) {
-      const categoryImage = CATEGORY_IMAGES[args.category] ?? DEFAULT_IMAGE;
-      const starters = [
-        {
-          name: "Especial de la casa",
-          description:
-            "La receta que nos hizo conocidos. Preparada al momento con ingredientes frescos.",
-          price: 8900,
-          category: args.category,
-          tags: ["Más pedido"],
-        },
-        {
-          name: "Opción clásica",
-          description:
-            "El clásico que nunca falla, con nuestra salsa insignia y guarnición.",
-          price: 6900,
-          category: args.category,
-          tags: ["Clásico"],
-        },
-        {
-          name: "Para compartir",
-          description:
-            "Porción generosa para dos personas, ideal para probar la carta.",
-          price: 12900,
-          category: args.category,
-          tags: ["Para compartir"],
-        },
-      ];
+      const image = departmentImage(department);
+      const primaryFacet = PRIMARY_FACET[department] ?? "tipo";
+      const isFood = department === DEFAULT_DEPARTMENT;
+      const starters = isFood
+        ? [
+            {
+              name: "Especial de la casa",
+              description:
+                "La receta que nos hizo conocidos. Preparada al momento con ingredientes frescos.",
+              price: 8900,
+              tags: ["Más pedido"],
+            },
+            {
+              name: "Opción clásica",
+              description:
+                "El clásico que nunca falla, con nuestra salsa insignia y guarnición.",
+              price: 6900,
+              tags: ["Clásico"],
+            },
+            {
+              name: "Para compartir",
+              description:
+                "Porción generosa para dos personas, ideal para probar la carta.",
+              price: 12900,
+              tags: ["Para compartir"],
+            },
+          ]
+        : [
+            {
+              name: "Producto destacado",
+              description:
+                "Nuestra pieza insignia, elegida por la mayoría de los clientes.",
+              price: 28900,
+              tags: ["Más vendido"],
+            },
+            {
+              name: "Opción clásica",
+              description:
+                "El básico que siempre funciona, con la calidad de la casa.",
+              price: 18900,
+              tags: ["Clásico"],
+            },
+            {
+              name: "Ideal para regalar",
+              description:
+                "Presentación cuidada y lista para sorprender a alguien.",
+              price: 34900,
+              tags: ["Regalo"],
+            },
+          ];
+
       for (const starter of starters) {
         await ctx.db.insert("products", {
           businessId,
+          department,
           name: starter.name,
           description: starter.description,
           price: starter.price,
-          image: categoryImage,
-          category: starter.category,
+          image,
+          category,
+          attributes: [{ key: primaryFacet, value: category }],
           tags: starter.tags,
           isAvailable: true,
         });
@@ -206,6 +260,9 @@ export const addProduct = mutation({
     category: v.string(),
     image: v.optional(v.string()),
     tags: v.optional(v.array(v.string())),
+    attributes: v.optional(
+      v.array(v.object({ key: v.string(), value: v.string() })),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -214,18 +271,20 @@ export const addProduct = mutation({
     const name = args.name.trim();
     if (name.length < 2) throw new Error("El producto necesita un nombre");
     if (args.price <= 0) throw new Error("El precio tiene que ser mayor a 0");
+    const department = business.department ?? DEFAULT_DEPARTMENT;
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
+      department,
       name,
       description: args.description.trim(),
       price: Math.round(args.price),
       image:
         args.image?.trim() ||
-        CATEGORY_IMAGES[args.category] ||
-        business.image ||
-        DEFAULT_IMAGE,
-      category: args.category.trim() || "Otro",
+        departmentImage(department) ||
+        business.image,
+      category: args.category.trim() || "General",
+      attributes: args.attributes ?? [],
       tags: args.tags ?? [],
       isAvailable: true,
     });
@@ -242,6 +301,9 @@ export const updateProduct = mutation({
     category: v.optional(v.string()),
     image: v.optional(v.string()),
     isAvailable: v.optional(v.boolean()),
+    attributes: v.optional(
+      v.array(v.object({ key: v.string(), value: v.string() })),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -261,6 +323,7 @@ export const updateProduct = mutation({
     if (args.image !== undefined && args.image.trim().length > 0)
       patch.image = args.image.trim();
     if (args.isAvailable !== undefined) patch.isAvailable = args.isAvailable;
+    if (args.attributes !== undefined) patch.attributes = args.attributes;
 
     await ctx.db.patch(args.productId, patch);
     return null;

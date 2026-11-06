@@ -1,0 +1,19 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="whimy-flame" x1="18" y1="10" x2="48" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF4B2B" />
+      <stop offset="0.55" stop-color="#FF2D55" />
+      <stop offset="1" stop-color="#FFC93C" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#0A0A0B" />
+  <path
+    d="M32 9c1.8 6.4 6.2 8.6 9.1 13.1 2.3 3.5 3.4 7 2.6 11.2 2.3-1.4 3.8-3.6 4.6-6.3 2.1 4.2 2.6 8.2 1.4 12.2C47.4 48.3 40.5 55 32 55c-9.9 0-17-6.4-17-15.3 0-5.3 2.4-9.6 6.3-13.4-.4 4.5 1.1 7.6 4.4 9.6-.9-7.2 1.2-13.5 6.3-18.4-.7 4.6-.3 8.1 1.9 10.8-.2-6.9-.2-12.4-1.9-19.3Z"
+    fill="url(#whimy-flame)"
+  />
+  <path
+    d="M32 33.5c3.6 2.6 5.4 5.2 5.4 8.1 0 3.3-2.4 5.6-5.4 5.6s-5.4-2.3-5.4-5.6c0-2.9 1.8-5.5 5.4-8.1Z"
+    fill="#0A0A0B"
+    fill-opacity="0.85"
+  />
+</svg>

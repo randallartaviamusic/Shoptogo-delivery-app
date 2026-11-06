@@ -34,6 +34,7 @@ import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import type { OrderStatus } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { getDepartment } from "@/lib/departments";
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -59,7 +60,7 @@ import { toast } from "sonner";
 const TABS = [
   { key: "overview", label: "Panel", to: "/business" },
   { key: "orders", label: "Pedidos", to: "/business?tab=orders" },
-  { key: "menu", label: "Carta", to: "/business?tab=menu" },
+  { key: "menu", label: "Productos", to: "/business?tab=menu" },
 ];
 
 function StatCard({
@@ -111,7 +112,6 @@ export default function BusinessPage() {
 
   const mine = useQuery(api.businesses.mine);
   const board = useQuery(api.orders.businessBoard);
-  const categories = useQuery(api.businesses.categories);
   const updateBusiness = useMutation(api.businesses.update);
   const updateStatus = useMutation(api.orders.businessUpdateStatus);
   const addProduct = useMutation(api.businesses.addProduct);
@@ -130,6 +130,7 @@ export default function BusinessPage() {
     price: "",
     category: "Hamburguesas",
     image: "",
+    attributes: {} as Record<string, string>,
   });
   const [settingsForm, setSettingsForm] = useState({
     name: "",
@@ -162,7 +163,7 @@ export default function BusinessPage() {
       <EmptyState
         icon={Store}
         title="Todavía no tenés un local en Whimy"
-        description="Cargá los datos de tu negocio, publicá tu carta y empezá a recibir pedidos de personas que están deslizando antojos."
+        description="Cargá los datos de tu negocio, publicá tu catálogo y empezá a recibir pedidos de personas que están deslizando productos."
         action={
           <Button asChild className="gap-2 bg-ember-gradient text-black">
             <Link to="/onboarding?role=business">
@@ -177,6 +178,8 @@ export default function BusinessPage() {
 
   const business = mine.business;
   const products = mine.products;
+  const departmentInfo = getDepartment(business.department);
+  const productCategories = departmentInfo.subcategories;
   const stats = board?.stats;
   const orders = (board?.orders ?? []) as unknown as OrderView[];
 
@@ -207,8 +210,9 @@ export default function BusinessPage() {
       name: "",
       description: "",
       price: "",
-      category: products[0]?.category ?? business.category,
+      category: departmentInfo.subcategories[0] ?? business.category,
       image: "",
+      attributes: {},
     });
     setProductDialog(true);
   };
@@ -221,6 +225,12 @@ export default function BusinessPage() {
       price: String(product.price),
       category: product.category,
       image: product.image,
+      attributes: Object.fromEntries(
+        (product.attributes ?? []).map((attribute) => [
+          attribute.key,
+          attribute.value,
+        ]),
+      ),
     });
     setProductDialog(true);
   };
@@ -234,6 +244,9 @@ export default function BusinessPage() {
       price: Number(productForm.price),
       category: productForm.category,
       image: productForm.image,
+      attributes: Object.entries(productForm.attributes)
+        .filter(([, value]) => value.length > 0)
+        .map(([key, value]) => ({ key, value })),
     };
     try {
       if (editing) {
@@ -288,7 +301,7 @@ export default function BusinessPage() {
         <div>
           <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
             <span className="inline-block size-1.5 rounded-full bg-accent" />
-            Panel del negocio
+            Panel · {departmentInfo.label}
           </p>
           <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
             {business.name}
@@ -318,8 +331,8 @@ export default function BusinessPage() {
                   await updateBusiness({ isOpen: checked });
                   toast(checked ? "Local abierto" : "Local cerrado", {
                     description: checked
-                      ? "Tu carta vuelve a aparecer en el mazo."
-                      : "Tu carta no se mostrará hasta que lo abras.",
+                      ? "Tu catálogo vuelve a aparecer en el mazo."
+                      : "Tu catálogo no se mostrará hasta que lo abras.",
                   });
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : "No pudimos cambiar");
@@ -363,7 +376,7 @@ export default function BusinessPage() {
             <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-                  {business.category}
+                  {departmentInfo.label} · {business.category}
                 </p>
                 <p className="mt-1 font-display text-2xl font-extrabold text-white">
                   {business.name}
@@ -377,7 +390,7 @@ export default function BusinessPage() {
               </div>
               <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
                 <Link to="/business?tab=menu">
-                  Ver carta
+                  Ver productos
                   <ArrowRight className="size-3.5" />
                 </Link>
               </Button>
@@ -480,7 +493,7 @@ export default function BusinessPage() {
               description="Los pedidos que lleguen desde el mazo aparecen acá en tiempo real, listos para aceptar y cocinar."
               action={
                 <Button asChild className="gap-2 bg-ember-gradient text-black">
-                  <Link to="/business?tab=menu">Revisar mi carta</Link>
+                  <Link to="/business?tab=menu">Revisar productos</Link>
                 </Button>
               }
             />
@@ -607,7 +620,7 @@ export default function BusinessPage() {
           {products.length === 0 ? (
             <EmptyState
               icon={UtensilsCrossed}
-              title="Tu carta está vacía"
+              title="Tu catálogo está vacío"
               description="Publicá tu primer producto para que empiece a aparecer en el mazo de los compradores."
               action={
                 <Button className="gap-2 bg-ember-gradient text-black" onClick={openNewProduct}>
@@ -692,7 +705,7 @@ export default function BusinessPage() {
             <DialogDescription>
               {editing
                 ? "Los cambios se reflejan al instante en el mazo."
-                : "Va a aparecer al azar entre los antojos de tu ciudad."}
+                : "Va a aparecer al azar entre los productos de tu rubro."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleProductSubmit} className="space-y-3.5">
@@ -747,7 +760,7 @@ export default function BusinessPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(categories ?? ["Otro"]).map((category) => (
+                    {productCategories.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
                       </SelectItem>
@@ -756,6 +769,54 @@ export default function BusinessPage() {
                 </Select>
               </div>
             </div>
+            {departmentInfo.filters.length > 0 && (
+              <div className="space-y-3 rounded-xl border border-border/70 bg-black/20 p-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Filtros del producto
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                    Cuanto mejor los completes, más fácil es que aparezca en
+                    las búsquedas de {departmentInfo.label.toLowerCase()}.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {departmentInfo.filters.map((facet) => (
+                    <div key={facet.key} className="space-y-1.5">
+                      <Label>{facet.label}</Label>
+                      <Select
+                        value={productForm.attributes[facet.key] ?? "__none"}
+                        onValueChange={(value) =>
+                          setProductForm((prev) => {
+                            const attributes = { ...prev.attributes };
+                            if (value === "__none") {
+                              delete attributes[facet.key];
+                            } else {
+                              attributes[facet.key] = value;
+                            }
+                            return { ...prev, attributes };
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sin especificar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">
+                            Sin especificar
+                          </SelectItem>
+                          {facet.options.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="product-image">Imagen (URL)</Label>
               <Input
@@ -795,7 +856,7 @@ export default function BusinessPage() {
           <DialogHeader>
             <DialogTitle className="font-display">Editar local</DialogTitle>
             <DialogDescription>
-              Estos datos se muestran en cada carta que aparece en el mazo.
+              Estos datos se muestran en cada producto que aparece en el mazo.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSettingsSubmit} className="space-y-3.5">
@@ -886,7 +947,7 @@ export default function BusinessPage() {
               ¿Eliminar {deleting?.name}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Desaparece del mazo y de tu carta. No se puede deshacer.
+              Desaparece del mazo y de tu catálogo. No se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

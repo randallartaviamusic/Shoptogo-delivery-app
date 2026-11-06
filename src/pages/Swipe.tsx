@@ -1,3 +1,5 @@
+import { PageHeader } from "@/components/AppShell";
+import { DepartmentIcon } from "@/components/DepartmentIcon";
 import {
   DeckActions,
   SwipeCard,
@@ -5,10 +7,21 @@ import {
   type SwipeCardHandle,
   type SwipeDirection,
 } from "@/components/SwipeCard";
-import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  DEFAULT_DEPARTMENT,
+  DEPARTMENTS,
+  getDepartment,
+} from "@/lib/departments";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -20,9 +33,11 @@ import {
   Loader2,
   RotateCcw,
   ShoppingBag,
+  SlidersHorizontal,
   Sparkles,
   Star,
-  Utensils,
+  UtensilsCrossed,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
@@ -31,26 +46,33 @@ import { toast } from "sonner";
 const TIPS = [
   {
     icon: Heart,
-    title: "Derecha = lo quiero",
+    title: "Derecha = me lo llevo",
     text: "Sumás el producto al carrito sin salir del mazo.",
   },
   {
     icon: Star,
-    title: "Arriba = súper antojo",
-    text: "Lo guardás en Guardados para después.",
+    title: "Arriba = guardar",
+    text: "Lo dejás en Guardados para decidir después.",
   },
   {
     icon: RotateCcw,
     title: "Deshacé sin culpa",
-    text: "Volvé la última carta si te arrepentiste.",
+    text: "Volvé al último producto si te arrepentiste.",
   },
 ];
 
 export default function SwipePage() {
-  const [category, setCategory] = useState("Todo");
+  const [departmentSlug, setDepartmentSlug] = useState(DEFAULT_DEPARTMENT);
+  const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [decided, setDecided] = useState<Set<string>>(new Set());
   const topCard = useRef<SwipeCardHandle>(null);
-  const deck = useQuery(api.catalog.deck, { category });
+
+  const department = getDepartment(departmentSlug);
+  const deck = useQuery(api.catalog.deck, {
+    department: departmentSlug,
+    filters,
+  });
   const cart = useQuery(api.cart.myCart);
   const stats = useQuery(api.catalog.myStats);
   const swipe = useMutation(api.catalog.swipe);
@@ -58,12 +80,63 @@ export default function SwipePage() {
   const resetDeck = useMutation(api.catalog.resetDeck);
 
   const cards = useMemo(
-    () => ((deck?.cards ?? []) as unknown as Dish[]).filter((c) => !decided.has(c._id)),
+    () =>
+      ((deck?.cards ?? []) as unknown as Dish[]).filter(
+        (card) => !decided.has(card._id),
+      ),
     [deck?.cards, decided],
   );
 
+  const departmentCounts = useMemo(
+    () =>
+      new Map(
+        (deck?.departments ?? []).map((entry) => [entry.slug, entry.count]),
+      ),
+    [deck?.departments],
+  );
+
+  const selectedCount = Object.values(filters).reduce(
+    (total, values) => total + values.length,
+    0,
+  );
+
+  const countFor = (facet: string, value: string) =>
+    deck?.facetCounts.find(
+      (entry) => entry.facet === facet && entry.value === value,
+    )?.count ?? 0;
+
+  const toggleFilter = (facet: string, value: string) => {
+    setFilters((prev) => {
+      const current = prev[facet] ?? [];
+      const next = current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value];
+      const copy = { ...prev };
+      if (next.length === 0) delete copy[facet];
+      else copy[facet] = next;
+      return copy;
+    });
+  };
+
+  const clearFacet = (facet: string) => {
+    setFilters((prev) => {
+      const copy = { ...prev };
+      delete copy[facet];
+      return copy;
+    });
+  };
+
+  const clearFilters = () => setFilters({});
+
+  const chooseDepartment = (slug: string) => {
+    if (slug === departmentSlug) return;
+    setDepartmentSlug(slug);
+    setFilters({});
+    setDecided(new Set());
+  };
+
   const handleDecide = (id: string, direction: SwipeDirection) => {
-    const dish = cards.find((c) => c._id === id);
+    const dish = cards.find((card) => card._id === id);
     setDecided((prev) => new Set(prev).add(id));
     swipe({ productId: id as Id<"products">, direction })
       .then(() => {
@@ -73,7 +146,7 @@ export default function SwipePage() {
           });
         }
         if (direction === "save") {
-          toast("Súper antojo guardado", {
+          toast("Guardado para después", {
             description: `${dish?.name ?? "Producto"} te espera en Guardados.`,
           });
         }
@@ -93,12 +166,16 @@ export default function SwipePage() {
       const result = await undo();
       setDecided(new Set());
       if (result.reverted) {
-        toast(`Volvió ${result.reverted}`, { description: "Deshicimos tu último swipe." });
+        toast(`Volvió ${result.reverted}`, {
+          description: "Deshicimos tu último swipe.",
+        });
       } else {
         toast("No hay nada para deshacer todavía");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos deshacer");
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos deshacer",
+      );
     }
   };
 
@@ -109,17 +186,24 @@ export default function SwipePage() {
       toast.success("Mazo recargado", {
         description:
           result.restored > 0
-            ? `${result.restored} antojos volvieron a aparecer.`
-            : "Todo lo que te gustó ya está en tu carrito.",
+            ? `${result.restored} productos volvieron a aparecer.`
+            : "Todo lo que elegiste ya está en tu carrito.",
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos recargar");
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos recargar",
+      );
     }
   };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
       if (event.key === "Backspace") {
         event.preventDefault();
         void handleUndo();
@@ -139,44 +223,89 @@ export default function SwipePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const categories = ["Todo", ...(deck?.categories ?? [])];
   const visible = cards.slice(0, 3);
   const isLoading = deck === undefined;
+  const noResults = visible.length === 0;
+  const emptyDepartment =
+    deck?.total === 0 && departmentSlug !== DEFAULT_DEPARTMENT;
 
   return (
     <div>
       <PageHeader
-        eyebrow="Modo antojo"
-        title="¿Qué se te antoja hoy?"
-        description="Deslizá a la derecha para pedir, a la izquierda para pasar. Arriba si querés guardarlo para después."
+        eyebrow={`Modo antojo · ${department.label}`}
+        title={department.headline}
+        description={department.blurb}
         action={
-          <div className="flex items-center gap-2 rounded-full border border-border/80 px-3 py-1.5 text-xs text-muted-foreground">
-            <Flame className="size-4 text-primary" />
-            <span className="font-semibold text-foreground">{cards.length}</span>
-            antojos por descubrir
-          </div>
+          <Button
+            variant="outline"
+            onClick={() => setFiltersOpen(true)}
+            className="gap-2 border-border/80"
+          >
+            <SlidersHorizontal className="size-4 text-accent" />
+            Filtros
+            {selectedCount > 0 && (
+              <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-accent-foreground">
+                {selectedCount}
+              </span>
+            )}
+          </Button>
         }
       />
 
-      <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar sm:mx-0 sm:px-0">
-        {categories.map((item) => (
-          <button
-            key={item}
-            onClick={() => {
-              setCategory(item);
-              setDecided(new Set());
-            }}
-            className={cn(
-              "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
-              category === item
-                ? "border-transparent bg-accent text-accent-foreground"
-                : "border-border/80 bg-secondary/40 text-muted-foreground hover:border-accent/30 hover:text-foreground",
-            )}
-          >
-            {item}
-          </button>
-        ))}
+      <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
+        {DEPARTMENTS.map((item) => {
+          const active = item.slug === departmentSlug;
+          const count = departmentCounts.get(item.slug) ?? 0;
+          return (
+            <button
+              key={item.slug}
+              onClick={() => chooseDepartment(item.slug)}
+              className={cn(
+                "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors",
+                active
+                  ? "border-transparent bg-accent text-accent-foreground"
+                  : "border-border/80 bg-secondary/40 text-muted-foreground hover:border-accent/30 hover:text-foreground",
+              )}
+            >
+              <DepartmentIcon name={item.icon} className="size-4" />
+              {item.short}
+              {count > 0 && (
+                <span
+                  className={cn(
+                    "text-[10px] font-medium",
+                    active ? "text-accent-foreground/70" : "text-muted-foreground/60",
+                  )}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
+
+      {selectedCount > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          {Object.entries(filters).flatMap(([facetKey, values]) =>
+            values.map((value) => (
+              <button
+                key={`${facetKey}:${value}`}
+                onClick={() => toggleFilter(facetKey, value)}
+                className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/[0.08] px-2.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/15"
+              >
+                {value}
+                <X className="size-3" />
+              </button>
+            )),
+          )}
+          <button
+            onClick={clearFilters}
+            className="text-[11px] font-semibold text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Limpiar todo
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:gap-12">
         <div className="mx-auto w-full max-w-[420px]">
@@ -210,7 +339,7 @@ export default function SwipePage() {
                 </motion.div>
               ))}
 
-            {!isLoading && visible.length === 0 && (
+            {!isLoading && noResults && (
               <AnimatePresence>
                 <motion.div
                   initial={{ opacity: 0, scale: 0.97 }}
@@ -218,28 +347,53 @@ export default function SwipePage() {
                   className="surface-raised absolute inset-0 flex flex-col items-center justify-center rounded-[30px] px-6 text-center"
                 >
                   <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/12 text-primary">
-                    {deck?.total === 0 ? (
-                      <Utensils className="size-7" />
+                    {selectedCount > 0 ? (
+                      <SlidersHorizontal className="size-7" />
+                    ) : emptyDepartment ? (
+                      <UtensilsCrossed className="size-7" />
                     ) : (
                       <Sparkles className="size-7" />
                     )}
                   </div>
                   <h3 className="mt-5 font-display text-xl font-bold">
-                    {deck?.total === 0
-                      ? "La cocina está vacía"
-                      : "Viste todos los antojos"}
+                    {selectedCount > 0
+                      ? "Nada con esos filtros"
+                      : emptyDepartment
+                        ? "Este rubro está vacío"
+                        : "Viste todos los productos"}
                   </h3>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {deck?.total === 0
-                      ? "Todavía no hay negocios cargados. Volvé en un rato."
-                      : "Recargá el mazo para volver a ver lo que pasaste."}
+                    {selectedCount > 0
+                      ? "Probá quitar alguno de los filtros para ver más opciones."
+                      : emptyDepartment
+                        ? "Todavía no hay locales en este rubro. Mientras tanto, mirá lo que hay en Comida."
+                        : "Recargá el mazo para volver a ver lo que pasaste."}
                   </p>
                   <Button
                     className="mt-6 gap-2 bg-ember-gradient text-black"
-                    onClick={handleReset}
+                    onClick={() => {
+                      if (selectedCount > 0) clearFilters();
+                      else if (emptyDepartment)
+                        chooseDepartment(DEFAULT_DEPARTMENT);
+                      else void handleReset();
+                    }}
                   >
-                    <RotateCcw className="size-4" />
-                    Recargar mazo
+                    {selectedCount > 0 ? (
+                      <>
+                        <X className="size-4" />
+                        Limpiar filtros
+                      </>
+                    ) : emptyDepartment ? (
+                      <>
+                        <UtensilsCrossed className="size-4" />
+                        Ir a Comida
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="size-4" />
+                        Recargar mazo
+                      </>
+                    )}
                   </Button>
                   <Link
                     to="/orders"
@@ -254,7 +408,10 @@ export default function SwipePage() {
 
           <DeckActions
             disabled={visible.length === 0}
-            canUndo={(stats?.likes ?? 0) + (stats?.passes ?? 0) + (stats?.saved ?? 0) > 0}
+            canUndo={
+              (stats?.likes ?? 0) + (stats?.passes ?? 0) + (stats?.saved ?? 0) >
+              0
+            }
             onUndo={handleUndo}
             onPass={() => void topCard.current?.decide("pass")}
             onSave={() => void topCard.current?.decide("save")}
@@ -262,7 +419,7 @@ export default function SwipePage() {
           />
 
           <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/60">
-            Arrastrá la carta o usá ← → ↑
+            Arrastrá la tarjeta o usá ← → ↑
           </p>
 
           <Link
@@ -275,10 +432,14 @@ export default function SwipePage() {
               </span>
               <span>
                 <span className="block font-semibold">
-                  {cart?.count ? `${cart.count} en el carrito` : "Tu carrito está vacío"}
+                  {cart?.count
+                    ? `${cart.count} en el carrito`
+                    : "Tu carrito está vacío"}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {cart?.count ? money(cart.total) : "Deslizá a la derecha para agregar"}
+                  {cart?.count
+                    ? money(cart.total)
+                    : "Deslizá a la derecha para agregar"}
                 </span>
               </span>
             </span>
@@ -293,7 +454,7 @@ export default function SwipePage() {
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
               {[
-                { label: "Antojos", value: stats?.likes ?? 0 },
+                { label: "Elegidos", value: stats?.likes ?? 0 },
                 { label: "Guardados", value: stats?.saved ?? 0 },
                 { label: "Descartados", value: stats?.passes ?? 0 },
                 { label: "Pedidos", value: stats?.orders ?? 0 },
@@ -307,6 +468,34 @@ export default function SwipePage() {
                     {item.label}
                   </p>
                 </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="surface-raised rounded-3xl p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                Explorar rubros
+              </p>
+              <span className="text-[11px] text-muted-foreground">
+                {DEPARTMENTS.length} categorías
+              </span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {DEPARTMENTS.map((item) => (
+                <button
+                  key={item.slug}
+                  onClick={() => chooseDepartment(item.slug)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+                    item.slug === departmentSlug
+                      ? "border-accent/40 bg-accent/10 text-accent"
+                      : "border-border/70 text-muted-foreground hover:border-accent/30 hover:text-foreground",
+                  )}
+                >
+                  <DepartmentIcon name={item.icon} className="size-3.5" />
+                  {item.short}
+                </button>
               ))}
             </div>
           </div>
@@ -335,10 +524,10 @@ export default function SwipePage() {
             className="flex items-center justify-between rounded-2xl border border-accent/25 bg-accent/[0.06] p-4 transition-colors hover:bg-accent/10"
           >
             <div>
-              <p className="text-sm font-semibold text-accent">Súper antojos</p>
+              <p className="text-sm font-semibold text-accent">Guardados</p>
               <p className="text-xs text-muted-foreground">
                 {stats?.saved
-                  ? `${stats.saved} guardados para después`
+                  ? `${stats.saved} productos para después`
                   : "Todavía no guardaste ninguno"}
               </p>
             </div>
@@ -346,6 +535,87 @@ export default function SwipePage() {
           </Link>
         </aside>
       </div>
+
+      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border/80 bg-card sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Filtros de {department.label.toLowerCase()}
+            </DialogTitle>
+            <DialogDescription>
+              Combiná varias opciones. Mostramos los productos que coincidan
+              con todos los filtros elegidos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-1">
+            {department.filters.map((facet) => {
+              const selected = filters[facet.key] ?? [];
+              return (
+                <div key={facet.key}>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {facet.label}
+                    </p>
+                    {selected.length > 0 && (
+                      <button
+                        onClick={() => clearFacet(facet.key)}
+                        className="text-[10px] font-semibold text-accent hover:underline"
+                      >
+                        Limpiar
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {facet.options.map((option) => {
+                      const active = selected.includes(option);
+                      const count = countFor(facet.key, option);
+                      return (
+                        <button
+                          key={option}
+                          onClick={() => toggleFilter(facet.key, option)}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                            active
+                              ? "border-accent bg-accent text-accent-foreground"
+                              : "border-border/80 text-muted-foreground hover:border-accent/40 hover:text-foreground",
+                            count === 0 && !active && "opacity-50",
+                          )}
+                        >
+                          {option}
+                          {count > 0 && (
+                            <span className="ml-1.5 text-[10px] opacity-60">
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-4">
+            <Button
+              variant="ghost"
+              onClick={clearFilters}
+              disabled={selectedCount === 0}
+              className="text-muted-foreground"
+            >
+              Limpiar todo
+            </Button>
+            <Button
+              className="gap-2 bg-ember-gradient text-black"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Ver {cards.length} {cards.length === 1 ? "producto" : "productos"}
+              <ArrowRight className="size-4" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

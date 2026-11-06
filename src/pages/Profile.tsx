@@ -32,7 +32,7 @@ const ROLES = [
   {
     value: "business" as const,
     label: "Negocio",
-    description: "Publicá tu carta y gestioná pedidos.",
+    description: "Publicá tu catálogo y gestioná pedidos.",
     icon: Store,
   },
   {
@@ -102,7 +102,7 @@ export default function ProfilePage() {
         toast("Modo negocio activado", {
           description: hasBusiness
             ? "Ya podés gestionar tu local."
-            : "Cargá los datos de tu local para publicar la carta.",
+            : "Cargá los datos de tu local para publicar el catálogo.",
         });
         navigate(hasBusiness ? "/business" : "/onboarding?role=business");
       } else if (next === "courier") {

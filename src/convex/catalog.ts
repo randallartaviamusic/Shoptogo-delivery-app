@@ -12,10 +12,16 @@ function hash(input: string) {
   return h >>> 0;
 }
 
+const DEFAULT_DEPARTMENT = "comida";
+
 export const deck = query({
-  args: { category: v.optional(v.string()) },
+  args: {
+    department: v.optional(v.string()),
+    filters: v.optional(v.record(v.string(), v.array(v.string()))),
+  },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
+    const department = args.department ?? DEFAULT_DEPARTMENT;
     const products = await ctx.db.query("products").collect();
     const businesses = await ctx.db.query("businesses").collect();
     const swipes = userId
@@ -27,22 +33,50 @@ export const deck = query({
 
     const swiped = new Set(swipes.map((s) => s.productId));
     const businessMap = new Map(businesses.map((b) => [b._id, b]));
-    const categories = Array.from(
-      new Set(products.map((p) => p.category).filter(Boolean)),
-    ).sort((a, b) => a.localeCompare(b));
 
-    const cards = products
+    const departmentOf = (product: (typeof products)[number]) =>
+      product.department ??
+      businessMap.get(product.businessId)?.department ??
+      DEFAULT_DEPARTMENT;
+
+    const available = products.filter((product) => {
+      const business = businessMap.get(product.businessId);
+      return Boolean(business?.isOpen) && product.isAvailable;
+    });
+
+    const departmentCounts = new Map<string, number>();
+    for (const product of available) {
+      const slug = departmentOf(product);
+      departmentCounts.set(slug, (departmentCounts.get(slug) ?? 0) + 1);
+    }
+
+    const inDepartment = available.filter(
+      (product) => departmentOf(product) === department,
+    );
+
+    // Facet values can contain accents, so they are returned as a flat list
+    // instead of an object (Convex object keys must be ASCII).
+    const facetCounts = new Map<string, number>();
+    for (const product of inDepartment) {
+      for (const attribute of product.attributes ?? []) {
+        const composite = `${attribute.key}\u0000${attribute.value}`;
+        facetCounts.set(composite, (facetCounts.get(composite) ?? 0) + 1);
+      }
+    }
+
+    const activeFilters = Object.entries(args.filters ?? {}).filter(
+      ([, values]) => values.length > 0,
+    );
+
+    const cards = inDepartment
       .filter((product) => {
-        const business = businessMap.get(product.businessId);
-        if (!business || !business.isOpen || !product.isAvailable) return false;
         if (swiped.has(product._id)) return false;
-        if (args.category && args.category !== "Todo") {
-          return (
-            product.category === args.category ||
-            business.category === args.category
-          );
-        }
-        return true;
+        return activeFilters.every(([key, values]) =>
+          (product.attributes ?? []).some(
+            (attribute) =>
+              attribute.key === key && values.includes(attribute.value),
+          ),
+        );
       })
       .map((product) => {
         const business = businessMap.get(product.businessId)!;
@@ -53,6 +87,8 @@ export const deck = query({
           price: product.price,
           image: product.image,
           category: product.category,
+          department: departmentOf(product),
+          attributes: product.attributes ?? [],
           tags: product.tags,
           businessId: business._id,
           businessName: business.name,
@@ -72,7 +108,20 @@ export const deck = query({
       )
       .slice(0, 40);
 
-    return { cards, categories, total: products.length };
+    return {
+      department,
+      cards,
+      departments: Array.from(departmentCounts.entries()).map(
+        ([slug, count]) => ({ slug, count }),
+      ),
+      facetCounts: Array.from(facetCounts.entries()).map(
+        ([composite, count]) => {
+          const [facet, value] = composite.split("\u0000");
+          return { facet, value, count };
+        },
+      ),
+      total: inDepartment.length,
+    };
   },
 });
 

@@ -19,6 +19,8 @@ export type Dish = {
   price: number;
   image: string;
   category: string;
+  department?: string;
+  attributes?: { key: string; value: string }[];
   tags: string[];
   businessId: string;
   businessName: string;

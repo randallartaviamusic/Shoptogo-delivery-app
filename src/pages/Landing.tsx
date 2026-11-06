@@ -1,7 +1,9 @@
 import { Wordmark } from "@/components/Brand";
+import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { DEFAULT_DEPARTMENT, DEPARTMENTS } from "@/lib/departments";
 import { money, ROLE_HOME } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -35,18 +37,18 @@ const HERO_DISH = {
 
 const STEPS = [
   {
-    title: "Deslizá",
-    text: "Un mazo infinito con platos de distintos negocios, elegidos al azar para tu zona.",
+    title: "Elegí el rubro",
+    text: "Comida, ropa, tecnología, farmacia y más: trece departamentos con sus propios filtros.",
     icon: Flame,
   },
   {
-    title: "Antojate",
-    text: "Derecha para sumarlo al carrito, arriba para guardarlo, izquierda para pasar.",
+    title: "Deslizá",
+    text: "Un mazo infinito de productos de distintos locales. Derecha al carrito, arriba a guardados.",
     icon: Heart,
   },
   {
     title: "Recibí",
-    text: "El local cocina, un repartidor lo toma y vos seguís cada paso en vivo.",
+    text: "El local prepara, un repartidor lo toma y vos seguís cada paso en vivo.",
     icon: Bike,
   },
 ];
@@ -55,18 +57,18 @@ const ROLES = [
   {
     title: "Compradores",
     description:
-      "Descubrí antojos que no sabías que querías. Un swipe y está en camino.",
+      "Descubrí productos que no sabías que querías, de comida a tecnología. Un swipe y están en camino.",
     icon: ShoppingBag,
-    points: ["Mazo aleatorio", "Súper antojos", "Seguimiento en vivo"],
+    points: ["13 rubros", "Filtros por rubro", "Seguimiento en vivo"],
     href: "/auth",
     cta: "Empezar a deslizar",
   },
   {
     title: "Negocios",
     description:
-      "Tu carta aparece en el mazo de miles de antojos. Cargala en minutos.",
+      "Tu catálogo aparece en el mazo de toda la ciudad. Cargalo en minutos.",
     icon: Store,
-    points: ["Carta propia", "Pedidos en tiempo real", "Sin comisión fija"],
+    points: ["Catálogo propio", "Pedidos en tiempo real", "Sin comisión fija"],
     href: "/auth?returnTo=%2Fonboarding%3Frole%3Dbusiness",
     cta: "Publicar mi local",
   },
@@ -79,19 +81,6 @@ const ROLES = [
     href: "/auth?returnTo=%2Fonboarding%3Frole%3Dcourier",
     cta: "Sumarme a repartir",
   },
-];
-
-const CUISINES = [
-  "Hamburguesas",
-  "Pizza",
-  "Sushi",
-  "Tacos",
-  "Ramen",
-  "Postres",
-  "Bowls",
-  "Café",
-  "Pollo frito",
-  "Pasta",
 ];
 
 const fadeUp = {
@@ -226,15 +215,18 @@ export default function Landing() {
           <Link to="/">
             <Wordmark markSize={34} />
           </Link>
-          <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
+          <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
             <a href="#como-funciona" className="transition-colors hover:text-foreground">
               Cómo funciona
             </a>
             <a href="#roles" className="transition-colors hover:text-foreground">
               Para tu rol
             </a>
-            <a href="#carta" className="transition-colors hover:text-foreground">
-              La carta
+            <a href="#rubros" className="transition-colors hover:text-foreground">
+              Rubros
+            </a>
+            <a href="#catalogo" className="transition-colors hover:text-foreground">
+              Catálogo
             </a>
           </nav>
           <div className="flex items-center gap-2">
@@ -295,9 +287,10 @@ export default function Landing() {
               transition={{ duration: 0.6, delay: 0.16 }}
               className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg"
             >
-              Whimy mezcla el delivery con el gesto más adictivo del mundo.
-              Platos al azar de los mejores locales de tu ciudad: a la derecha
-              si te antoja, a la izquierda si no. Así de simple.
+              Whimy mezcla el marketplace con el gesto más adictivo del mundo.
+              Productos al azar de los mejores locales de tu ciudad —comida,
+              ropa, tecnología, farmacia y más—: a la derecha si te gusta, a la
+              izquierda si no. Así de simple.
             </motion.p>
 
             <motion.div
@@ -332,9 +325,9 @@ export default function Landing() {
               className="mt-10 flex flex-wrap gap-x-8 gap-y-4"
             >
               {[
-                { value: "10", label: "locales aliados" },
-                { value: "40+", label: "antojos en el mazo" },
-                { value: "25 min", label: "promedio de entrega" },
+                { value: "30+", label: "locales aliados" },
+                { value: "100+", label: "productos en el mazo" },
+                { value: "13", label: "rubros para explorar" },
               ].map((stat) => (
                 <div key={stat.label}>
                   <p className="font-display text-2xl font-extrabold">{stat.value}</p>
@@ -357,12 +350,18 @@ export default function Landing() {
 
       <div className="relative overflow-hidden border-y border-border/50 bg-black/25 py-4">
         <div className="mx-auto flex w-full max-w-6xl gap-2 overflow-x-auto px-4 no-scrollbar sm:px-6">
-          {CUISINES.map((cuisine) => (
+          {DEPARTMENTS.map((department) => (
             <span
-              key={cuisine}
-              className="shrink-0 rounded-full border border-border/70 bg-card/50 px-3.5 py-1.5 text-xs font-medium text-muted-foreground"
+              key={department.slug}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium",
+                department.slug === DEFAULT_DEPARTMENT
+                  ? "border-accent/35 bg-accent/[0.08] text-accent"
+                  : "border-border/70 bg-card/50 text-muted-foreground",
+              )}
             >
-              {cuisine}
+              <DepartmentIcon name={department.icon} className="size-3.5" />
+              {department.label}
             </span>
           ))}
         </div>
@@ -374,7 +373,7 @@ export default function Landing() {
             Cómo funciona
           </p>
           <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Tres gestos y tu antojo está en la puerta
+            Tres gestos y tu pedido está en la puerta
           </h2>
         </motion.div>
 
@@ -401,7 +400,77 @@ export default function Landing() {
         </div>
       </section>
 
-      <section id="roles" className="relative border-y border-border/50 bg-black/20">
+      <section id="rubros" className="relative border-y border-border/50 bg-black/20">
+        <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
+          <motion.div
+            {...fadeUp}
+            className="flex flex-wrap items-end justify-between gap-6"
+          >
+            <div className="max-w-2xl">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                Un mazo, trece rubros
+              </p>
+              <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
+                De la hamburguesa al sillón, todo se desliza
+              </h2>
+            </div>
+            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+              Cada departamento tiene filtros propios: talle, marca, familia
+              olfativa, pasillo del súper y mucho más. Comida viene primero.
+            </p>
+          </motion.div>
+
+          <div className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {DEPARTMENTS.map((department, index) => (
+              <motion.div
+                key={department.slug}
+                {...fadeUp}
+                transition={{ ...fadeUp.transition, delay: Math.min(index, 5) * 0.05 }}
+              >
+                <Link
+                  to={isAuthenticated ? "/swipe" : "/auth"}
+                  className={cn(
+                    "group flex h-full items-start gap-3 rounded-2xl border p-4 transition-colors",
+                    department.slug === DEFAULT_DEPARTMENT
+                      ? "border-accent/30 bg-accent/[0.06] hover:bg-accent/10"
+                      : "border-border/70 bg-card/50 hover:border-accent/30",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-10 shrink-0 items-center justify-center rounded-xl",
+                      department.slug === DEFAULT_DEPARTMENT
+                        ? "bg-accent/15 text-accent"
+                        : "bg-secondary text-foreground",
+                    )}
+                  >
+                    <DepartmentIcon name={department.icon} className="size-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                      {department.label}
+                      {department.slug === DEFAULT_DEPARTMENT && (
+                        <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent">
+                          Por defecto
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                      {department.blurb}
+                    </p>
+                    <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                      {department.subcategories.length} subrubros ·{" "}
+                      {department.filters.length} filtros
+                    </p>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="roles" className="relative">
         <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
           <motion.div {...fadeUp} className="max-w-2xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
@@ -470,23 +539,23 @@ export default function Landing() {
         </div>
       </section>
 
-      <section id="carta" className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
+      <section id="catalogo" className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <motion.div {...fadeUp}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
-              La carta de hoy
+              El catálogo de hoy
             </p>
             <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Cada sesión es una carta distinta
+              Cada sesión es un mazo distinto
             </h2>
             <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
-              No hay dos mazos iguales. Mezclamos cocinas, precios y barrios
-              para que descubras ese plato que nunca pedirías buscando en una
-              lista. Los negocios cargan su carta y la ciudad se antoja.
+              No hay dos mazos iguales. Mezclamos rubros, precios y barrios
+              para que descubras ese producto que nunca buscarías en una lista.
+              Los negocios cargan su catálogo y la ciudad desliza.
             </p>
             <div className="mt-6 space-y-3">
               {[
-                { icon: ChefHat, text: "Los locales cargan su carta y quedan visibles al instante." },
+                { icon: ChefHat, text: "Los locales cargan su catálogo y quedan visibles al instante." },
                 { icon: Clock, text: "Pedidos en tiempo real: aceptado, en cocina, listo, en camino." },
                 { icon: Bike, text: "Repartidores independientes toman cada envío cuando está listo." },
               ].map((item) => (
@@ -511,24 +580,24 @@ export default function Landing() {
               },
               {
                 image:
-                  "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=700&q=80",
-                name: "Pepperoni Nera",
-                business: "Nonna Rossa",
-                price: 13400,
+                  "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=700&q=80",
+                name: "Air Runner 90",
+                business: "Cordones · Zapatos",
+                price: 189000,
               },
               {
                 image:
-                  "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=700&q=80",
-                name: "Donut Pistacho",
-                business: "Azúcar Glaseada",
-                price: 3200,
+                  "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=700&q=80",
+                name: "Auriculares Studio Pro",
+                business: "Voltio · Electrónicos",
+                price: 249000,
               },
               {
                 image:
-                  "https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?auto=format&fit=crop&w=700&q=80",
-                name: "Taco al Pastor",
-                business: "El Fuego",
-                price: 3800,
+                  "https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=700&q=80",
+                name: "Ámbar Noir 100 ml",
+                business: "Fragua · Perfumes",
+                price: 98000,
               },
             ].map((dish, index) => (
               <div
@@ -601,7 +670,7 @@ export default function Landing() {
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
           <Wordmark markSize={28} />
           <p className="text-xs text-muted-foreground">
-            Whimy · el delivery que se desliza. Hecho para antojados.
+            Whimy · el marketplace que se desliza. Del antojo al sillón.
           </p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <Link to="/auth" className="hover:text-foreground">

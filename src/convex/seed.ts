@@ -1,9 +1,52 @@
 import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
+import { VERTICALS } from "./seedVerticals";
 
 const img = (id: string, w = 900) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=80`;
+
+const DEFAULT_DEPARTMENT = "comida";
+
+const toAttributes = (record: Record<string, string>) =>
+  Object.entries(record).map(([key, value]) => ({ key, value }));
+
+function foodTipo(category: string) {
+  if (category === "Bebidas") return "Bebidas";
+  if (["Postres", "Cajas", "Donuts", "Bakery"].includes(category)) {
+    return "Postres";
+  }
+  if (["Acompañamientos", "Entradas", "Para compartir"].includes(category)) {
+    return "Para compartir";
+  }
+  return "Principales";
+}
+
+/** Every food dish gets facet values so the deck filters work for comida too. */
+function foodAttributes(category: string, tags: string[], cuisine: string) {
+  const attributes: Array<{ key: string; value: string }> = [
+    { key: "cocina", value: cuisine },
+    { key: "tipo", value: foodTipo(category) },
+    {
+      key: "porcion",
+      value: tags.some((tag) => tag === "Para compartir" || tag === "Para dos")
+        ? "Para compartir"
+        : "Para uno",
+    },
+  ];
+  const diet = tags.find((tag) =>
+    ["Vegano", "Vegetariano", "Vegetariana", "Sin lácteos", "Sin TACC"].includes(
+      tag,
+    ),
+  );
+  if (diet) {
+    attributes.push({
+      key: "dieta",
+      value: diet === "Vegetariana" ? "Vegetariano" : diet,
+    });
+  }
+  return attributes;
+}
 
 type SeedProduct = {
   name: string;
@@ -555,6 +598,7 @@ async function insertCatalog(ctx: MutationCtx) {
     const businessId = await ctx.db.insert("businesses", {
       name: entry.name,
       slug: entry.slug,
+      department: DEFAULT_DEPARTMENT,
       category: entry.category,
       tagline: entry.tagline,
       image: entry.image,
@@ -569,11 +613,17 @@ async function insertCatalog(ctx: MutationCtx) {
     for (const product of entry.products) {
       await ctx.db.insert("products", {
         businessId,
+        department: DEFAULT_DEPARTMENT,
         name: product.name,
         description: product.description,
         price: product.price,
         image: product.image,
         category: product.category,
+        attributes: foodAttributes(
+          product.category,
+          product.tags,
+          entry.category,
+        ),
         tags: product.tags,
         isAvailable: true,
         isDemo: true,
@@ -585,17 +635,100 @@ async function insertCatalog(ctx: MutationCtx) {
   return productCount;
 }
 
-/** Idempotent: fills the app with the demo restaurants the first time it runs. */
+async function insertVerticals(ctx: MutationCtx) {
+  let productCount = 0;
+  for (const entry of VERTICALS) {
+    const businessId = await ctx.db.insert("businesses", {
+      name: entry.name,
+      slug: entry.slug,
+      department: entry.department,
+      category: entry.category,
+      tagline: entry.tagline,
+      image: entry.image,
+      address: entry.address,
+      deliveryFee: entry.deliveryFee,
+      etaMinutes: entry.etaMinutes,
+      rating: entry.rating,
+      reviews: entry.reviews,
+      isOpen: true,
+      isDemo: true,
+    });
+    for (const product of entry.products) {
+      await ctx.db.insert("products", {
+        businessId,
+        department: entry.department,
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        image: product.image,
+        category: product.category,
+        attributes: toAttributes(product.attributes),
+        tags: product.tags,
+        isAvailable: true,
+        isDemo: true,
+      });
+      productCount += 1;
+    }
+  }
+  return productCount;
+}
+
+/** Tags the original food catalog with departments + facets (one-time upgrade). */
+async function tagLegacyCatalog(ctx: MutationCtx) {
+  const businesses = await ctx.db.query("businesses").collect();
+  for (const business of businesses) {
+    if (!business.isDemo) continue;
+    if (!business.department) {
+      await ctx.db.patch(business._id, { department: DEFAULT_DEPARTMENT });
+    }
+  }
+  const products = await ctx.db.query("products").collect();
+  for (const product of products) {
+    if (!product.isDemo) continue;
+    if (product.department && product.attributes) continue;
+    const business = await ctx.db.get(product.businessId);
+    const department =
+      product.department ?? business?.department ?? DEFAULT_DEPARTMENT;
+    const attributes =
+      product.attributes && product.attributes.length > 0
+        ? product.attributes
+        : department === DEFAULT_DEPARTMENT
+          ? foodAttributes(
+              product.category,
+              product.tags,
+              business?.category ?? "Comida",
+            )
+          : [];
+    await ctx.db.patch(product._id, { department, attributes });
+  }
+}
+
+async function findMeta(ctx: MutationCtx, key: string) {
+  return await ctx.db
+    .query("meta")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+}
+
+/** Idempotent: fills the app with the demo catalog the first time it runs. */
 export const ensure = mutation({
   args: {},
   handler: async (ctx) => {
-    const marker = await ctx.db
-      .query("meta")
-      .withIndex("by_key", (q) => q.eq("key", "whimy_catalog"))
-      .unique();
-    if (marker) return { seeded: false, products: 0 };
-    const products = await insertCatalog(ctx);
-    return { seeded: true, products };
+    let products = 0;
+    const foodMarker = await findMeta(ctx, "whimy_catalog");
+    if (!foodMarker) products += await insertCatalog(ctx);
+
+    const verticalsMarker = await findMeta(ctx, "whimy_catalog_verticals");
+    if (!verticalsMarker) {
+      await tagLegacyCatalog(ctx);
+      products += await insertVerticals(ctx);
+      await ctx.db.insert("meta", {
+        key: "whimy_catalog_verticals",
+        value: "v1",
+      });
+    }
+
+    return { seeded: products > 0, products };
   },
 });
 
@@ -614,12 +747,14 @@ export const reset = internalMutation({
       for (const product of products) await ctx.db.delete(product._id);
       await ctx.db.delete(business._id);
     }
-    const marker = await ctx.db
-      .query("meta")
-      .withIndex("by_key", (q) => q.eq("key", "whimy_catalog"))
-      .unique();
-    if (marker) await ctx.db.delete(marker._id);
-    const products = await insertCatalog(ctx);
+    const markers = await ctx.db.query("meta").collect();
+    for (const marker of markers) {
+      if (marker.key.startsWith("whimy_catalog")) {
+        await ctx.db.delete(marker._id);
+      }
+    }
+    const products = (await insertCatalog(ctx)) + (await insertVerticals(ctx));
+    await ctx.db.insert("meta", { key: "whimy_catalog_verticals", value: "v1" });
     return { seeded: true, products };
   },
 });
