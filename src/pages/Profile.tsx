@@ -17,9 +17,10 @@ import {
   ShoppingBag,
   Star,
   Store,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
 const ROLES = [
@@ -126,7 +127,11 @@ export default function ProfilePage() {
       <PageHeader
         eyebrow="Tu cuenta"
         title="Perfil"
-        description="Tus datos de entrega, tu rol en Whimy y tus números de antojos."
+        description={
+          user.isAnonymous
+            ? "Tus datos de entrega y tus números de antojos. Sin cuenta, sin vueltas."
+            : "Tus datos de entrega, tu rol en Capricho Express y tus números de antojos."
+        }
       />
 
       <div className="surface-raised rounded-3xl p-5 sm:p-6">
@@ -142,7 +147,7 @@ export default function ProfilePage() {
               {user.email ?? (user.isAnonymous ? "Sesión de invitado" : "Sin email")}
             </p>
             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent">
-              {ROLE_LABEL[role]}
+              {user.isAnonymous ? "Invitado" : ROLE_LABEL[role]}
             </span>
           </div>
         </div>
@@ -166,6 +171,28 @@ export default function ProfilePage() {
           ))}
         </div>
       </div>
+
+      {user.isAnonymous && (
+        <section className="mt-5 flex flex-col gap-4 rounded-3xl border border-accent/25 bg-accent/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-accent/15 text-accent">
+              <UserRound className="size-5" />
+            </span>
+            <div>
+              <h2 className="font-display text-base font-bold">
+                Estás comprando como invitado
+              </h2>
+              <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                Deslizá y pedí sin crear cuenta. Si querés guardar tu carrito,
+                tus guardados y tus pedidos, creá una en un minuto.
+              </p>
+            </div>
+          </div>
+          <Button asChild className="shrink-0 gap-2 bg-ember-gradient text-black">
+            <Link to="/auth?returnTo=%2Fprofile">Crear mi cuenta</Link>
+          </Button>
+        </section>
+      )}
 
       <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
         <h2 className="font-display text-lg font-bold">Datos de entrega</h2>
@@ -231,8 +258,9 @@ export default function ProfilePage() {
         </Button>
       </section>
 
+      {!user.isAnonymous && (
       <section className="mt-5">
-        <h2 className="mb-3 font-display text-lg font-bold">Tu rol en Whimy</h2>
+        <h2 className="mb-3 font-display text-lg font-bold">Tu rol en Capricho Express</h2>
         <div className="grid gap-3 sm:grid-cols-3">
           {ROLES.map((option) => {
             const active = role === option.value;
@@ -277,18 +305,21 @@ export default function ProfilePage() {
           Podés cambiar de rol cuando quieras: es la misma cuenta.
         </p>
       </section>
+      )}
 
-      <Button
-        variant="outline"
-        className="mt-5 w-full gap-2 border-primary/25 text-primary hover:bg-primary/10"
-        onClick={async () => {
-          await signOut();
-          navigate("/");
-        }}
-      >
-        <LogOut className="size-4" />
-        Cerrar sesión
-      </Button>
+      {!user.isAnonymous && (
+        <Button
+          variant="outline"
+          className="mt-5 w-full gap-2 border-primary/25 text-primary hover:bg-primary/10"
+          onClick={async () => {
+            await signOut();
+            navigate("/swipe");
+          }}
+        >
+          <LogOut className="size-4" />
+          Cerrar sesión
+        </Button>
+      )}
     </div>
   );
 }

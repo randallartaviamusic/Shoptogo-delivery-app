@@ -1,4 +1,4 @@
-import { Wordmark } from "@/components/Brand";
+import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,7 +105,7 @@ export default function OnboardingPage() {
     try {
       await setRole({ role });
       toast(
-        role === "courier" ? "Modo repartidor activado" : "Bienvenido a Whimy",
+        role === "courier" ? "Modo repartidor activado" : "Bienvenido a Capricho Express",
         {
           description:
             role === "courier"
@@ -135,7 +135,7 @@ export default function OnboardingPage() {
         etaMinutes: Number(form.etaMinutes) || 30,
         addStarterMenu: form.addStarterMenu,
       });
-      toast.success("Tu negocio ya está en Whimy", {
+      toast.success("Tu negocio ya está en Capricho Express", {
         description: "Cargá productos para que aparezcan en el mazo.",
       });
       navigate("/business");
@@ -151,8 +151,13 @@ export default function OnboardingPage() {
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-25 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
       <div className="relative mx-auto w-full max-w-2xl">
         <div className="flex items-center justify-between">
-          <Link to="/">
-            <Wordmark markSize={32} />
+          <Link to="/" aria-label="Capricho Express">
+            <span className="sm:hidden">
+              <BrandMark size={32} />
+            </span>
+            <span className="hidden sm:block">
+              <Wordmark markSize={32} />
+            </span>
           </Link>
           {user.role ? (
             <Link
@@ -185,7 +190,7 @@ export default function OnboardingPage() {
                 Paso 1 de 2
               </p>
               <h1 className="mt-3 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-                ¿Cómo vas a usar Whimy?
+                ¿Cómo vas a usar Capricho Express?
               </h1>
               <p className="mt-2 max-w-lg text-sm text-muted-foreground">
                 Elegí tu rol principal. Podés cambiarlo cuando quieras desde tu

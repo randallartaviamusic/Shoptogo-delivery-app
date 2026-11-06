@@ -303,6 +303,19 @@ export default function CartPage() {
               {groups.length} {groups.length === 1 ? "negocio" : "negocios"} ·
               Pago en la entrega
             </p>
+
+            {user?.isAnonymous && (
+              <p className="mt-3 rounded-xl border border-accent/25 bg-accent/[0.06] p-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
+                Estás comprando como invitado.{" "}
+                <Link
+                  to="/auth?returnTo=%2Fcart"
+                  className="font-semibold text-accent underline-offset-4 hover:underline"
+                >
+                  Creá una cuenta
+                </Link>{" "}
+                para guardar tu historial.
+              </p>
+            )}
           </motion.aside>
         </div>
       )}

@@ -1,10 +1,10 @@
-import { Wordmark } from "@/components/Brand";
+import { BrandMark, Wordmark } from "@/components/Brand";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { DEFAULT_DEPARTMENT, DEPARTMENTS } from "@/lib/departments";
-import { money, ROLE_HOME } from "@/lib/format";
+import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
@@ -60,8 +60,8 @@ const ROLES = [
       "Descubrí productos que no sabías que querías, de comida a tecnología. Un swipe y están en camino.",
     icon: ShoppingBag,
     points: ["13 rubros", "Filtros por rubro", "Seguimiento en vivo"],
-    href: "/auth",
-    cta: "Empezar a deslizar",
+    href: "/swipe",
+    cta: "Probar sin cuenta",
   },
   {
     title: "Negocios",
@@ -103,7 +103,7 @@ function PhoneMockup() {
         <div className="relative overflow-hidden rounded-[34px] border border-white/8 bg-black">
           <div className="flex items-center justify-between px-4 pb-2 pt-7">
             <span className="font-display text-sm font-extrabold">
-              Whimy<span className="text-accent">.</span>
+              Capricho <span className="text-accent">Express</span>
             </span>
             <span className="flex items-center gap-1 text-[9px] text-white/50">
               <MapPin className="size-2.5" /> Palermo
@@ -205,15 +205,20 @@ function PhoneMockup() {
 }
 
 export default function Landing() {
-  const { isAuthenticated, user } = useAuth();
-  const appHref = user?.role ? ROLE_HOME[user.role] : "/dashboard";
+  const { user } = useAuth();
+  const isGuest = Boolean(user?.isAnonymous);
 
   return (
     <div className="min-h-screen overflow-x-hidden">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/75 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
-          <Link to="/">
-            <Wordmark markSize={34} />
+          <Link to="/" aria-label="Capricho Express">
+            <span className="sm:hidden">
+              <BrandMark size={32} />
+            </span>
+            <span className="hidden sm:block">
+              <Wordmark markSize={34} />
+            </span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
             <a href="#como-funciona" className="transition-colors hover:text-foreground">
@@ -230,26 +235,15 @@ export default function Landing() {
             </a>
           </nav>
           <div className="flex items-center gap-2">
-            {isAuthenticated ? (
-              <Button asChild className="gap-2 bg-ember-gradient text-black">
-                <Link to={appHref}>
-                  Abrir Whimy
-                  <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-            ) : (
-              <>
-                <Button asChild variant="ghost" className="hidden sm:inline-flex">
-                  <Link to="/auth">Entrar</Link>
-                </Button>
-                <Button asChild className="gap-2 bg-ember-gradient text-black">
-                  <Link to="/auth">
-                    Empezar
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </Button>
-              </>
-            )}
+            <Button asChild variant="ghost" className="hidden sm:inline-flex">
+              <Link to="/auth">{isGuest ? "Mi cuenta" : "Entrar"}</Link>
+            </Button>
+            <Button asChild className="gap-2 bg-ember-gradient text-black">
+              <Link to="/swipe">
+                Abrir la app
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
           </div>
         </div>
       </header>
@@ -287,10 +281,10 @@ export default function Landing() {
               transition={{ duration: 0.6, delay: 0.16 }}
               className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg"
             >
-              Whimy mezcla el marketplace con el gesto más adictivo del mundo.
-              Productos al azar de los mejores locales de tu ciudad —comida,
-              ropa, tecnología, farmacia y más—: a la derecha si te gusta, a la
-              izquierda si no. Así de simple.
+              Capricho Express mezcla el marketplace con el gesto más adictivo
+              del mundo. Productos al azar de los mejores locales de tu ciudad
+              —comida, ropa, tecnología, farmacia y más—: a la derecha si te
+              gusta, a la izquierda si no. Sin crear cuenta. Así de simple.
             </motion.p>
 
             <motion.div
@@ -300,8 +294,8 @@ export default function Landing() {
               className="mt-8 flex flex-wrap items-center gap-3"
             >
               <Button asChild size="lg" className="h-12 gap-2 bg-ember-gradient px-6 text-black">
-                <Link to={isAuthenticated ? appHref : "/auth"}>
-                  {isAuthenticated ? "Volver a la app" : "Crear mi cuenta"}
+                <Link to="/swipe">
+                  Deslizar sin cuenta
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
@@ -428,7 +422,7 @@ export default function Landing() {
                 transition={{ ...fadeUp.transition, delay: Math.min(index, 5) * 0.05 }}
               >
                 <Link
-                  to={isAuthenticated ? "/swipe" : "/auth"}
+                  to="/swipe"
                   className={cn(
                     "group flex h-full items-start gap-3 rounded-2xl border p-4 transition-colors",
                     department.slug === DEFAULT_DEPARTMENT
@@ -477,7 +471,7 @@ export default function Landing() {
               Un solo lugar, tres roles
             </p>
             <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Whimy funciona para todos los que hacen posible el antojo
+              Capricho Express funciona para todos los que hacen posible el antojo
             </h2>
           </motion.div>
 
@@ -641,13 +635,13 @@ export default function Landing() {
             Tu próximo antojo está a un swipe de distancia
           </h2>
           <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-            Creá tu cuenta gratis, elegí tu rol y empezá. Sin planes, sin
-            suscripciones, sin vueltas.
+            Entrá y deslizá gratis, sin cuenta. Si querés vender o repartir,
+            creá tu cuenta y elegí tu rol. Sin planes ni suscripciones.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" className="h-12 gap-2 bg-ember-gradient px-7 text-black">
-              <Link to={isAuthenticated ? appHref : "/auth"}>
-                Empezar ahora
+              <Link to="/swipe">
+                Deslizar ahora
                 <ArrowRight className="size-4" />
               </Link>
             </Button>
@@ -670,7 +664,7 @@ export default function Landing() {
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
           <Wordmark markSize={28} />
           <p className="text-xs text-muted-foreground">
-            Whimy · el marketplace que se desliza. Del antojo al sillón.
+            Capricho Express · el marketplace que se desliza. Del antojo al sillón.
           </p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <Link to="/auth" className="hover:text-foreground">

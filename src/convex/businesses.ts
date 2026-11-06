@@ -129,7 +129,7 @@ export const create = mutation({
     const businessId = await ctx.db.insert("businesses", {
       ownerId: userId,
       name,
-      slug: `${slugify(name) || "whimy"}-${Math.floor(Math.random() * 900 + 100)}`,
+      slug: `${slugify(name) || "capricho"}-${Math.floor(Math.random() * 900 + 100)}`,
       department,
       category,
       tagline: args.tagline.trim() || "Productos elegidos con criterio",

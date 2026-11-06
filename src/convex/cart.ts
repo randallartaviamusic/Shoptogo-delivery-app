@@ -255,7 +255,7 @@ export const checkout = mutation({
       const orderTotal = subtotal + business.deliveryFee;
       total += orderTotal;
       await ctx.db.insert("orders", {
-        code: `WH-${Math.floor(1000 + Math.random() * 9000)}`,
+        code: `CE-${Math.floor(1000 + Math.random() * 9000)}`,
         buyerId: userId,
         businessId,
         items,

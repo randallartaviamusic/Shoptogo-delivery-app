@@ -38,7 +38,7 @@ type NavItem = {
 };
 
 const BUYER_NAV: NavItem[] = [
-  { to: "/swipe", label: "Deslizar", icon: Flame },
+  { to: "/swipe", label: "Antojo", icon: Flame },
   { to: "/orders", label: "Pedidos", icon: ReceiptText },
   { to: "/favorites", label: "Guardados", icon: Bookmark },
   { to: "/profile", label: "Perfil", icon: UserRound },
@@ -83,7 +83,9 @@ export function AppShell() {
     });
   }, [ensureCatalog]);
 
-  if (isLoading) {
+  // The silent guest session can take a beat to open, so wait for it instead
+  // of bouncing first-time visitors to the sign-in page.
+  if (isLoading || !user) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-primary" />
@@ -91,23 +93,17 @@ export function AppShell() {
     );
   }
 
-  if (!user) {
-    const returnTo = `${location.pathname}${location.search}`;
-    return (
-      <Navigate
-        to={`/auth?returnTo=${encodeURIComponent(returnTo)}`}
-        replace
-      />
-    );
-  }
-
-  const role = user.role;
+  const isGuest = Boolean(user.isAnonymous);
+  const role = user.role ?? (isGuest ? "buyer" : null);
   if (!role) return <Navigate to="/onboarding" replace />;
 
   const home = ROLE_HOME[role] ?? "/swipe";
   const isBuyerRoute = BUYER_ROUTES.includes(location.pathname);
   if (role !== "buyer" && isBuyerRoute) {
     return <Navigate to={home} replace />;
+  }
+  if (role === "buyer" && ["/business", "/courier"].includes(location.pathname)) {
+    return <Navigate to="/swipe" replace />;
   }
 
   const nav = navFor(role);
@@ -117,7 +113,7 @@ export function AppShell() {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/");
+    navigate("/swipe");
   };
 
   return (
@@ -129,7 +125,7 @@ export function AppShell() {
 
         <div className="mt-8 space-y-1.5">
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/70">
-            {ROLE_LABEL[role]}
+            {isGuest ? "Modo invitado" : ROLE_LABEL[role]}
           </p>
           {nav.map((item) => {
             const active = current === item.to;
@@ -185,33 +181,59 @@ export function AppShell() {
           </Link>
         )}
 
-        <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
-            {initials(user.name)}
+        {isGuest ? (
+          <div className="mt-auto rounded-2xl border border-accent/25 bg-accent/[0.06] p-3">
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+                <UserRound className="size-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">Estás de invitado</p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  Deslizá y comprá sin cuenta
+                </p>
+              </div>
+            </div>
+            <Button
+              asChild
+              size="sm"
+              className="mt-3 w-full gap-1.5 bg-ember-gradient text-black"
+            >
+              <Link to={`/auth?returnTo=${encodeURIComponent(current || "/swipe")}`}>
+                Crear mi cuenta
+                <ChevronRight className="size-3.5" />
+              </Link>
+            </Button>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">
-              {user.name ?? "Sin nombre"}
-            </p>
-            <p className="truncate text-[11px] text-muted-foreground">
-              {ROLE_LABEL[role]}
-            </p>
+        ) : (
+          <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
+              {initials(user.name)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">
+                {user.name ?? "Sin nombre"}
+              </p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {ROLE_LABEL[role]}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Cerrar sesión"
+              className="size-8 text-muted-foreground hover:text-primary"
+              onClick={handleSignOut}
+            >
+              <LogOut className="size-4" />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Cerrar sesión"
-            className="size-8 text-muted-foreground hover:text-primary"
-            onClick={handleSignOut}
-          >
-            <LogOut className="size-4" />
-          </Button>
-        </div>
+        )}
       </aside>
 
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-xl lg:hidden">
-        <Link to={home}>
-          <Wordmark markSize={30} />
+        <Link to={home} aria-label="Capricho Express">
+          <BrandMark size={30} />
         </Link>
         <div className="flex items-center gap-1">
           {role === "buyer" && (
@@ -224,6 +246,14 @@ export function AppShell() {
                   {cartCount}
                 </span>
               )}
+            </Link>
+          )}
+          {isGuest && (
+            <Link
+              to={`/auth?returnTo=${encodeURIComponent(current || "/swipe")}`}
+              className="whitespace-nowrap rounded-full border border-accent/30 bg-accent/[0.08] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-accent"
+            >
+              Crear cuenta
             </Link>
           )}
           {role === "business" && (

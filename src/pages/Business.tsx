@@ -162,7 +162,7 @@ export default function BusinessPage() {
     return (
       <EmptyState
         icon={Store}
-        title="Todavía no tenés un local en Whimy"
+        title="Todavía no tenés un local en Capricho Express"
         description="Cargá los datos de tu negocio, publicá tu catálogo y empezá a recibir pedidos de personas que están deslizando productos."
         action={
           <Button asChild className="gap-2 bg-ember-gradient text-black">

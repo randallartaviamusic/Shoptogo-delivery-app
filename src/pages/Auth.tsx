@@ -1,5 +1,6 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
 import { DishImage } from "@/components/DishImage";
+import { GUEST_CLAIM_KEY } from "@/components/GuestSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -7,7 +8,9 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
+import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -18,7 +21,7 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 interface AuthProps {
@@ -27,7 +30,7 @@ interface AuthProps {
 
 function resolveRedirectAfterAuth(
   returnTo: string | null,
-  fallback = "/dashboard",
+  fallback = "/swipe",
 ) {
   if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
     return returnTo;
@@ -36,8 +39,16 @@ function resolveRedirectAfterAuth(
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const {
+    isLoading: authLoading,
+    isAuthenticated,
+    signIn,
+    user,
+  } = useAuth();
+  const claimGuestData = useMutation(api.profiles.claimGuestData);
   const navigate = useNavigate();
+  const upgrading = useRef(false);
+  const isGuest = Boolean(user?.isAnonymous);
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(
     searchParams.get("returnTo"),
@@ -49,10 +60,33 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      navigate(redirect);
+    // Guests are already authenticated, but this page is exactly where they
+    // turn that session into a real account, so keep the form on screen.
+    if (authLoading || !isAuthenticated || user?.isAnonymous) return;
+    if (upgrading.current) return;
+    navigate(redirect);
+  }, [authLoading, isAuthenticated, user?.isAnonymous, navigate, redirect]);
+
+  const claimGuestActivity = async () => {
+    let token = window.localStorage.getItem(GUEST_CLAIM_KEY);
+    // The claim token is issued as soon as the guest session opens; give it a
+    // moment in case someone signs up in the same tick they landed.
+    for (let wait = 0; !token && wait < 5; wait += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 200));
+      token = window.localStorage.getItem(GUEST_CLAIM_KEY);
     }
-  }, [authLoading, isAuthenticated, navigate, redirect]);
+    if (!token) return;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const result = await claimGuestData({ token });
+        if (result.claimed) break;
+      } catch (error) {
+        console.error("Guest claim failed:", error);
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+    }
+    window.localStorage.removeItem(GUEST_CLAIM_KEY);
+  };
 
   const handleEmailSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -78,11 +112,15 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     event.preventDefault();
     setIsLoading(true);
     setError(null);
+    const wasGuest = isGuest;
+    if (wasGuest) upgrading.current = true;
     try {
       const formData = new FormData(event.currentTarget);
       await signIn("email-otp", formData);
+      if (wasGuest) await claimGuestActivity();
       navigate(redirect);
     } catch (submitError) {
+      upgrading.current = false;
       console.error("OTP verification error:", submitError);
       setError("El código no es correcto. Revisalo e intentá otra vez.");
       setIsLoading(false);
@@ -91,6 +129,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   };
 
   const handleGuestLogin = async () => {
+    if (isGuest) {
+      navigate(redirect);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -160,7 +202,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <DishImage
                 key={dish.image}
                 src={dish.image}
-                alt="Antojo Whimy"
+                alt="Antojo Capricho"
                 className="size-20 rounded-2xl border border-white/10"
               />
             ))}
@@ -181,8 +223,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
       <main className="relative flex min-h-screen flex-col px-4 py-8 sm:px-8">
         <div className="flex items-center justify-between lg:hidden">
-          <Link to="/">
-            <Wordmark markSize={32} />
+          <Link to="/" aria-label="Capricho Express">
+            <BrandMark size={32} />
           </Link>
           <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
             <Link to="/">
@@ -204,11 +246,17 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <BrandMark size={52} />
               </div>
               <h1 className="font-display text-2xl font-extrabold tracking-tight">
-                {step === "signIn" ? "Entrá a Whimy" : "Revisá tu email"}
+                {step === "signIn"
+                  ? isGuest
+                    ? "Creá tu cuenta o seguí de invitado"
+                    : "Entrá a Capricho Express"
+                  : "Revisá tu email"}
               </h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
                 {step === "signIn"
-                  ? "Un código por mail y listo. Sin contraseñas."
+                  ? isGuest
+                    ? "Es opcional. Si la creás, tu carrito y tus pedidos quedan guardados."
+                    : "Un código por mail y listo. Sin contraseñas."
                   : `Te mandamos un código de 6 dígitos a ${step.email}`}
               </p>
             </div>
@@ -267,7 +315,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </div>
                     <div className="relative flex justify-center">
                       <span className="bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        o probá sin cuenta
+                        o seguí sin cuenta
                       </span>
                     </div>
                   </div>
@@ -280,7 +328,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     disabled={isLoading}
                   >
                     <UserRound className="size-4 text-accent" />
-                    Entrar como invitado
+                    {isGuest ? "Seguir sin crear cuenta" : "Entrar como invitado"}
                   </Button>
                 </form>
               ) : (
@@ -362,8 +410,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             </div>
 
             <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
-              Al continuar aceptás los términos de Whimy. Después de entrar
-              elegís si comprás, vendés o repartís.
+              Al continuar aceptás los términos de Capricho Express. Comprar
+              como invitado no requiere cuenta; si creás una, tu actividad de
+              invitado pasa a tu perfil.
             </p>
             <div className="mt-4 flex justify-center lg:hidden">
               <Link

@@ -2,7 +2,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 
-// Whimy roles. Buyers swipe and order, businesses cook, couriers deliver.
+// Capricho Express roles. Buyers swipe and order, businesses cook, couriers deliver.
 export const ROLES = {
   BUYER: "buyer",
   BUSINESS: "business",
@@ -60,6 +60,9 @@ const schema = defineSchema(
       address: v.optional(v.string()),
       city: v.optional(v.string()),
       onboarded: v.optional(v.boolean()),
+      // Single-use token that lets a guest carry their cart and orders over
+      // when they decide to create an account.
+      guestClaim: v.optional(v.string()),
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
     businesses: defineTable({

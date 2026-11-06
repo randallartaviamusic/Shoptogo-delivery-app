@@ -11,7 +11,7 @@ export function BrandMark({
   return (
     <img
       src={logo}
-      alt="Whimy"
+      alt="Capricho Express"
       width={size}
       height={size}
       style={{ width: size, height: size }}
@@ -23,18 +23,15 @@ export function BrandMark({
 export function Wordmark({
   className,
   markSize = 36,
-  showDot = true,
 }: {
   className?: string;
   markSize?: number;
-  showDot?: boolean;
 }) {
   return (
     <span className={cn("flex items-center gap-2.5", className)}>
       <BrandMark size={markSize} />
-      <span className="font-display text-xl font-extrabold tracking-tight text-foreground">
-        Whimy
-        {showDot && <span className="text-accent">.</span>}
+      <span className="whitespace-nowrap font-display text-[19px] font-extrabold tracking-tight text-foreground">
+        Capricho <span className="text-accent">Express</span>
       </span>
     </span>
   );

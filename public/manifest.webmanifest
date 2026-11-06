@@ -1,7 +1,7 @@
 {
-  "name": "Whimy — Desliza tu antojo",
-  "short_name": "Whimy",
-  "description": "El delivery que se desliza. Descubrí antojos de distintos negocios y pedí con un swipe.",
+  "name": "Capricho Express — Deslizá tu capricho",
+  "short_name": "Capricho",
+  "description": "El marketplace que se desliza. Comprá sin cuenta en trece rubros y pedí con un swipe.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0a0b",
