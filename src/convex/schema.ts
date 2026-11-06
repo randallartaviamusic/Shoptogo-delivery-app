@@ -1,0 +1,148 @@
+import { authTables } from "@convex-dev/auth/server";
+import { defineSchema, defineTable } from "convex/server";
+import { Infer, v } from "convex/values";
+
+// Whimy roles. Buyers swipe and order, businesses cook, couriers deliver.
+export const ROLES = {
+  BUYER: "buyer",
+  BUSINESS: "business",
+  COURIER: "courier",
+} as const;
+
+export const roleValidator = v.union(
+  v.literal(ROLES.BUYER),
+  v.literal(ROLES.BUSINESS),
+  v.literal(ROLES.COURIER),
+);
+export type Role = Infer<typeof roleValidator>;
+
+export const swipeDirectionValidator = v.union(
+  v.literal("like"),
+  v.literal("pass"),
+  v.literal("save"),
+);
+export type SwipeDirection = Infer<typeof swipeDirectionValidator>;
+
+export const orderStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("accepted"),
+  v.literal("preparing"),
+  v.literal("ready"),
+  v.literal("picked_up"),
+  v.literal("delivered"),
+  v.literal("cancelled"),
+);
+export type OrderStatus = Infer<typeof orderStatusValidator>;
+
+export const orderItemValidator = v.object({
+  productId: v.id("products"),
+  name: v.string(),
+  price: v.number(),
+  quantity: v.number(),
+  image: v.string(),
+});
+
+const schema = defineSchema(
+  {
+    // default auth tables using convex auth.
+    ...authTables, // do not remove or modify
+
+    // the users table is the default users table that is brought in by the authTables
+    users: defineTable({
+      name: v.optional(v.string()), // name of the user. do not remove
+      image: v.optional(v.string()), // image of the user. do not remove
+      email: v.optional(v.string()), // email of the user. do not remove
+      emailVerificationTime: v.optional(v.number()), // email verification time. do not remove
+      isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
+
+      role: v.optional(roleValidator), // role of the user. do not remove
+      phone: v.optional(v.string()),
+      address: v.optional(v.string()),
+      city: v.optional(v.string()),
+      onboarded: v.optional(v.boolean()),
+    }).index("email", ["email"]), // index for the email. do not remove or modify
+
+    businesses: defineTable({
+      ownerId: v.optional(v.id("users")),
+      name: v.string(),
+      slug: v.string(),
+      category: v.string(),
+      tagline: v.string(),
+      image: v.string(),
+      address: v.string(),
+      deliveryFee: v.number(),
+      etaMinutes: v.number(),
+      rating: v.number(),
+      reviews: v.number(),
+      isOpen: v.boolean(),
+      isDemo: v.optional(v.boolean()),
+    })
+      .index("by_owner", ["ownerId"])
+      .index("by_slug", ["slug"]),
+
+    products: defineTable({
+      businessId: v.id("businesses"),
+      name: v.string(),
+      description: v.string(),
+      price: v.number(),
+      image: v.string(),
+      category: v.string(),
+      tags: v.array(v.string()),
+      isAvailable: v.boolean(),
+      isDemo: v.optional(v.boolean()),
+    }).index("by_business", ["businessId"]),
+
+    swipes: defineTable({
+      userId: v.id("users"),
+      productId: v.id("products"),
+      direction: swipeDirectionValidator,
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_product", ["userId", "productId"]),
+
+    cartItems: defineTable({
+      userId: v.id("users"),
+      productId: v.id("products"),
+      businessId: v.id("businesses"),
+      quantity: v.number(),
+      addedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_product", ["userId", "productId"]),
+
+    orders: defineTable({
+      code: v.string(),
+      buyerId: v.id("users"),
+      businessId: v.id("businesses"),
+      courierId: v.optional(v.id("users")),
+      items: v.array(orderItemValidator),
+      subtotal: v.number(),
+      deliveryFee: v.number(),
+      total: v.number(),
+      status: orderStatusValidator,
+      address: v.string(),
+      notes: v.optional(v.string()),
+      createdAt: v.number(),
+      acceptedAt: v.optional(v.number()),
+      readyAt: v.optional(v.number()),
+      pickedUpAt: v.optional(v.number()),
+      deliveredAt: v.optional(v.number()),
+      cancelledAt: v.optional(v.number()),
+    })
+      .index("by_buyer", ["buyerId"])
+      .index("by_business", ["businessId"])
+      .index("by_courier", ["courierId"])
+      .index("by_status", ["status"]),
+
+    meta: defineTable({
+      key: v.string(),
+      value: v.string(),
+    }).index("by_key", ["key"]),
+  },
+  {
+    schemaValidation: false,
+  },
+);
+
+export default schema;
