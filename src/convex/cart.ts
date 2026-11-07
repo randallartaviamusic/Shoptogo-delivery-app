@@ -197,6 +197,15 @@ export const checkout = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+
+    // El invitado puede armar el carrito, pero para confirmar necesita cuenta.
+    const buyer = await ctx.db.get(userId);
+    if (buyer?.isAnonymous) {
+      throw new Error(
+        "Creá tu cuenta o iniciá sesión para confirmar el pedido",
+      );
+    }
+
     const address = args.address.trim();
     if (address.length < 6) {
       throw new Error("Necesitamos una dirección de entrega válida");

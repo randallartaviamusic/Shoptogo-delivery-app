@@ -26,6 +26,7 @@ import { toast } from "sonner";
 
 export default function CartPage() {
   const { user } = useAuth();
+  const isGuest = Boolean(user?.isAnonymous);
   const navigate = useNavigate();
   const cart = useQuery(api.cart.myCart);
   const setQuantity = useMutation(api.cart.setQuantity);
@@ -42,6 +43,14 @@ export default function CartPage() {
   const hasClosed = groups.some((group) => !group.isOpen);
 
   const handleCheckout = async () => {
+    if (isGuest) {
+      toast("Creá tu cuenta para confirmar el pedido", {
+        description: "Tu carrito queda guardado y vuelve con vos al entrar.",
+      });
+      navigate("/auth?role=buyer&returnTo=%2Fcart");
+      return;
+    }
+
     setPlacing(true);
     try {
       const result = await checkout({ address, notes });
@@ -277,6 +286,13 @@ export default function CartPage() {
               <p className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-[11px] leading-relaxed text-primary">
                 Hay un negocio cerrado en tu carrito. Quitá sus productos para
                 poder continuar.
+              </p>
+            )}
+
+            {isGuest && (
+              <p className="mt-3 rounded-xl border border-accent/25 bg-accent/[0.06] p-2.5 text-[11px] leading-relaxed text-accent">
+                Estás deslizando sin cuenta. Al confirmar te pedimos crear tu
+                cuenta o iniciar sesión: tu carrito no se pierde.
               </p>
             )}
 

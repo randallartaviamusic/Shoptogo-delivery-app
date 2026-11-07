@@ -2,6 +2,7 @@ import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
+import { GuestSession } from "@/components/GuestSession";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -120,6 +121,7 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
+        <GuestSession />
         <BrowserRouter>
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
@@ -143,8 +145,8 @@ createRoot(document.getElementById("root")!).render(
                 element={
                   <RequireAuth
                     redirectImmediately
-                    title="Entrá para elegir tu rol"
-                    description="Elegí si comprás, vendés o repartís en Capricho Express."
+                    title="Entrá con tu cuenta de negocio"
+                    description="Cargá los datos de tu local desde la cuenta de negocio con la que te registraste."
                   >
                     <Onboarding />
                   </RequireAuth>

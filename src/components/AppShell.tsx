@@ -87,15 +87,16 @@ export function AppShell() {
   // Si la sesión no resuelve, mostramos una salida en vez de girar para siempre.
   const [authStuck, setAuthStuck] = useState(false);
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && user) {
       setAuthStuck(false);
       return;
     }
     const timer = setTimeout(() => setAuthStuck(true), 6000);
     return () => clearTimeout(timer);
-  }, [isLoading]);
+  }, [isLoading, user]);
 
-  if (isLoading) {
+  // Mientras se abre la sesión de invitado no mostramos la app vacía.
+  if (isLoading || !user) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
         {authStuck ? (
@@ -124,15 +125,9 @@ export function AppShell() {
     );
   }
 
-  // Ya no hay modo invitado: sin cuenta registrada no se entra a la app.
-  if (!user || user.isAnonymous) {
-    const returnTo = `${location.pathname}${location.search}`;
-    return (
-      <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />
-    );
-  }
-
-  const role = user.role ?? null;
+  // El invitado entra como comprador: puede mirar el mazo y armar el carrito.
+  const isGuest = Boolean(user.isAnonymous);
+  const role = user.role ?? (isGuest ? "buyer" : null);
   if (!role) return <Navigate to="/onboarding" replace />;
 
   const home = ROLE_HOME[role] ?? "/swipe";
@@ -140,7 +135,13 @@ export function AppShell() {
   if (role !== "buyer" && isBuyerRoute) {
     return <Navigate to={home} replace />;
   }
-  if (role === "buyer" && ["/business", "/courier"].includes(location.pathname)) {
+  // Una cuenta de comprador no administra locales ni entregas; el invitado sí
+  // puede llegar al bloqueo de esas páginas para registrarse con otra cuenta.
+  if (
+    role === "buyer" &&
+    !isGuest &&
+    ["/business", "/courier"].includes(location.pathname)
+  ) {
     return <Navigate to="/swipe" replace />;
   }
 
@@ -219,16 +220,25 @@ export function AppShell() {
           </Link>
         )}
 
+        {isGuest && (
+          <Link
+            to={`/auth?returnTo=${encodeURIComponent(current || "/swipe")}`}
+            className="mt-3 block rounded-xl border border-accent/25 bg-accent/[0.06] px-3 py-2 text-center text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10"
+          >
+            Crear mi cuenta
+          </Link>
+        )}
+
         <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
               {initials(user.name)}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">
-                {user.name ?? "Sin nombre"}
+                {user.name ?? (isGuest ? "Invitado" : "Sin nombre")}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">
-                {ROLE_LABEL[role]}
+                {isGuest ? "Sin cuenta todavía" : ROLE_LABEL[role]}
               </p>
             </div>
             <Button

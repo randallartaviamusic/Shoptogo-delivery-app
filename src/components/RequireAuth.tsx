@@ -35,9 +35,13 @@ export function RequireAuth({
   /** Skip the explanation and go straight to `/auth`. */
   redirectImmediately?: boolean;
 }) {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // La sesión de invitado permite navegar el mazo, pero no cuenta como cuenta
+  // registrada para entrar a un panel.
+  const signedIn = isAuthenticated && Boolean(user) && !user?.isAnonymous;
 
   if (isLoading) {
     return (
@@ -47,7 +51,7 @@ export function RequireAuth({
     );
   }
 
-  if (!isAuthenticated) {
+  if (!signedIn) {
     const returnTo = `${location.pathname}${location.search}`;
     const signInHref = `/auth?returnTo=${encodeURIComponent(returnTo)}`;
 

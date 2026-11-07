@@ -65,15 +65,6 @@ const schema = defineSchema(
       guestClaim: v.optional(v.string()),
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // Credenciales de correo + contraseña. La sesión la abre Convex Auth con un
-    // código al correo; esta tabla es la que valida la contraseña.
-    accounts: defineTable({
-      email: v.string(),
-      name: v.string(),
-      passwordHash: v.string(),
-      role: roleValidator,
-    }).index("by_email", ["email"]),
-
     businesses: defineTable({
       ownerId: v.optional(v.id("users")),
       name: v.string(),

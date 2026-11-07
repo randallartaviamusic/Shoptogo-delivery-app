@@ -2,31 +2,21 @@ import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
 import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
-import { KeyRound, Loader2, Mail, Sparkles, UserRound } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Bike, Loader2, ShoppingBag, Store } from "lucide-react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 
 type Role = "buyer" | "business" | "courier";
+type Mode = "signup" | "signIn";
 
-export const SIGNUP_ROLES: { value: Role; label: string; description: string }[] = [
-  {
-    value: "buyer",
-    label: "Comprador",
-    description: "Deslizá antojos de distintos locales y pedí a domicilio.",
-  },
-  {
-    value: "business",
-    label: "Negocio",
-    description: "Publicá tu catálogo y gestioná pedidos en tiempo real.",
-  },
-  {
-    value: "courier",
-    label: "Repartidor",
-    description: "Tomá entregas listas y sumá ganancias por cada entrega.",
-  },
+const ROLES: { value: Role; label: string; icon: typeof Store }[] = [
+  { value: "buyer", label: "Comprador", icon: ShoppingBag },
+  { value: "business", label: "Negocio", icon: Store },
+  { value: "courier", label: "Repartidor", icon: Bike },
 ];
 
 const ROLE_HOME: Record<Role, string> = {
@@ -35,7 +25,11 @@ const ROLE_HOME: Record<Role, string> = {
   courier: "/courier",
 };
 
-export function resolveRedirectAfterAuth(
+function isRole(value: string | null | undefined): value is Role {
+  return value === "buyer" || value === "business" || value === "courier";
+}
+
+function resolveRedirectAfterAuth(
   returnTo: string | null,
   role: Role,
   fallback = ROLE_HOME.buyer,
@@ -46,52 +40,72 @@ export function resolveRedirectAfterAuth(
   return ROLE_HOME[role] ?? fallback;
 }
 
-function roleFromReturnTo(returnTo: string | null): Role | null {
-  if (!returnTo) return null;
-  if (returnTo.startsWith("/business")) return "business";
-  if (returnTo.startsWith("/courier")) return "courier";
-  const requested = new URLSearchParams(returnTo.split("?")[1] ?? "").get("role");
-  if (requested === "business" || requested === "courier" || requested === "buyer") {
-    return requested;
-  }
-  return null;
+function roleFromUrl(returnTo: string | null, roleParam: string | null): Role {
+  if (isRole(roleParam)) return roleParam;
+  if (returnTo?.startsWith("/business")) return "business";
+  if (returnTo?.startsWith("/courier")) return "courier";
+  const requested = new URLSearchParams(returnTo?.split("?")[1] ?? "").get("role");
+  if (isRole(requested)) return requested;
+  return "buyer";
 }
+
+function friendlyError(error: unknown, mode: Mode) {
+  // Convex entrega los mensajes pensados para la persona en `error.data`.
+  const data = (error as { data?: unknown })?.data;
+  if (typeof data === "string" && data.length > 0) return data;
+
+  const message = (error instanceof Error ? error.message : "").replace(
+    /^.*Uncaught ConvexError:\s*/i,
+    "",
+  );
+  if (/already exists/i.test(message)) {
+    return "Ya existe una cuenta con ese correo para ese rol. Probá iniciar sesión.";
+  }
+  if (/Invalid credentials|invalid secret/i.test(message)) {
+    return "Correo o contraseña incorrectos.";
+  }
+  if (/Invalid password/i.test(message)) {
+    return "La contraseña debe tener al menos 8 caracteres.";
+  }
+  if (/fetch|network|connection/i.test(message)) {
+    return "No pudimos conectar. Revisá tu conexión e intentá de nuevo.";
+  }
+  return (
+    message ||
+    (mode === "signup" ? "No pudimos crear tu cuenta." : "No pudimos entrar.")
+  );
+}
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 interface AuthProps {
   redirectAfterAuth?: string;
 }
 
-type Step = "signup" | "signIn" | "code";
-
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
-  const { signIn, signOut } = useAuthActions();
-  const register = useMutation(api.accounts.register);
-  const verifyPassword = useMutation(api.accounts.verifyPassword);
-  const bindCurrentUser = useMutation(api.accounts.bindCurrentUser);
+  const { signIn } = useAuthActions();
+  const adoptGuestCart = useMutation(api.guests.adoptGuestCart);
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get("returnTo");
+  const roleParam = searchParams.get("role");
 
-  const [step, setStep] = useState<Step>("signup");
-  const [role, setRole] = useState<Role>(roleFromReturnTo(redirectParam) ?? "buyer");
+  const [mode, setMode] = useState<Mode>("signup");
+  const [role, setRole] = useState<Role>(roleFromUrl(redirectParam, roleParam));
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
     passwordConfirm: "",
-    code: "",
   });
-  const [pendingEmail, setPendingEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sesiones de invitado viejas: no cuentan como cuenta registrada. Se cierran
-  // para que la persona pueda registrarse o entrar con correo y contraseña.
-  const isLegacyGuest = Boolean(user?.isAnonymous);
-
+  // Si venía navegando como invitado, guardamos su id para traspasarle el carrito.
+  const guestRef = useRef<Id<"users"> | null>(null);
   useEffect(() => {
-    if (isLegacyGuest) void signOut();
-  }, [isLegacyGuest, signOut]);
+    if (user?.isAnonymous) guestRef.current = user._id;
+  }, [user]);
 
   const [slow, setSlow] = useState(false);
   useEffect(() => {
@@ -121,7 +135,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     );
   }
 
-  if (isAuthenticated && user && !isLegacyGuest) {
+  // Un invitado puede ver este formulario; una cuenta de verdad sigue de largo.
+  if (isAuthenticated && user && !user.isAnonymous) {
     return (
       <Navigate
         to={resolveRedirectAfterAuth(
@@ -134,85 +149,52 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     );
   }
 
-  const sendCode = async (email: string) => {
-    await signIn("email-otp", { email });
-    setPendingEmail(email);
-    setForm((prev) => ({ ...prev, code: "" }));
-    setStep("code");
-  };
-
-  const handleSignUp = async () => {
+  const handleSubmit = async () => {
     setSaving(true);
     setError(null);
+    const guestId = guestRef.current;
     try {
-      const email = form.email.trim().toLowerCase();
-      await register({
-        name: form.name,
-        email,
+      await signIn("password", {
+        email: form.email.trim().toLowerCase(),
         password: form.password,
-        passwordConfirm: form.passwordConfirm,
         role,
+        name: form.name,
+        flow: mode === "signup" ? "signUp" : "signIn",
       });
-      await sendCode(email);
+
+      // El carrito que armó como invitado pasa a la cuenta nueva.
+      if (guestId) {
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          try {
+            await adoptGuestCart({ guestId });
+            break;
+          } catch {
+            await wait(250);
+          }
+        }
+      }
     } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "No pudimos crear tu cuenta.",
-      );
+      setError(friendlyError(submitError, mode));
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSignIn = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      const email = form.email.trim().toLowerCase();
-      const account = await verifyPassword({ email, password: form.password });
-      setRole(account.role);
-      await sendCode(email);
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "No pudimos iniciar sesión.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCode = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await signIn("email-otp", {
-        email: pendingEmail,
-        code: form.code.trim(),
-      });
-      await bindCurrentUser({ email: pendingEmail });
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "El código no es correcto o ya venció.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
+  const signupReady =
+    form.name.trim().length >= 2 &&
+    form.email.includes("@") &&
+    form.password.length >= 8 &&
+    form.password === form.passwordConfirm;
+  const signInReady = form.email.includes("@") && form.password.length > 0;
 
   return (
     <div className="relative min-h-screen px-4 py-8 sm:px-6">
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-30" />
       <div className="mx-auto flex max-w-lg flex-col gap-8">
         <div className="flex items-center justify-between">
-          <Link to="/" aria-label="Capricho Express">
+          <Link to="/bienvenida" aria-label="Capricho Express">
             <Wordmark markSize={30} />
           </Link>
-
           <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
             <Link to="/bienvenida">Inicio</Link>
           </Button>
@@ -223,316 +205,183 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
         >
-          <div className="mb-6 text-center">
-            <div className="mb-4 hidden justify-center lg:flex">
-              <BrandMark size={48} />
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/[0.07] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
-              <Sparkles className="size-3" />
-              Capricho Express
-            </div>
-          </div>
-
           <div className="surface-raised rounded-3xl p-5 sm:p-6">
-            {step === "code" ? (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleCode();
-                }}
-                className="space-y-4"
-              >
-                <div>
-                  <p className="font-display text-lg font-bold">Verificá tu correo</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Te enviamos un código de 6 dígitos a{" "}
-                    <span className="font-semibold text-foreground">{pendingEmail}</span>.
-                  </p>
-                </div>
+            <div className="mb-5 flex items-start gap-3">
+              <div className="hidden sm:block">
+                <BrandMark size={40} />
+              </div>
+              <div>
+                <p className="font-display text-xl font-bold tracking-tight">
+                  {mode === "signup" ? "Creá tu cuenta" : "Iniciá sesión"}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Con tu correo y tu contraseña. Sin códigos por correo.
+                </p>
+              </div>
+            </div>
 
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="code"
-                    className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-                  >
-                    Código
-                  </label>
-                  <Input
-                    id="code"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    value={form.code}
-                    onChange={(event) =>
-                      setForm({ ...form, code: event.target.value.replace(/\D/g, "") })
-                    }
-                    placeholder="000000"
-                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 text-center text-lg tracking-[0.4em]"
-                    disabled={saving}
-                    required
-                  />
-                </div>
-
-                {error && (
-                  <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-                    {error}
-                  </p>
-                )}
-
-                <Button
-                  type="submit"
-                  className="h-11 w-full gap-2 bg-ember-gradient text-black"
-                  disabled={saving || form.code.length < 6}
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Verificando
-                    </>
-                  ) : (
-                    <>
-                      <KeyRound className="size-4" />
-                      Entrar a mi cuenta
-                    </>
-                  )}
-                </Button>
-
-                <Button
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-border/70 bg-black/25 p-1">
+              {(["signup", "signIn"] as Mode[]).map((option) => (
+                <button
+                  key={option}
                   type="button"
-                  variant="ghost"
-                  className="w-full text-muted-foreground"
-                  disabled={saving}
                   onClick={() => {
+                    setMode(option);
                     setError(null);
-                    setStep("signIn");
                   }}
+                  className={`cursor-pointer rounded-lg py-2 text-xs font-semibold transition-colors ${
+                    mode === option
+                      ? "bg-ember-gradient text-black"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  Usar otro correo
-                </Button>
-              </form>
-            ) : step === "signup" ? (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleSignUp();
-                }}
-                className="space-y-4"
-              >
-                <div className="space-y-1.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">
-                    Elegí tu rol
-                  </p>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {SIGNUP_ROLES.map((option) => {
-                      const selected = role === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setRole(option.value)}
-                          className={`rounded-xl border p-3 text-left transition-colors ${
-                            selected
-                              ? "border-accent/40 bg-accent/[0.06] text-accent"
-                              : "border-border/70 bg-card/70 text-muted-foreground"
-                          }`}
-                          disabled={saving}
-                        >
-                          <span className="block text-[11px] font-semibold uppercase tracking-wider">
-                            {option.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                  {option === "signup" ? "Crear cuenta" : "Ya tengo cuenta"}
+                </button>
+              ))}
+            </div>
 
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSubmit();
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Esta cuenta es de
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {ROLES.map((option) => {
+                    const Icon = option.icon;
+                    const selected = role === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setRole(option.value);
+                          setError(null);
+                        }}
+                        disabled={saving}
+                        className={`cursor-pointer rounded-xl border p-2.5 text-center transition-colors ${
+                          selected
+                            ? "border-accent/40 bg-accent/[0.07] text-accent"
+                            : "border-border/70 bg-card/60 text-muted-foreground hover:border-accent/25"
+                        }`}
+                      >
+                        <Icon className="mx-auto size-4" />
+                        <span className="mt-1.5 block text-[10px] font-semibold uppercase tracking-wider">
+                          {option.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  {role === "business"
+                    ? "Tu cuenta de negocio es aparte de la de comprador: sirve para publicar tu local y sus pedidos."
+                    : role === "courier"
+                      ? "Tu cuenta de repartidor es aparte: sirve para tomar entregas y ver tus ganancias."
+                      : "Tu cuenta de comprador sirve para deslizar antojos y confirmar pedidos."}
+                </p>
+              </div>
+
+              {mode === "signup" && (
                 <Field label="Tu nombre" htmlFor="name">
-                  <input
+                  <Input
                     id="name"
-                    type="text"
                     value={form.name}
                     onChange={(event) => setForm({ ...form, name: event.target.value })}
                     placeholder="Camila Duarte"
-                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
+                    className="h-11 rounded-xl border border-border/70 bg-card/70 text-sm"
                     disabled={saving}
                     required
                   />
                 </Field>
+              )}
 
-                <Field label="Tu correo" htmlFor="email">
+              <Field label="Tu correo" htmlFor="email">
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={form.email}
+                  onChange={(event) => setForm({ ...form, email: event.target.value })}
+                  placeholder="vos@email.com"
+                  className="h-11 rounded-xl border border-border/70 bg-card/70 text-sm"
+                  disabled={saving}
+                  required
+                />
+              </Field>
+
+              <Field label="Tu contraseña" htmlFor="password">
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  value={form.password}
+                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  placeholder={mode === "signup" ? "Mínimo 8 caracteres" : "Tu contraseña"}
+                  className="h-11 rounded-xl border border-border/70 bg-card/70 text-sm"
+                  disabled={saving}
+                  required
+                />
+              </Field>
+
+              {mode === "signup" && (
+                <Field label="Repetí tu contraseña" htmlFor="passwordConfirm">
                   <Input
-                    id="email"
-                    type="email"
-                    value={form.email}
-                    onChange={(event) => setForm({ ...form, email: event.target.value })}
-                    placeholder="vos@email.com"
-                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
-                    disabled={saving}
-                    required
-                  />
-                </Field>
-
-                <Field label="Contraseña" htmlFor="password">
-                  <input
-                    id="password"
-                    type="password"
-                    value={form.password}
-                    onChange={(event) => setForm({ ...form, password: event.target.value })}
-                    placeholder="Mínimo 8 caracteres"
-                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
-                    autoComplete="new-password"
-                    disabled={saving}
-                    required
-                    minLength={8}
-                  />
-                </Field>
-
-                <Field label="Confirmá tu contraseña" htmlFor="passwordConfirm">
-                  <input
                     id="passwordConfirm"
                     type="password"
+                    autoComplete="new-password"
                     value={form.passwordConfirm}
                     onChange={(event) =>
                       setForm({ ...form, passwordConfirm: event.target.value })
                     }
                     placeholder="Repetí tu contraseña"
-                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
-                    autoComplete="new-password"
+                    className="h-11 rounded-xl border border-border/70 bg-card/70 text-sm"
                     disabled={saving}
                     required
-                    minLength={8}
                   />
                 </Field>
+              )}
 
-                {error && (
-                  <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-                    {error}
-                  </p>
+              {mode === "signup" &&
+                form.passwordConfirm.length > 0 &&
+                form.password !== form.passwordConfirm && (
+                  <p className="text-[11px] text-primary">Las contraseñas no coinciden.</p>
                 )}
 
-                <Button
-                  type="submit"
-                  className="h-11 w-full gap-2 bg-ember-gradient text-black"
-                  disabled={
-                    saving ||
-                    form.password.length < 8 ||
-                    form.password !== form.passwordConfirm
-                  }
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Creando tu cuenta
-                    </>
-                  ) : (
-                    "Crear mi cuenta"
-                  )}
-                </Button>
-
-                <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-                  Te vamos a enviar un código al correo para confirmar la cuenta.
+              {error && (
+                <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+                  {error}
                 </p>
+              )}
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 w-full gap-2 border-border/80"
-                  onClick={() => {
-                    setError(null);
-                    setStep("signIn");
-                  }}
-                  disabled={saving}
-                >
-                  <UserRound className="size-4" />
-                  Ya tengo cuenta
-                </Button>
-              </form>
-            ) : (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleSignIn();
-                }}
-                className="space-y-4"
+              <Button
+                type="submit"
+                className="h-11 w-full gap-2 bg-ember-gradient text-black"
+                disabled={saving || (mode === "signup" ? !signupReady : !signInReady)}
               >
-                <div>
-                  <p className="font-display text-lg font-bold">Iniciá sesión</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Entrá con el correo y la contraseña con los que te registraste.
-                  </p>
-                </div>
-
-                <Field label="Tu correo" htmlFor="signInEmail">
-                  <Input
-                    id="signInEmail"
-                    type="email"
-                    value={form.email}
-                    onChange={(event) => setForm({ ...form, email: event.target.value })}
-                    placeholder="vos@email.com"
-                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
-                    disabled={saving}
-                    required
-                  />
-                </Field>
-
-                <Field label="Tu contraseña" htmlFor="signInPassword">
-                  <input
-                    id="signInPassword"
-                    type="password"
-                    value={form.password}
-                    onChange={(event) => setForm({ ...form, password: event.target.value })}
-                    placeholder="Tu contraseña"
-                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
-                    autoComplete="current-password"
-                    disabled={saving}
-                    required
-                  />
-                </Field>
-
-                {error && (
-                  <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-                    {error}
-                  </p>
+                {saving ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    {mode === "signup" ? "Creando tu cuenta" : "Entrando"}
+                  </>
+                ) : mode === "signup" ? (
+                  "Crear mi cuenta"
+                ) : (
+                  "Entrar"
                 )}
-
-                <Button
-                  type="submit"
-                  className="h-11 w-full gap-2 bg-ember-gradient text-black"
-                  disabled={saving || form.email.length === 0 || form.password.length === 0}
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Enviando código
-                    </>
-                  ) : (
-                    <>
-                      <Mail className="size-4" />
-                      Entrar
-                    </>
-                  )}
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 w-full gap-2 border-border/80"
-                  onClick={() => {
-                    setError(null);
-                    setStep("signup");
-                  }}
-                  disabled={saving}
-                >
-                  <UserRound className="size-4" />
-                  Registrarme
-                </Button>
-              </form>
-            )}
+              </Button>
+            </form>
           </div>
 
           <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
-            Cada cuenta elige su rol al registrarse: comprador, negocio o
-            repartidor.
+            Podés mirar el mazo sin cuenta y registrarte recién al confirmar tu
+            pedido. Cada rol (comprador, negocio, repartidor) es una cuenta
+            aparte con su propio correo y contraseña.
           </p>
         </motion.div>
       </div>

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
-import { initials, ROLE_LABEL } from "@/lib/format";
+import { initials, ROLE_HOME, ROLE_LABEL } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -50,7 +50,6 @@ export default function ProfilePage() {
   const stats = useQuery(api.catalog.myStats);
   const myBusiness = useQuery(api.businesses.mine);
   const updateProfile = useMutation(api.profiles.updateProfile);
-  const setRole = useMutation(api.profiles.setRole);
 
   const [form, setForm] = useState({
     name: "",
@@ -96,30 +95,16 @@ export default function ProfilePage() {
 
   const handleRole = async (next: "buyer" | "business" | "courier") => {
     if (next === role) return;
-    setSwitching(next);
-    try {
-      await setRole({ role: next });
-      if (next === "business") {
-        toast("Modo negocio activado", {
-          description: hasBusiness
-            ? "Ya podés gestionar tu local."
-            : "Cargá los datos de tu local para publicar el catálogo.",
-        });
-        navigate(hasBusiness ? "/business" : "/onboarding?role=business");
-      } else if (next === "courier") {
-        toast("Modo repartidor activado", {
-          description: "Ya ves los pedidos listos para retirar.",
-        });
-        navigate("/courier");
-      } else {
-        toast("Modo comprador activado");
-        navigate("/swipe");
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos cambiar el rol");
-    } finally {
-      setSwitching(null);
-    }
+    // Cada rol es una cuenta aparte: cerramos esta sesión para que pueda entrar
+    // (o registrar) la cuenta de ese rol.
+    await signOut();
+    toast(`Entrá con tu cuenta de ${ROLE_LABEL[next].toLowerCase()}`, {
+      description:
+        "Cada rol es una cuenta separada. Iniciá sesión o creá una nueva con correo y contraseña.",
+    });
+    navigate(
+      `/auth?role=${next}&returnTo=${encodeURIComponent(ROLE_HOME[next])}`,
+    );
   };
 
   return (
@@ -131,6 +116,23 @@ export default function ProfilePage() {
           "Tus datos de entrega, tu rol en Capricho Express y tus números de antojos."
         }
       />
+
+      {user.isAnonymous && (
+        <div className="mb-5 rounded-2xl border border-accent/25 bg-accent/[0.06] p-4">
+          <p className="text-sm font-semibold text-accent">
+            Estás navegando como invitado
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Podés deslizar y armar tu carrito sin cuenta. Para confirmar el
+            pedido te vamos a pedir registrarte.
+          </p>
+          <Button asChild size="sm" className="mt-3 bg-ember-gradient text-black">
+            <Link to="/auth?role=buyer&returnTo=%2Fprofile">
+              Crear mi cuenta de comprador
+            </Link>
+          </Button>
+        </div>
+      )}
 
       <div className="surface-raised rounded-3xl p-5 sm:p-6">
         <div className="flex items-center gap-4">
@@ -277,7 +279,8 @@ export default function ProfilePage() {
           })}
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Podés cambiar de rol cuando quieras: es la misma cuenta.
+          Cada rol es una cuenta aparte: comprador, negocio y repartidor se
+          registran con su propio correo y contraseña.
         </p>
       </section>
 

@@ -69,7 +69,7 @@ const ROLES = [
       "Tu catálogo aparece en el mazo de toda la ciudad. Cargalo en minutos.",
     icon: Store,
     points: ["Catálogo propio", "Pedidos en tiempo real", "Sin comisión fija"],
-    href: "/auth?returnTo=%2Fonboarding%3Frole%3Dbusiness",
+    href: "/auth?role=business&returnTo=%2Fonboarding",
     cta: "Publicar mi local",
   },
   {
@@ -78,7 +78,7 @@ const ROLES = [
       "Tomá pedidos listos, entregá y mirá tus ganancias acumuladas al instante.",
     icon: Bike,
     points: ["Pedidos disponibles", "Ganancia por envío", "Historial claro"],
-    href: "/auth?returnTo=%2Fonboarding%3Frole%3Dcourier",
+    href: "/auth?role=courier&returnTo=%2Fcourier",
     cta: "Sumarme a repartir",
   },
 ];
@@ -648,7 +648,7 @@ export default function Landing() {
               variant="outline"
               className="h-12 gap-2 border-border/80 px-7"
             >
-              <Link to="/auth?returnTo=%2Fonboarding%3Frole%3Dbusiness">
+              <Link to="/auth?role=business&returnTo=%2Fonboarding">
                 <Store className="size-4 text-accent" />
                 Soy un negocio
               </Link>
