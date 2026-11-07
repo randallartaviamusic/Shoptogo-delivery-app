@@ -7,7 +7,9 @@ export function useAuth() {
   const user = useQuery(api.users.currentUser);
   const { signIn, signOut } = useAuthActions();
 
-  const isLoading = isAuthLoading || user === undefined;
+  // Solo esperamos la ficha del usuario cuando hay una sesión abierta: si no
+  // hay sesión, la query devuelve null y no tiene sentido seguir cargando.
+  const isLoading = isAuthLoading || (isAuthenticated && user === undefined);
 
   return {
     isLoading,

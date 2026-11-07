@@ -26,6 +26,7 @@ import {
 import {
   useEffect,
   useRef,
+  useState,
   type ComponentType,
   type ReactNode,
 } from "react";
@@ -83,10 +84,42 @@ export function AppShell() {
     });
   }, [ensureCatalog]);
 
+  // Si la sesión no resuelve, mostramos una salida en vez de girar para siempre.
+  const [authStuck, setAuthStuck] = useState(false);
+  useEffect(() => {
+    if (!isLoading) {
+      setAuthStuck(false);
+      return;
+    }
+    const timer = setTimeout(() => setAuthStuck(true), 6000);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
+
   if (isLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="size-6 animate-spin text-primary" />
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        {authStuck ? (
+          <>
+            <p className="font-display text-lg font-bold">No pudimos abrir tu sesión</p>
+            <p className="max-w-xs text-sm text-muted-foreground">
+              Revisá tu conexión e intentá de nuevo.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={() => window.location.reload()}>Reintentar</Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await signOut().catch(() => undefined);
+                  window.location.assign("/auth");
+                }}
+              >
+                Entrar de nuevo
+              </Button>
+            </div>
+          </>
+        ) : (
+          <Loader2 className="size-6 animate-spin text-primary" />
+        )}
       </main>
     );
   }

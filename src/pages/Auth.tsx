@@ -6,8 +6,8 @@ import { useAuth, useAuthActions } from "@/hooks/use-auth";
 import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
 import { KeyRound, Loader2, Mail, Sparkles, UserRound } from "lucide-react";
-import { Suspense, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { Suspense, useEffect, useState } from "react";
+import { Link, Navigate, useSearchParams } from "react-router";
 
 type Role = "buyer" | "business" | "courier";
 
@@ -65,11 +65,10 @@ type Step = "signup" | "signIn" | "code";
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
-  const { signIn } = useAuthActions();
+  const { signIn, signOut } = useAuthActions();
   const register = useMutation(api.accounts.register);
   const verifyPassword = useMutation(api.accounts.verifyPassword);
   const bindCurrentUser = useMutation(api.accounts.bindCurrentUser);
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get("returnTo");
 
@@ -86,22 +85,53 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Sesiones de invitado viejas: no cuentan como cuenta registrada. Se cierran
+  // para que la persona pueda registrarse o entrar con correo y contraseña.
+  const isLegacyGuest = Boolean(user?.isAnonymous);
+
+  useEffect(() => {
+    if (isLegacyGuest) void signOut();
+  }, [isLegacyGuest, signOut]);
+
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!authLoading) {
+      setSlow(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlow(true), 8000);
+    return () => clearTimeout(timer);
+  }, [authLoading]);
+
   if (authLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="size-6 animate-spin text-primary" />
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        {slow ? (
+          <>
+            <p className="font-display text-lg font-bold">No pudimos abrir la sesión</p>
+            <p className="max-w-xs text-sm text-muted-foreground">
+              Revisá tu conexión y volvé a intentar.
+            </p>
+            <Button onClick={() => window.location.reload()}>Reintentar</Button>
+          </>
+        ) : (
+          <Loader2 className="size-6 animate-spin text-primary" />
+        )}
       </main>
     );
   }
 
-  if (isAuthenticated && user) {
-    const next = resolveRedirectAfterAuth(
-      redirectParam,
-      (user.role as Role | undefined) ?? role,
-      redirectAfterAuth,
+  if (isAuthenticated && user && !isLegacyGuest) {
+    return (
+      <Navigate
+        to={resolveRedirectAfterAuth(
+          redirectParam,
+          (user.role as Role | undefined) ?? role,
+          redirectAfterAuth,
+        )}
+        replace
+      />
     );
-    navigate(next, { replace: true });
-    return null;
   }
 
   const sendCode = async (email: string) => {
