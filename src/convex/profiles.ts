@@ -28,3 +28,33 @@ export const updateProfile = mutation({
     return null;
   },
 });
+
+// URL firmada para subir la foto desde el teléfono o la computadora.
+export const generatePhotoUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const setPhoto = mutation({
+  args: {
+    kind: v.union(v.literal("avatar"), v.literal("cover")),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, { kind, storageId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("No pudimos guardar la imagen");
+
+    await ctx.db.patch(
+      userId,
+      kind === "avatar" ? { image: url } : { coverImage: url },
+    );
+    return url;
+  },
+});

@@ -3,12 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { initials, ROLE_HOME, ROLE_LABEL } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
   Bike,
+  Camera,
   Check,
   Flame,
   Loader2,
@@ -19,7 +21,7 @@ import {
   Store,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
@@ -50,6 +52,12 @@ export default function ProfilePage() {
   const stats = useQuery(api.catalog.myStats);
   const myBusiness = useQuery(api.businesses.mine);
   const updateProfile = useMutation(api.profiles.updateProfile);
+  const generatePhotoUploadUrl = useMutation(api.profiles.generatePhotoUploadUrl);
+  const setPhoto = useMutation(api.profiles.setPhoto);
+
+  const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
     name: "",
@@ -90,6 +98,40 @@ export default function ProfilePage() {
       toast.error(error instanceof Error ? error.message : "No pudimos guardar");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePhoto = async (kind: "avatar" | "cover", file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Elegí una imagen (JPG, PNG o WebP)");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("La imagen no puede pesar más de 8 MB");
+      return;
+    }
+
+    setUploading(kind);
+    try {
+      const uploadUrl = await generatePhotoUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir la imagen");
+      const { storageId } = (await response.json()) as { storageId: string };
+      await setPhoto({ kind, storageId: storageId as Id<"_storage"> });
+      toast.success(
+        kind === "avatar" ? "Foto de perfil actualizada" : "Portada actualizada",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir la imagen",
+      );
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -134,41 +176,122 @@ export default function ProfilePage() {
         </div>
       )}
 
-      <div className="surface-raised rounded-3xl p-5 sm:p-6">
-        <div className="flex items-center gap-4">
-          <div className="flex size-16 items-center justify-center rounded-2xl bg-ember-gradient font-display text-xl font-extrabold text-black">
-            {initials(user.name)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-display text-xl font-bold">
-              {user.name ?? "Completá tu nombre"}
-            </p>
-            <p className="truncate text-sm text-muted-foreground">
-              {user.email ?? "Sin email"}
-            </p>
-            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent">
-              {ROLE_LABEL[role]}
-            </span>
-          </div>
+      <div className="surface-raised overflow-hidden rounded-3xl">
+        <div className="relative h-32 sm:h-44">
+          {user.coverImage ? (
+            <img
+              src={user.coverImage}
+              alt="Portada del perfil"
+              className="size-full object-cover"
+            />
+          ) : (
+            <div className="size-full bg-ember-gradient opacity-70" />
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              handlePhoto("cover", file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => coverInputRef.current?.click()}
+            disabled={uploading === "cover"}
+            className="absolute right-3 top-3 flex cursor-pointer items-center gap-1.5 rounded-full border border-white/25 bg-black/55 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur transition-colors hover:bg-black/75 disabled:opacity-70"
+          >
+            {uploading === "cover" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Camera className="size-3.5" />
+            )}
+            {uploading === "cover" ? "Subiendo" : "Cambiar portada"}
+          </button>
         </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          {[
-            { label: "Antojos", value: stats?.likes ?? 0, icon: Flame },
-            { label: "Guardados", value: stats?.saved ?? 0, icon: Star },
-            { label: "Pedidos", value: stats?.orders ?? 0, icon: ShoppingBag },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-2xl border border-border/70 bg-black/25 px-3 py-3 text-center"
-            >
-              <stat.icon className="mx-auto size-4 text-accent" />
-              <p className="mt-1 font-display text-xl font-bold">{stat.value}</p>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                {stat.label}
-              </p>
+        <div className="px-5 pb-5 sm:px-6">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="relative -mt-10 shrink-0">
+              <div className="flex size-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-background bg-ember-gradient font-display text-2xl font-extrabold text-black">
+                {user.image ? (
+                  <img
+                    src={user.image}
+                    alt="Foto de perfil"
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  initials(user.name)
+                )}
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  handlePhoto("avatar", file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploading === "avatar"}
+                aria-label="Cambiar foto de perfil"
+                title="Cambiar foto de perfil"
+                className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full border-2 border-background bg-accent text-black transition-transform hover:scale-105 disabled:opacity-70"
+              >
+                {uploading === "avatar" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Camera className="size-4" />
+                )}
+              </button>
             </div>
-          ))}
+
+            <div className="min-w-0 flex-1 pb-1">
+              <p className="truncate font-display text-xl font-bold">
+                {user.name ?? "Completá tu nombre"}
+              </p>
+              <p className="truncate text-sm text-muted-foreground">
+                {user.email ?? "Sin email"}
+              </p>
+              <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent">
+                {ROLE_LABEL[role]}
+              </span>
+            </div>
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            Subí tu foto de perfil y tu portada desde la galería del teléfono o
+            los archivos de tu compu. JPG, PNG o WebP hasta 8 MB.
+          </p>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[
+              { label: "Antojos", value: stats?.likes ?? 0, icon: Flame },
+              { label: "Guardados", value: stats?.saved ?? 0, icon: Star },
+              { label: "Pedidos", value: stats?.orders ?? 0, icon: ShoppingBag },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-2xl border border-border/70 bg-black/25 px-3 py-3 text-center"
+              >
+                <stat.icon className="mx-auto size-4 text-accent" />
+                <p className="mt-1 font-display text-xl font-bold">{stat.value}</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {stat.label}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

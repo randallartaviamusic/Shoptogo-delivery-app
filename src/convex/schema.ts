@@ -63,6 +63,8 @@ const schema = defineSchema(
       // Single-use token that lets a guest carry their cart and orders over
       // when they decide to create an account.
       guestClaim: v.optional(v.string()),
+      // Foto de portada del perfil (la de perfil va en `image`).
+      coverImage: v.optional(v.string()),
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
     businesses: defineTable({

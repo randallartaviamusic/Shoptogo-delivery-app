@@ -230,8 +230,16 @@ export function AppShell() {
         )}
 
         <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
-              {initials(user.name)}
+            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
+              {user.image ? (
+                <img
+                  src={user.image}
+                  alt={user.name ?? "Foto de perfil"}
+                  className="size-full object-cover"
+                />
+              ) : (
+                initials(user.name)
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">

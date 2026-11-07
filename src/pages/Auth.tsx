@@ -6,7 +6,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
 import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
-import { Bike, Loader2, ShoppingBag, Store } from "lucide-react";
+import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 
@@ -316,33 +316,25 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               </Field>
 
               <Field label="Tu contraseña" htmlFor="password">
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   autoComplete={mode === "signup" ? "new-password" : "current-password"}
                   value={form.password}
-                  onChange={(event) => setForm({ ...form, password: event.target.value })}
+                  onChange={(value) => setForm({ ...form, password: value })}
                   placeholder={mode === "signup" ? "Mínimo 8 caracteres" : "Tu contraseña"}
-                  className="h-11 rounded-xl border border-border/70 bg-card/70 text-sm"
                   disabled={saving}
-                  required
                 />
               </Field>
 
               {mode === "signup" && (
                 <Field label="Repetí tu contraseña" htmlFor="passwordConfirm">
-                  <Input
+                  <PasswordInput
                     id="passwordConfirm"
-                    type="password"
                     autoComplete="new-password"
                     value={form.passwordConfirm}
-                    onChange={(event) =>
-                      setForm({ ...form, passwordConfirm: event.target.value })
-                    }
+                    onChange={(value) => setForm({ ...form, passwordConfirm: value })}
                     placeholder="Repetí tu contraseña"
-                    className="h-11 rounded-xl border border-border/70 bg-card/70 text-sm"
                     disabled={saving}
-                    required
                   />
                 </Field>
               )}
@@ -385,6 +377,50 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           </p>
         </motion.div>
       </div>
+    </div>
+  );
+}
+
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+  disabled,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  autoComplete: string;
+  disabled?: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        type={visible ? "text" : "password"}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-11 rounded-xl border border-border/70 bg-card/70 pr-11 text-sm"
+        disabled={disabled}
+        required
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((current) => !current)}
+        aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+        aria-pressed={visible}
+        title={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+        className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
+        {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+      </button>
     </div>
   );
 }
