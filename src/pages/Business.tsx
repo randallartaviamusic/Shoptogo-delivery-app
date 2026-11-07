@@ -119,12 +119,6 @@ export default function BusinessPage() {
   const removeProduct = useMutation(api.businesses.removeProduct);
 
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
-  const [emailVerify, setEmailVerify] = useState(false);
-  const { signIn } = useAuthActions();
-  const [verifyEmail, setVerifyEmail] = useState("");
-  const [passwordVerify, setPasswordVerify] = useState("");
-  const [verifySending, setVerifySending] = useState(false);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [productDialog, setProductDialog] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
@@ -165,133 +159,28 @@ export default function BusinessPage() {
   }
 
   if (!mine?.business) {
-    if (emailVerify) {
-      return (
-        <div className="mx-auto max-w-xl">
-          <div className="surface-raised rounded-3xl p-5 sm:p-6">
-            <div className="mb-5 flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-ember-gradient text-black">
-                  <Store className="size-6" />
-                </div>
-                <div>
-                  <p className="font-display text-lg font-bold">Completá tu local</p>
-                  <p className="text-sm text-muted-foreground">
-                    Ya verificaste tu cuenta. Ahora cargá los datos de tu negocio para publicar el catálogo.
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="verify-name">Nombre del local</Label>
-                <Input
-                  id="verify-name"
-                  value={verifyEmail}
-                  readOnly
-                  className="bg-card/70 cursor-not-allowed"
-                />
-              </div>
-
-              <p className="text-[11px] text-muted-foreground">
-                El resto de los datos lo podés completar desde el panel.
-              </p>
-            </div>
-
-            <Button asChild className="gap-2 bg-ember-gradient text-black" disabled>
-              <Link to="/business">
-                Seguir al panel
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="mx-auto max-w-xl">
         <div className="surface-raised rounded-3xl p-5 sm:p-6">
-          <div className="mb-5 flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-ember-gradient text-black">
-                <Store className="size-6" />
-              </div>
-              <div>
-                <p className="font-display text-lg font-bold">Tu cuenta está asociada a: {user?.email}</p>
-                <p className="text-sm text-muted-foreground">
-                  Para cargar tu local, primero iniciá sesión con tu email y contraseña o registrate en
-                  /auth como Negocio.
-                </p>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-ember-gradient text-black">
+              <Store className="size-6" />
             </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="verify-email">Tu email</Label>
-              <Input
-                id="verify-email"
-                type="email"
-                value={verifyEmail}
-                onChange={(e) => setVerifyEmail(e.target.value)}
-                placeholder="vos@email.com"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="verify-password">Tu contraseña</Label>
-              <Input
-                id="verify-password"
-                type="password"
-                value={passwordVerify}
-                onChange={(e) => setPasswordVerify(e.target.value)}
-                placeholder="••••••••"
-              />
-            </div>
-
-            {(verifyError ||
-              (verifyEmail.length > 0 && passwordVerify.length === 0) ||
-              (verifyEmail.length > 0 && passwordVerify.length < 6) ||
-              (!verifySending && passwordVerify.length > 0 &&
-                !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(verifyEmail))) && (
-              <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-                {verifyError ?? "Revisá email y contraseña"}
+            <div>
+              <p className="font-display text-lg font-bold">Todavía no cargaste tu local</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Entraste con {user?.email}. Completá los datos de tu negocio para
+                publicar tu catálogo y recibir pedidos.
               </p>
-            )}
+            </div>
           </div>
 
-          <Button
-            className="gap-2 bg-ember-gradient text-black"
-            disabled={verifySending || verifyEmail.length === 0 || passwordVerify.length < 6}
-            onClick={async () => {
-              setVerifySending(true);
-              setVerifyError(null);
-              try {
-                await signIn("email-otp", { email: verifyEmail });
-                setEmailVerify(true);
-              } catch (err) {
-                setVerifyError(
-                  err instanceof Error ? err.message : "No pudimos verificar tu cuenta",
-                );
-              } finally {
-                setVerifySending(false);
-              }
-            }}
-          >
-            {verifySending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Enviando código
-              </>
-            ) : (
-              <>
-                <Mail className="size-4" />
-                Verificar mi correo
-              </>
-            )}
+          <Button asChild className="mt-5 h-11 w-full gap-2 bg-ember-gradient text-black">
+            <Link to="/onboarding?role=business">
+              Cargar mi local
+              <ArrowRight className="size-4" />
+            </Link>
           </Button>
-
-          <p className="mt-4 text-[11px] text-muted-foreground">
-            ¿No tenés cuenta? Registrá una nueva en /auth seleccionando “Negocio”.
-          </p>
         </div>
       </div>
     );

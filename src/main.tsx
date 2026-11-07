@@ -156,8 +156,28 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/favorites" element={<FavoritesPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/business" element={<BusinessPage />} />
-                <Route path="/courier" element={<CourierPage />} />
+                <Route
+                  path="/business"
+                  element={
+                    <RequireAuth
+                      title="Entrá a tu perfil de negocio"
+                      description="Registrate con tu correo y contraseña o iniciá sesión en tu cuenta para gestionar tu local."
+                    >
+                      <BusinessPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/courier"
+                  element={
+                    <RequireAuth
+                      title="Entrá a tu perfil de repartidor"
+                      description="Registrate con tu correo y contraseña o iniciá sesión en tu cuenta para tomar entregas."
+                    >
+                      <CourierPage />
+                    </RequireAuth>
+                  }
+                />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

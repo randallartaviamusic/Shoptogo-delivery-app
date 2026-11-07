@@ -5,79 +5,91 @@ import { api } from "@/convex/_generated/api";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
 import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
-import { Sparkles, Mail, UserRound } from "lucide-react";
+import { KeyRound, Loader2, Mail, Sparkles, UserRound } from "lucide-react";
 import { Suspense, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
-export const SIGNUP_ROLES = [
+type Role = "buyer" | "business" | "courier";
+
+export const SIGNUP_ROLES: { value: Role; label: string; description: string }[] = [
   {
-    value: "buyer" as const,
+    value: "buyer",
     label: "Comprador",
     description: "Deslizá antojos de distintos locales y pedí a domicilio.",
-    icon: "ShoppingBag",
   },
   {
-    value: "business" as const,
+    value: "business",
     label: "Negocio",
     description: "Publicá tu catálogo y gestioná pedidos en tiempo real.",
-    icon: "Store",
   },
   {
-    value: "courier" as const,
+    value: "courier",
     label: "Repartidor",
     description: "Tomá entregas listas y sumá ganancias por cada entrega.",
-    icon: "Bike",
   },
-] as const;
+];
+
+const ROLE_HOME: Record<Role, string> = {
+  buyer: "/swipe",
+  business: "/business",
+  courier: "/courier",
+};
+
+export function resolveRedirectAfterAuth(
+  returnTo: string | null,
+  role: Role,
+  fallback = ROLE_HOME.buyer,
+) {
+  if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
+    return returnTo;
+  }
+  return ROLE_HOME[role] ?? fallback;
+}
+
+function roleFromReturnTo(returnTo: string | null): Role | null {
+  if (!returnTo) return null;
+  if (returnTo.startsWith("/business")) return "business";
+  if (returnTo.startsWith("/courier")) return "courier";
+  const requested = new URLSearchParams(returnTo.split("?")[1] ?? "").get("role");
+  if (requested === "business" || requested === "courier" || requested === "buyer") {
+    return requested;
+  }
+  return null;
+}
 
 interface AuthProps {
   redirectAfterAuth?: string;
 }
 
-function resolveRedirectAfterAuth(
-  returnTo: string | null,
-  role: "buyer" | "business" | "courier",
-  fallback = "/swipe",
-) {
-  if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
-    return returnTo;
-  }
-  return role === "buyer" ? "/swipe" : role === "business" ? "/business" : "/courier";
-}
+type Step = "signup" | "signIn" | "code";
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const {
-    isLoading: authLoading,
-    isAuthenticated,
-    user,
-  } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, user } = useAuth();
   const { signIn } = useAuthActions();
-  const createAccount = useMutation(api.profiles.createAccount);
+  const register = useMutation(api.accounts.register);
+  const verifyPassword = useMutation(api.accounts.verifyPassword);
+  const bindCurrentUser = useMutation(api.accounts.bindCurrentUser);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get("returnTo");
 
-  const [mode, setMode] = useState<"signup" | "signIn">("signup");
-  const [role, setRole] = useState<"buyer" | "business" | "courier">("buyer");
-  const [profile, setProfile] = useState({
+  const [step, setStep] = useState<Step>("signup");
+  const [role, setRole] = useState<Role>(roleFromReturnTo(redirectParam) ?? "buyer");
+  const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
     passwordConfirm: "",
+    code: "",
   });
+  const [pendingEmail, setPendingEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const redirect = resolveRedirectAfterAuth(
-    redirectParam,
-    role,
-    redirectAfterAuth,
-  );
 
   if (authLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
-        <Sparkles className="size-6 animate-spin text-primary" />
+        <Loader2 className="size-6 animate-spin text-primary" />
       </main>
     );
   }
@@ -85,12 +97,82 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   if (isAuthenticated && user) {
     const next = resolveRedirectAfterAuth(
       redirectParam,
-      (user.role as "buyer" | "business" | "courier") ?? "buyer",
+      (user.role as Role | undefined) ?? role,
       redirectAfterAuth,
     );
     navigate(next, { replace: true });
     return null;
   }
+
+  const sendCode = async (email: string) => {
+    await signIn("email-otp", { email });
+    setPendingEmail(email);
+    setForm((prev) => ({ ...prev, code: "" }));
+    setStep("code");
+  };
+
+  const handleSignUp = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const email = form.email.trim().toLowerCase();
+      await register({
+        name: form.name,
+        email,
+        password: form.password,
+        passwordConfirm: form.passwordConfirm,
+        role,
+      });
+      await sendCode(email);
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "No pudimos crear tu cuenta.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSignIn = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const email = form.email.trim().toLowerCase();
+      const account = await verifyPassword({ email, password: form.password });
+      setRole(account.role);
+      await sendCode(email);
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "No pudimos iniciar sesión.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCode = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await signIn("email-otp", {
+        email: pendingEmail,
+        code: form.code.trim(),
+      });
+      await bindCurrentUser({ email: pendingEmail });
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "El código no es correcto o ya venció.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="relative min-h-screen px-4 py-8 sm:px-6">
@@ -102,15 +184,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           </Link>
 
           <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-            <Link to="/">
-              <motion.span
-                initial={{ opacity: 0, y: 18 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45 }}
-              >
-                Inicio
-              </motion.span>
-            </Link>
+            <Link to="/bienvenida">Inicio</Link>
           </Button>
         </div>
 
@@ -130,68 +204,330 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           </div>
 
           <div className="surface-raised rounded-3xl p-5 sm:p-6">
-            {mode === "signup" ? (
-              <SignUpCard
-                role={role}
-                profile={profile}
-                setProfile={setProfile}
-                setRole={setRole}
-                saving={saving}
-                error={error}
-                setError={setError}
-                onSubmit={async (profile) => {
-                  setSaving(true);
-                  setError(null);
-                  try {
-                    await createAccount({ ...profile, role });
-                    navigate(redirect, { replace: true });
-                  } catch (submitError) {
-                    setError(
-                      submitError instanceof Error
-                        ? submitError.message
-                        : "No pudimos crear tu cuenta.",
-                    );
-                  } finally {
-                    setSaving(false);
-                  }
+            {step === "code" ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleCode();
                 }}
-                onSwitchToSignIn={() => setMode("signIn")}
-              />
+                className="space-y-4"
+              >
+                <div>
+                  <p className="font-display text-lg font-bold">Verificá tu correo</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Te enviamos un código de 6 dígitos a{" "}
+                    <span className="font-semibold text-foreground">{pendingEmail}</span>.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="code"
+                    className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    Código
+                  </label>
+                  <Input
+                    id="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={form.code}
+                    onChange={(event) =>
+                      setForm({ ...form, code: event.target.value.replace(/\D/g, "") })
+                    }
+                    placeholder="000000"
+                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 text-center text-lg tracking-[0.4em]"
+                    disabled={saving}
+                    required
+                  />
+                </div>
+
+                {error && (
+                  <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+                    {error}
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="h-11 w-full gap-2 bg-ember-gradient text-black"
+                  disabled={saving || form.code.length < 6}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Verificando
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="size-4" />
+                      Entrar a mi cuenta
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full text-muted-foreground"
+                  disabled={saving}
+                  onClick={() => {
+                    setError(null);
+                    setStep("signIn");
+                  }}
+                >
+                  Usar otro correo
+                </Button>
+              </form>
+            ) : step === "signup" ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleSignUp();
+                }}
+                className="space-y-4"
+              >
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">
+                    Elegí tu rol
+                  </p>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {SIGNUP_ROLES.map((option) => {
+                      const selected = role === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setRole(option.value)}
+                          className={`rounded-xl border p-3 text-left transition-colors ${
+                            selected
+                              ? "border-accent/40 bg-accent/[0.06] text-accent"
+                              : "border-border/70 bg-card/70 text-muted-foreground"
+                          }`}
+                          disabled={saving}
+                        >
+                          <span className="block text-[11px] font-semibold uppercase tracking-wider">
+                            {option.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <Field label="Tu nombre" htmlFor="name">
+                  <input
+                    id="name"
+                    type="text"
+                    value={form.name}
+                    onChange={(event) => setForm({ ...form, name: event.target.value })}
+                    placeholder="Camila Duarte"
+                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
+                    disabled={saving}
+                    required
+                  />
+                </Field>
+
+                <Field label="Tu correo" htmlFor="email">
+                  <Input
+                    id="email"
+                    type="email"
+                    value={form.email}
+                    onChange={(event) => setForm({ ...form, email: event.target.value })}
+                    placeholder="vos@email.com"
+                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
+                    disabled={saving}
+                    required
+                  />
+                </Field>
+
+                <Field label="Contraseña" htmlFor="password">
+                  <input
+                    id="password"
+                    type="password"
+                    value={form.password}
+                    onChange={(event) => setForm({ ...form, password: event.target.value })}
+                    placeholder="Mínimo 8 caracteres"
+                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
+                    autoComplete="new-password"
+                    disabled={saving}
+                    required
+                    minLength={8}
+                  />
+                </Field>
+
+                <Field label="Confirmá tu contraseña" htmlFor="passwordConfirm">
+                  <input
+                    id="passwordConfirm"
+                    type="password"
+                    value={form.passwordConfirm}
+                    onChange={(event) =>
+                      setForm({ ...form, passwordConfirm: event.target.value })
+                    }
+                    placeholder="Repetí tu contraseña"
+                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
+                    autoComplete="new-password"
+                    disabled={saving}
+                    required
+                    minLength={8}
+                  />
+                </Field>
+
+                {error && (
+                  <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+                    {error}
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="h-11 w-full gap-2 bg-ember-gradient text-black"
+                  disabled={
+                    saving ||
+                    form.password.length < 8 ||
+                    form.password !== form.passwordConfirm
+                  }
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Creando tu cuenta
+                    </>
+                  ) : (
+                    "Crear mi cuenta"
+                  )}
+                </Button>
+
+                <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+                  Te vamos a enviar un código al correo para confirmar la cuenta.
+                </p>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full gap-2 border-border/80"
+                  onClick={() => {
+                    setError(null);
+                    setStep("signIn");
+                  }}
+                  disabled={saving}
+                >
+                  <UserRound className="size-4" />
+                  Ya tengo cuenta
+                </Button>
+              </form>
             ) : (
-              <SignInCard
-                email={profile.email}
-                setEmail={(email) => setProfile({ ...profile, email })}
-                saving={saving}
-                error={error}
-                setError={setError}
-                onSubmit={async (email) => {
-                  setSaving(true);
-                  setError(null);
-                  try {
-                    await signIn("email-otp", { email });
-                    setMode("signIn");
-                  } catch (submitError) {
-                    setError(
-                      submitError instanceof Error
-                        ? submitError.message
-                        : "No pudimos enviar el código.",
-                    );
-                  } finally {
-                    setSaving(false);
-                  }
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleSignIn();
                 }}
-                onSwitchToSignUp={() => setMode("signup")}
-              />
+                className="space-y-4"
+              >
+                <div>
+                  <p className="font-display text-lg font-bold">Iniciá sesión</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Entrá con el correo y la contraseña con los que te registraste.
+                  </p>
+                </div>
+
+                <Field label="Tu correo" htmlFor="signInEmail">
+                  <Input
+                    id="signInEmail"
+                    type="email"
+                    value={form.email}
+                    onChange={(event) => setForm({ ...form, email: event.target.value })}
+                    placeholder="vos@email.com"
+                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
+                    disabled={saving}
+                    required
+                  />
+                </Field>
+
+                <Field label="Tu contraseña" htmlFor="signInPassword">
+                  <input
+                    id="signInPassword"
+                    type="password"
+                    value={form.password}
+                    onChange={(event) => setForm({ ...form, password: event.target.value })}
+                    placeholder="Tu contraseña"
+                    className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm"
+                    autoComplete="current-password"
+                    disabled={saving}
+                    required
+                  />
+                </Field>
+
+                {error && (
+                  <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+                    {error}
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="h-11 w-full gap-2 bg-ember-gradient text-black"
+                  disabled={saving || form.email.length === 0 || form.password.length === 0}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Enviando código
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="size-4" />
+                      Entrar
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full gap-2 border-border/80"
+                  onClick={() => {
+                    setError(null);
+                    setStep("signup");
+                  }}
+                  disabled={saving}
+                >
+                  <UserRound className="size-4" />
+                  Registrarme
+                </Button>
+              </form>
             )}
           </div>
 
           <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
-            Al continuar aceptás los términos de Capricho Express. Cada cuenta
-            comienza eligiendo tu rol: es la misma cuenta, podés cambiarlo luego
-            desde tu perfil.
+            Cada cuenta elige su rol al registrarse: comprador, negocio o
+            repartidor.
           </p>
         </motion.div>
       </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor={htmlFor}
+        className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+      >
+        {label}
+      </label>
+      {children}
     </div>
   );
 }
@@ -201,309 +537,5 @@ export default function AuthPage(props: AuthProps) {
     <Suspense>
       <Auth {...props} />
     </Suspense>
-  );
-}
-
-function SignUpCard({
-  role,
-  profile,
-  setProfile,
-  setRole,
-  saving,
-  error,
-  setError,
-  onSubmit,
-  onSwitchToSignIn,
-}: {
-  role: "buyer" | "business" | "courier";
-  profile: {
-    name: string;
-    email: string;
-    password: string;
-    passwordConfirm: string;
-  };
-  setProfile: (next: {
-    name: string;
-    email: string;
-    password: string;
-    passwordConfirm: string;
-  }) => void;
-  setRole: (next: "buyer" | "business" | "courier") => void;
-  saving: boolean;
-  error: string | null;
-  setError: (next: string | null) => void;
-  onSubmit: (profile: {
-    name: string;
-    email: string;
-    password: string;
-    passwordConfirm: string;
-  }) => Promise<void>;
-  onSwitchToSignIn: () => void;
-}) {
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit(profile);
-      }}
-      className="space-y-4"
-    >
-      <div className="space-y-1.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">
-          Elegí tu rol
-        </p>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          {SIGNUP_ROLES.map((option) => {
-            const selected = role === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setRole(option.value)}
-                className={`
-                  rounded-xl border p-3 text-left transition-colors
-                  ${selected
-                    ? "border-accent/40 bg-accent/[0.06] text-accent"
-                    : "border-border/70 bg-card/70 text-muted-foreground"
-                  }
-                `}
-                disabled={saving}
-              >
-                <span className="block text-[11px] font-semibold uppercase tracking-wider">
-                  {option.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <label
-          htmlFor="name"
-          className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-        >
-          Tu nombre
-        </label>
-        <input
-          id="name"
-          type="text"
-          value={profile.name}
-          onChange={(event) =>
-            setProfile({ ...profile, name: event.target.value })
-          }
-          placeholder="Camila Duarte"
-          className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm "
-          disabled={saving}
-          required
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label
-          htmlFor="email"
-          className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-        >
-          Tu email
-        </label>
-        <div className="relative">
-          <Input
-            id="email"
-            type="email"
-            value={profile.email}
-            onChange={(event) =>
-              setProfile({ ...profile, email: event.target.value })
-            }
-            placeholder="vos@email.com"
-            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 pl-9 text-sm "
-            disabled={saving}
-            required
-          />
-        </div>
-      </div>
-
-      <div className="grid gap-3">
-        <div className="space-y-1.5">
-          <label
-            htmlFor="password"
-            className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-          >
-            Contraseña
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={profile.password}
-            onChange={(event) =>
-              setProfile({ ...profile, password: event.target.value })
-            }
-            placeholder="Mínimo 8 caracteres"
-            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm "
-            disabled={saving}
-            required
-            minLength={8}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label
-            htmlFor="passwordConfirm"
-            className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-          >
-            Confirmá tu contraseña
-          </label>
-          <input
-            id="passwordConfirm"
-            type="password"
-            value={profile.passwordConfirm}
-            onChange={(event) =>
-              setProfile({ ...profile, passwordConfirm: event.target.value })
-            }
-            placeholder="Repetí tu contraseña"
-            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm "
-            disabled={saving}
-            required
-          />
-        </div>
-      </div>
-
-      {error && (
-        <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-          {error}
-        </p>
-      )}
-
-      <Button
-        type="submit"
-        className="h-11 w-full gap-2 bg-ember-gradient text-black"
-        disabled={saving || profile.password !== profile.passwordConfirm}
-      >
-        {saving ? (
-          <>
-            <Sparkles className="size-4 animate-spin" />
-            Creando tu cuenta
-          </>
-        ) : (
-          <>
-            Crear mi cuenta
-          </>
-        )}
-      </Button>
-
-      <div className="relative py-1">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-border/70" />
-        </div>
-        <div className="relative flex justify-center">
-          <span className="bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-            ya tenés cuenta
-          </span>
-        </div>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 w-full gap-2 border-border/80"
-        onClick={onSwitchToSignIn}
-        disabled={saving}
-      >
-        <Mail className="size-4" />
-        Enviarme un código
-      </Button>
-    </form>
-  );
-}
-
-function SignInCard({
-  email,
-  setEmail,
-  saving,
-  error,
-  setError,
-  onSubmit,
-  onSwitchToSignUp,
-}: {
-  email: string;
-  setEmail: (next: string) => void;
-  saving: boolean;
-  error: string | null;
-  setError: (next: string | null) => void;
-  onSubmit: (email: string) => Promise<void>;
-  onSwitchToSignUp: () => void;
-}) {
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit(email);
-      }}
-      className="space-y-4"
-    >
-      <div className="space-y-1.5">
-        <label
-          htmlFor="signInEmail"
-          className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-        >
-          Tu email
-        </label>
-        <div className="relative">
-          <Input
-            id="signInEmail"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="vos@email.com"
-            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 pl-9 text-sm "
-            disabled={saving}
-            required
-          />
-        </div>
-      </div>
-
-      {error && (
-        <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-          {error}
-        </p>
-      )}
-
-      <Button
-        type="submit"
-        className="h-11 w-full gap-2 bg-ember-gradient text-black"
-        disabled={saving || email.length === 0}
-      >
-        {saving ? (
-          <>
-            <Sparkles className="size-4 animate-spin" />
-            Enviando código
-          </>
-        ) : (
-          <>
-            Recibir código
-          </>
-        )}
-      </Button>
-
-      <div className="relative py-1">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-border/70" />
-        </div>
-        <div className="relative flex justify-center">
-          <span className="bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-            no tenés cuenta
-          </span>
-        </div>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 w-full gap-2 border-border/80"
-        onClick={onSwitchToSignUp}
-        disabled={saving}
-      >
-        <UserRound className="size-4" />
-        Crear mi cuenta
-      </Button>
-    </form>
   );
 }
