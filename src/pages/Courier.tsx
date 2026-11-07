@@ -4,6 +4,13 @@ import { StatusPill, type OrderView } from "@/pages/Orders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
@@ -25,169 +32,9 @@ import {
   Store,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Switch,
-} from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import type { Doc } from "@/convex/_generated/dataModel";
-import type { OrderStatus } from "@/convex/schema";
-import { getDepartment as getD } from "@/lib/departments";
-import {
-  ArrowRight,
-  Bike,
-  CheckCircle2,
-  History,
-  Loader2,
-  Mail,
-  MapPin,
-  Navigation,
-  PackageCheck,
-  Store,
-  Wallet,
-} from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
-
-function StatCard({ label, value, hint, accent }: {
-  label: string;
-  value: string;
-  hint?: string;
-  accent?: "chili" | "ember";
-}) {
-  return (
-    <div className="surface-raised rounded-2xl p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className={cn("mt-2 font-display text-xl font-extrabold", accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "")}>{value}</p>
-      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-function businessDialog({ open, onOpenChange, editing, form, saving, onSubmit }: {
-  open: boolean;
-  onOpenChange: (next: boolean) => void;
-  editing: Doc<"products"> | null;
-  form: {
-    name: string;
-    description: string;
-    price: string;
-    category: string;
-    image: string;
-    attributes: Record<string, string>;
-  };
-  saving: boolean;
-  onSubmit: (e: React.FormEvent<HTMLFormElement>) => Promise<void>;
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto border-border/80 bg-card sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="font-display">{editing ? "Editar producto" : "Nuevo producto"}</DialogTitle>
-          <DialogDescription>{
-            editing
-              ? "Los cambios se reflejan al instante en el mazo."
-              : "Va a aparecer al azar entre los productos de tu rubro."
-          }</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-3.5">
-          <div className="space-y-1.5">
-            <Label htmlFor="product-name">Nombre</Label>
-            <Input
-              id="product-name"
-              required
-              value={form.name}
-              onChange={(e) => onSubmit({ ...form, name: e.target.value })}
-              placeholder="Doble Brasa Ahumada"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="product-description">Descripción</Label>
-            <Textarea
-              id="product-description"
-              className="min-h-20 resize-none"
-              value={form.description}
-              onChange={(e) => onSubmit({ ...form, description: e.target.value })}
-              placeholder="Dos medallones al carbón, cheddar añejo..."
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="product-price">Precio ($)</Label>
-              <Input
-                id="product-price"
-                type="number"
-                min={1}
-                required
-                value={form.price}
-                onChange={(e) => onSubmit({ ...form, price: e.target.value })}
-                placeholder="12500"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Categoría</Label>
-              <Select
-                value={form.category}
-                onValueChange={(value) => onSubmit({ ...form, category: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Hamburguesas">Hamburguesas</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="product-image">Imagen (URL)</Label>
-            <Input
-              id="product-image"
-              value={form.image}
-              onChange={(e) => onSubmit({ ...form, image: e.target.value })}
-              placeholder="https://..."
-            />
-          </div>
-          <Button type="submit" className="h-11 w-full gap-2 bg-ember-gradient text-black" disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Guardando
-              </>
-            ) : editing ? (
-              "Guardar cambios"
-            ) : (
-              "Publicar producto"
-            )}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 const TABS = [
   { key: "available", label: "Disponibles", to: "/courier" },
@@ -195,7 +42,12 @@ const TABS = [
   { key: "history", label: "Historial", to: "/courier?tab=history" },
 ];
 
-function StatCard({ label, value, hint, accent }: {
+function StatCard({
+  label,
+  value,
+  hint,
+  accent,
+}: {
   label: string;
   value: string;
   hint?: string;
@@ -203,8 +55,17 @@ function StatCard({ label, value, hint, accent }: {
 }) {
   return (
     <div className="surface-raised rounded-2xl p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className={cn("mt-2 font-display text-xl font-extrabold", accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "")}>{value}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-2 font-display text-xl font-extrabold",
+          accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "",
+        )}
+      >
+        {value}
+      </p>
       {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );

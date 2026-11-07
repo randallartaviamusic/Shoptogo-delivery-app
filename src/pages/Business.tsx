@@ -12,8 +12,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -21,14 +19,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import type { OrderStatus } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
-import { useAuthActions } from "@/hooks/use-auth";
 import { getDepartment } from "@/lib/departments";
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -48,10 +53,12 @@ import {
   Trash2,
   UtensilsCrossed,
 } from "lucide-react";
-import { Mail, Loader2 as VerifyLoader } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
+import { Mail, Loader2 } from "lucide-react";
+import { useAuthActions } from "@/hooks/use-auth";
+import { useState as useSuspenseState } from "react";
 
 const TABS = [
   { key: "overview", label: "Panel", to: "/business" },
@@ -103,7 +110,6 @@ const ACTION_BUTTONS: Record<
 
 export default function BusinessPage() {
   const { user } = useAuth();
-  const { signIn } = useAuthActions();
   const [params] = useSearchParams();
   const tab = params.get("tab") ?? "overview";
 
@@ -116,11 +122,11 @@ export default function BusinessPage() {
   const removeProduct = useMutation(api.businesses.removeProduct);
 
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
-  const [verifiedLocal, setVerifiedLocal] = useState(false);
-  const [verifyEmail, setVerifyEmail] = useState("");
-  const [verifySending, setVerifySending] = useState(false);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-
+  const [emailVerify, setEmailVerify] = useSuspenseState(false);
+  const { signIn } = useAuthActions();
+  const [verifyEmail, setVerifyEmail] = useSuspenseState("");
+  const [verifySending, setVerifySending] = useSuspenseState(false);
+  const [verifyError, setVerifyError] = useSuspenseState<string | null>(null);
   const [productDialog, setProductDialog] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
@@ -161,7 +167,7 @@ export default function BusinessPage() {
   }
 
   if (!mine?.business) {
-    if (verifiedLocal) {
+    if (emailVerify) {
       return (
         <div className="mx-auto max-w-xl">
           <div className="surface-raised rounded-3xl p-5 sm:p-6">
@@ -256,7 +262,7 @@ export default function BusinessPage() {
               setVerifySending(true);
               try {
                 await signIn("email-otp", { email: verifyEmail });
-                setVerifiedLocal(true);
+                setEmailVerify(true);
               } catch (err) {
                 setVerifyError(
                   err instanceof Error ? err.message : "No pudimos verificar tu cuenta",
@@ -268,7 +274,7 @@ export default function BusinessPage() {
           >
             {verifySending ? (
               <>
-                <VerifyLoader className="size-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
                 Enviando código
               </>
             ) : (
