@@ -56,9 +56,6 @@ import {
 import { useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { Mail, Loader2 } from "lucide-react";
-import { useAuthActions } from "@/hooks/use-auth";
-import { useState as useSuspenseState } from "react";
 
 const TABS = [
   { key: "overview", label: "Panel", to: "/business" },
@@ -122,11 +119,12 @@ export default function BusinessPage() {
   const removeProduct = useMutation(api.businesses.removeProduct);
 
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
-  const [emailVerify, setEmailVerify] = useSuspenseState(false);
+  const [emailVerify, setEmailVerify] = useState(false);
   const { signIn } = useAuthActions();
-  const [verifyEmail, setVerifyEmail] = useSuspenseState("");
-  const [verifySending, setVerifySending] = useSuspenseState(false);
-  const [verifyError, setVerifyError] = useSuspenseState<string | null>(null);
+  const [verifyEmail, setVerifyEmail] = useState("");
+  const [passwordVerify, setPasswordVerify] = useState("");
+  const [verifySending, setVerifySending] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [productDialog, setProductDialog] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
@@ -221,7 +219,8 @@ export default function BusinessPage() {
               <div>
                 <p className="font-display text-lg font-bold">Tu cuenta está asociada a: {user?.email}</p>
                 <p className="text-sm text-muted-foreground">
-                  Para gestinar tu local, primero verificá este email con tu contraseña para iniciar sesión como negocio.
+                  Para cargar tu local, primero iniciá sesión con tu email y contraseña o registrate en
+                  /auth como Negocio.
                 </p>
               </div>
             </div>
@@ -242,24 +241,29 @@ export default function BusinessPage() {
               <Input
                 id="verify-password"
                 type="password"
-                value={verifyEmail}
-                readOnly
-                className="bg-card/70 cursor-not-allowed"
+                value={passwordVerify}
+                onChange={(e) => setPasswordVerify(e.target.value)}
+                placeholder="••••••••"
               />
             </div>
 
-            {(verifyError || (verifyEmail.length > 0 && /\.|@|\s/.test(verifyEmail)) && !verifySending) && (
+            {(verifyError ||
+              (verifyEmail.length > 0 && passwordVerify.length === 0) ||
+              (verifyEmail.length > 0 && passwordVerify.length < 6) ||
+              (!verifySending && passwordVerify.length > 0 &&
+                !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(verifyEmail))) && (
               <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-                {verifyError ?? "Revisá el email y la contraseña"}
+                {verifyError ?? "Revisá email y contraseña"}
               </p>
             )}
           </div>
 
           <Button
             className="gap-2 bg-ember-gradient text-black"
-            disabled={verifySending || verifyEmail.length === 0}
+            disabled={verifySending || verifyEmail.length === 0 || passwordVerify.length < 6}
             onClick={async () => {
               setVerifySending(true);
+              setVerifyError(null);
               try {
                 await signIn("email-otp", { email: verifyEmail });
                 setEmailVerify(true);
@@ -286,7 +290,7 @@ export default function BusinessPage() {
           </Button>
 
           <p className="mt-4 text-[11px] text-muted-foreground">
-            ¿No tenés cuenta? Creá una nueva en /auth seleccionando “Negocio”.
+            ¿No tenés cuenta? Registrá una nueva en /auth seleccionando “Negocio”.
           </p>
         </div>
       </div>

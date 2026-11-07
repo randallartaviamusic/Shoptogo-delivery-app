@@ -116,7 +116,8 @@ export default function CourierPage() {
               <div>
                 <p className="font-display text-lg font-bold">Verificá tu cuenta</p>
                 <p className="text-sm text-muted-foreground">
-                  Para activar el modo repartidor, iniciá sesión con tu email y contraseña.\Tiene 2 caracteres
+                  Para activar el modo repartidor, iniciá sesión con tu email y contraseña o registrate en
+                  /auth como Repartidor.
                 </p>
               </div>
             </div>
@@ -171,7 +172,7 @@ export default function CourierPage() {
           </Button>
 
           <p className="mt-4 text-[11px] text-muted-foreground">
-            ¿No tenés cuenta? Creá una nueva en /auth seleccionando “Repartidor”.
+            ¿No tenés cuenta? Registrá una nueva en /auth seleccionando “Repartidor”.
           </p>
         </div>
       </div>
