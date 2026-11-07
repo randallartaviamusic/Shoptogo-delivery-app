@@ -15,6 +15,14 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
 import { getDepartment } from "@/lib/departments";
+import { useState as useSuspenseState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { clockTime, money, relativeTime, ROLE_HOME } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
