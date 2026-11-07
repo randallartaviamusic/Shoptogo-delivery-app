@@ -120,7 +120,7 @@ function businessDialog({ open, onOpenChange, editing, form, saving, onSubmit }:
               id="product-name"
               required
               value={form.name}
-              onChange={(e) => onSubmit({ ...form, name: e.currentTarget.value })}
+              onChange={(e) => onSubmit({ ...form, name: e.target.value })}
               placeholder="Doble Brasa Ahumada"
             />
           </div>
@@ -130,7 +130,7 @@ function businessDialog({ open, onOpenChange, editing, form, saving, onSubmit }:
               id="product-description"
               className="min-h-20 resize-none"
               value={form.description}
-              onChange={(e) => onSubmit({ ...form, description: e.currentTarget.value })}
+              onChange={(e) => onSubmit({ ...form, description: e.target.value })}
               placeholder="Dos medallones al carbón, cheddar añejo..."
             />
           </div>
@@ -143,7 +143,7 @@ function businessDialog({ open, onOpenChange, editing, form, saving, onSubmit }:
                 min={1}
                 required
                 value={form.price}
-                onChange={(e) => onSubmit({ ...form, price: e.currentTarget.value })}
+                onChange={(e) => onSubmit({ ...form, price: e.target.value })}
                 placeholder="12500"
               />
             </div>
@@ -167,7 +167,7 @@ function businessDialog({ open, onOpenChange, editing, form, saving, onSubmit }:
             <Input
               id="product-image"
               value={form.image}
-              onChange={(e) => onSubmit({ ...form, image: e.currentTarget.value })}
+              onChange={(e) => onSubmit({ ...form, image: e.target.value })}
               placeholder="https://..."
             />
           </div>
