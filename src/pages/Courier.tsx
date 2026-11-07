@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
-import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -190,19 +189,13 @@ function businessDialog({ open, onOpenChange, editing, form, saving, onSubmit }:
   );
 }
 
-const TABS
 const TABS = [
   { key: "available", label: "Disponibles", to: "/courier" },
   { key: "active", label: "En curso", to: "/courier?tab=active" },
   { key: "history", label: "Historial", to: "/courier?tab=history" },
 ];
 
-function StatCard({
-  label,
-  value,
-  hint,
-  accent,
-}: {
+function StatCard({ label, value, hint, accent }: {
   label: string;
   value: string;
   hint?: string;
@@ -210,17 +203,8 @@ function StatCard({
 }) {
   return (
     <div className="surface-raised rounded-2xl p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-2 font-display text-xl font-extrabold",
-          accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "",
-        )}
-      >
-        {value}
-      </p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className={cn("mt-2 font-display text-xl font-extrabold", accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "")}>{value}</p>
       {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
