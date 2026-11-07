@@ -2,16 +2,15 @@ import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
-import { GuestSession } from "@/components/GuestSession";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import React, { StrictMode, lazy, Suspense, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+import { useLocation } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import "./index.css";
 
-// Lazy load route components for better code splitting
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
@@ -25,17 +24,14 @@ const BusinessPage = lazy(() => import("./pages/Business.tsx"));
 const CourierPage = lazy(() => import("./pages/Courier.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
-// Simple loading fallback for route transitions
 function RouteLoading() {
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
+      <div className="animate-pulse text-muted-foreground">Cargando...</div>
     </div>
   );
 }
 
-/** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
- *  crashing the whole app (e.g. hook errors in the browser runtime). */
 class ToolbarErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
@@ -52,7 +48,6 @@ class ToolbarErrorBoundary extends React.Component<
   }
 }
 
-/** Hard guard so runtime errors never leave the preview as a blank page. */
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string; stack: string }
@@ -73,7 +68,7 @@ class RootErrorBoundary extends React.Component<
       return (
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
           <div className="max-w-lg text-center">
-            <p className="text-sm font-semibold">Preview runtime error</p>
+            <p className="text-sm font-semibold">Error en la vista previa</p>
             <p className="mt-2 text-xs text-muted-foreground break-words">
               {this.state.message}
             </p>
@@ -92,16 +87,17 @@ class RootErrorBoundary extends React.Component<
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
-
-
 function RouteSyncer() {
   const location = useLocation();
-  useEffect(() => {
+  const savedPath = useRef<string | null>(null);
+
+  if (savedPath.current !== location.pathname) {
+    savedPath.current = location.pathname;
     window.parent.postMessage(
       { type: "iframe-route-change", path: location.pathname },
       "*",
     );
-  }, [location.pathname]);
+  }
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -117,7 +113,6 @@ function RouteSyncer() {
   return null;
 }
 
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
@@ -126,7 +121,6 @@ createRoot(document.getElementById("root")!).render(
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
         <BrowserRouter>
-          <GuestSession />
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
             <Routes>

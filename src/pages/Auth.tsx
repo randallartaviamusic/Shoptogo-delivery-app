@@ -1,28 +1,34 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
-import { DishImage } from "@/components/DishImage";
-import { GUEST_CLAIM_KEY } from "@/components/GuestSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from "@/components/ui/input-otp";
 import { api } from "@/convex/_generated/api";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, useAuthActions } from "@/hooks/use-auth";
 import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Flame,
-  Loader2,
-  Mail,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Sparkles, Mail, UserRound } from "lucide-react";
+import { Suspense, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
+
+export const SIGNUP_ROLES = [
+  {
+    value: "buyer" as const,
+    label: "Comprador",
+    description: "Deslizá antojos de distintos locales y pedí a domicilio.",
+    icon: "ShoppingBag",
+  },
+  {
+    value: "business" as const,
+    label: "Negocio",
+    description: "Publicá tu catálogo y gestioná pedidos en tiempo real.",
+    icon: "Store",
+  },
+  {
+    value: "courier" as const,
+    label: "Repartidor",
+    description: "Tomá entregas listas y sumá ganancias por cada entrega.",
+    icon: "Bike",
+  },
+] as const;
 
 interface AuthProps {
   redirectAfterAuth?: string;
@@ -30,401 +36,162 @@ interface AuthProps {
 
 function resolveRedirectAfterAuth(
   returnTo: string | null,
+  role: "buyer" | "business" | "courier",
   fallback = "/swipe",
 ) {
   if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
     return returnTo;
   }
-  return fallback;
+  return role === "buyer" ? "/swipe" : role === "business" ? "/business" : "/courier";
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const {
     isLoading: authLoading,
     isAuthenticated,
-    signIn,
     user,
   } = useAuth();
-  const claimGuestData = useMutation(api.profiles.claimGuestData);
+  const { signIn } = useAuthActions();
+  const createAccount = useMutation(api.profiles.createAccount);
   const navigate = useNavigate();
-  const upgrading = useRef(false);
-  const isGuest = Boolean(user?.isAnonymous);
   const [searchParams] = useSearchParams();
-  const redirect = resolveRedirectAfterAuth(
-    searchParams.get("returnTo"),
-    redirectAfterAuth,
-  );
-  const [step, setStep] = useState<"signIn" | { email: string }>("signIn");
-  const [otp, setOtp] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const redirectParam = searchParams.get("returnTo");
+
+  const [mode, setMode] = useState<"signup" | "signIn">("signup");
+  const [role, setRole] = useState<"buyer" | "business" | "courier">("buyer");
+  const [profile, setProfile] = useState({
+    name: "",
+    email: "",
+    password: "",
+    passwordConfirm: "",
+  });
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Guests are already authenticated, but this page is exactly where they
-    // turn that session into a real account, so keep the form on screen.
-    if (authLoading || !isAuthenticated || user?.isAnonymous) return;
-    if (upgrading.current) return;
-    navigate(redirect);
-  }, [authLoading, isAuthenticated, user?.isAnonymous, navigate, redirect]);
+  const redirect = resolveRedirectAfterAuth(
+    redirectParam,
+    role,
+    redirectAfterAuth,
+  );
 
-  const claimGuestActivity = async () => {
-    let token = window.localStorage.getItem(GUEST_CLAIM_KEY);
-    // The claim token is issued as soon as the guest session opens; give it a
-    // moment in case someone signs up in the same tick they landed.
-    for (let wait = 0; !token && wait < 5; wait += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 200));
-      token = window.localStorage.getItem(GUEST_CLAIM_KEY);
-    }
-    if (!token) return;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      try {
-        const result = await claimGuestData({ token });
-        if (result.claimed) break;
-      } catch (error) {
-        console.error("Guest claim failed:", error);
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
-    }
-    window.localStorage.removeItem(GUEST_CLAIM_KEY);
-  };
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background">
+        <Sparkles className="size-6 animate-spin text-primary" />
+      </main>
+    );
+  }
 
-  const handleEmailSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    try {
-      const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
-      setStep({ email: formData.get("email") as string });
-      setIsLoading(false);
-    } catch (submitError) {
-      console.error("Email sign-in error:", submitError);
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "No pudimos enviar el código. Probá de nuevo.",
-      );
-      setIsLoading(false);
-    }
-  };
-
-  const handleOtpSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    const wasGuest = isGuest;
-    if (wasGuest) upgrading.current = true;
-    try {
-      const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
-      if (wasGuest) await claimGuestActivity();
-      navigate(redirect);
-    } catch (submitError) {
-      upgrading.current = false;
-      console.error("OTP verification error:", submitError);
-      setError("El código no es correcto. Revisalo e intentá otra vez.");
-      setIsLoading(false);
-      setOtp("");
-    }
-  };
-
-  const handleGuestLogin = async () => {
-    if (isGuest) {
-      navigate(redirect);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      await signIn("anonymous");
-      navigate(redirect);
-    } catch (guestError) {
-      console.error("Guest login error:", guestError);
-      setError(
-        guestError instanceof Error
-          ? `No pudimos entrar como invitado: ${guestError.message}`
-          : "No pudimos entrar como invitado.",
-      );
-      setIsLoading(false);
-    }
-  };
+  if (isAuthenticated && user) {
+    const next = resolveRedirectAfterAuth(
+      redirectParam,
+      (user.role as "buyer" | "business" | "courier") ?? "buyer",
+      redirectAfterAuth,
+    );
+    navigate(next, { replace: true });
+    return null;
+  }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
-      <aside className="relative hidden overflow-hidden border-r border-border/60 bg-[radial-gradient(ellipse_at_top_left,rgba(255,45,85,0.22),transparent_55%),radial-gradient(ellipse_at_bottom,rgba(255,201,60,0.12),transparent_55%)] lg:flex lg:flex-col lg:justify-between lg:p-12">
-        <div className="pointer-events-none absolute inset-0 grid-lines opacity-30" />
-        <Link to="/" className="relative w-fit">
-          <Wordmark markSize={38} />
-        </Link>
-
-        <div className="relative max-w-md">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/[0.07] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-accent"
-          >
-            <Sparkles className="size-3" />
-            El delivery que se desliza
-          </motion.div>
-          <motion.h2
-            initial={{ opacity: 0, y: 22 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, delay: 0.1 }}
-            className="mt-5 font-display text-4xl font-extrabold leading-[1.05] tracking-tight xl:text-5xl"
-          >
-            Un swipe y el
-            <br />
-            antojo está
-            <br />
-            <span className="text-gradient-whim">en camino.</span>
-          </motion.h2>
-          <p className="mt-5 max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Comprá deslizando, vendé tu catálogo al azar de la ciudad o tomá
-            entregas cuando te convenga. Todo en la misma cuenta.
-          </p>
-
-          <div className="mt-8 flex gap-2">
-            {[
-              {
-                image:
-                  "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80",
-              },
-              {
-                image:
-                  "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=400&q=80",
-              },
-              {
-                image:
-                  "https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=400&q=80",
-              },
-            ].map((dish) => (
-              <DishImage
-                key={dish.image}
-                src={dish.image}
-                alt="Antojo Capricho"
-                className="size-20 rounded-2xl border border-white/10"
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="relative flex items-center gap-3 rounded-2xl border border-border/70 bg-black/30 p-4 text-xs text-muted-foreground backdrop-blur">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-            <Flame className="size-4" />
-          </span>
-          <p>
-            <span className="font-semibold text-foreground">100+ productos</span>{" "}
-            de 30+ locales y 13 rubros esperando tu decisión. Sin listas
-            infinitas.
-          </p>
-        </div>
-      </aside>
-
-      <main className="relative flex min-h-screen flex-col px-4 py-8 sm:px-8">
-        <div className="flex items-center justify-between lg:hidden">
+    <div className="relative min-h-screen px-4 py-8 sm:px-6">
+      <div className="pointer-events-none absolute inset-0 grid-lines opacity-30" />
+      <div className="mx-auto flex max-w-lg flex-col gap-8">
+        <div className="flex items-center justify-between">
           <Link to="/" aria-label="Capricho Express">
-            <BrandMark size={32} />
+            <Wordmark markSize={30} />
           </Link>
+
           <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
             <Link to="/">
-              <ArrowLeft className="size-4" />
-              Inicio
+              <motion.span
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45 }}
+              >
+                Inicio
+              </motion.span>
             </Link>
           </Button>
         </div>
 
-        <div className="flex flex-1 items-center justify-center py-10">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45 }}
-            className="w-full max-w-[400px]"
-          >
-            <div className="mb-6 text-center">
-              <div className="mb-4 hidden justify-center lg:flex">
-                <BrandMark size={52} />
-              </div>
-              <h1 className="font-display text-2xl font-extrabold tracking-tight">
-                {step === "signIn"
-                  ? isGuest
-                    ? "Creá tu cuenta o seguí de invitado"
-                    : "Entrá a Capricho Express"
-                  : "Revisá tu email"}
-              </h1>
-              <p className="mt-1.5 text-sm text-muted-foreground">
-                {step === "signIn"
-                  ? isGuest
-                    ? "Es opcional. Si la creás, tu carrito y tus pedidos quedan guardados."
-                    : "Un código por mail y listo. Sin contraseñas."
-                  : `Te mandamos un código de 6 dígitos a ${step.email}`}
-              </p>
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+        >
+          <div className="mb-6 text-center">
+            <div className="mb-4 hidden justify-center lg:flex">
+              <BrandMark size={48} />
             </div>
-
-            <div className="surface-raised rounded-3xl p-5 sm:p-6">
-              {step === "signIn" ? (
-                <form onSubmit={handleEmailSubmit} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="email"
-                      className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-                    >
-                      Tu email
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3 size-4 text-muted-foreground" />
-                      <Input
-                        id="email"
-                        name="email"
-                        placeholder="vos@email.com"
-                        type="email"
-                        className="h-11 pl-9"
-                        disabled={isLoading}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {error && (
-                    <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
-                      {error}
-                    </p>
-                  )}
-
-                  <Button
-                    type="submit"
-                    className="h-11 w-full gap-2 bg-ember-gradient text-black"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        Enviando código
-                      </>
-                    ) : (
-                      <>
-                        Recibir código
-                        <ArrowRight className="size-4" />
-                      </>
-                    )}
-                  </Button>
-
-                  <div className="relative py-1">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t border-border/70" />
-                    </div>
-                    <div className="relative flex justify-center">
-                      <span className="bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        o seguí sin cuenta
-                      </span>
-                    </div>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 w-full gap-2 border-border/80"
-                    onClick={handleGuestLogin}
-                    disabled={isLoading}
-                  >
-                    <UserRound className="size-4 text-accent" />
-                    {isGuest ? "Seguir sin crear cuenta" : "Entrar como invitado"}
-                  </Button>
-                </form>
-              ) : (
-                <form onSubmit={handleOtpSubmit} className="space-y-4">
-                  <input type="hidden" name="email" value={step.email} />
-                  <input type="hidden" name="code" value={otp} />
-
-                  <div className="flex justify-center">
-                    <InputOTP
-                      value={otp}
-                      onChange={setOtp}
-                      maxLength={6}
-                      disabled={isLoading}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && otp.length === 6 && !isLoading) {
-                          const form = (event.target as HTMLElement).closest("form");
-                          form?.requestSubmit();
-                        }
-                      }}
-                    >
-                      <InputOTPGroup>
-                        {Array.from({ length: 6 }).map((_, index) => (
-                          <InputOTPSlot key={index} index={index} />
-                        ))}
-                      </InputOTPGroup>
-                    </InputOTP>
-                  </div>
-
-                  {error && (
-                    <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-center text-xs text-primary">
-                      {error}
-                    </p>
-                  )}
-
-                  <Button
-                    type="submit"
-                    className="h-11 w-full gap-2 bg-ember-gradient text-black"
-                    disabled={isLoading || otp.length !== 6}
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        Verificando
-                      </>
-                    ) : (
-                      <>
-                        Verificar y entrar
-                        <ArrowRight className="size-4" />
-                      </>
-                    )}
-                  </Button>
-
-                  <div className="flex flex-col gap-1 text-center">
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-accent hover:underline"
-                      onClick={() => {
-                        setStep("signIn");
-                        setOtp("");
-                        setError(null);
-                      }}
-                    >
-                      Usar otro email
-                    </button>
-                    <button
-                      type="button"
-                      className="text-[11px] text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        setStep("signIn");
-                        setOtp("");
-                        setError(null);
-                      }}
-                    >
-                      ¿No te llegó? Reintentar
-                    </button>
-                  </div>
-                </form>
-              )}
+            <div className="inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent/[0.07] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+              <Sparkles className="size-3" />
+              Capricho Express
             </div>
+          </div>
 
-            <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
-              Al continuar aceptás los términos de Capricho Express. Comprar
-              como invitado no requiere cuenta; si creás una, tu actividad de
-              invitado pasa a tu perfil.
-            </p>
-            <div className="mt-4 flex justify-center lg:hidden">
-              <Link
-                to="/"
-                className="text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-              >
-                Volver al inicio
-              </Link>
-            </div>
-          </motion.div>
-        </div>
-      </main>
+          <div className="surface-raised rounded-3xl p-5 sm:p-6">
+            {mode === "signup" ? (
+              <SignUpCard
+                role={role}
+                profile={profile}
+                setProfile={setProfile}
+                setRole={setRole}
+                saving={saving}
+                error={error}
+                setError={setError}
+                onSubmit={async (profile) => {
+                  setSaving(true);
+                  setError(null);
+                  try {
+                    await createAccount({ ...profile, role });
+                    navigate(redirect, { replace: true });
+                  } catch (submitError) {
+                    setError(
+                      submitError instanceof Error
+                        ? submitError.message
+                        : "No pudimos crear tu cuenta.",
+                    );
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                onSwitchToSignIn={() => setMode("signIn")}
+              />
+            ) : (
+              <SignInCard
+                email={profile.email}
+                setEmail={(email) => setProfile({ ...profile, email })}
+                saving={saving}
+                error={error}
+                setError={setError}
+                onSubmit={async (email) => {
+                  setSaving(true);
+                  setError(null);
+                  try {
+                    await signIn("email-otp", { email });
+                    setMode("signIn");
+                  } catch (submitError) {
+                    setError(
+                      submitError instanceof Error
+                        ? submitError.message
+                        : "No pudimos enviar el código.",
+                    );
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                onSwitchToSignUp={() => setMode("signup")}
+              />
+            )}
+          </div>
+
+          <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
+            Al continuar aceptás los términos de Capricho Express. Cada cuenta
+            comienza eligiendo tu rol: es la misma cuenta, podés cambiarlo luego
+            desde tu perfil.
+          </p>
+        </motion.div>
+      </div>
     </div>
   );
 }
@@ -434,5 +201,309 @@ export default function AuthPage(props: AuthProps) {
     <Suspense>
       <Auth {...props} />
     </Suspense>
+  );
+}
+
+function SignUpCard({
+  role,
+  profile,
+  setProfile,
+  setRole,
+  saving,
+  error,
+  setError,
+  onSubmit,
+  onSwitchToSignIn,
+}: {
+  role: "buyer" | "business" | "courier";
+  profile: {
+    name: string;
+    email: string;
+    password: string;
+    passwordConfirm: string;
+  };
+  setProfile: (next: {
+    name: string;
+    email: string;
+    password: string;
+    passwordConfirm: string;
+  }) => void;
+  setRole: (next: "buyer" | "business" | "courier") => void;
+  saving: boolean;
+  error: string | null;
+  setError: (next: string | null) => void;
+  onSubmit: (profile: {
+    name: string;
+    email: string;
+    password: string;
+    passwordConfirm: string;
+  }) => Promise<void>;
+  onSwitchToSignIn: () => void;
+}) {
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit(profile);
+      }}
+      className="space-y-4"
+    >
+      <div className="space-y-1.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">
+          Elegí tu rol
+        </p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {SIGNUP_ROLES.map((option) => {
+            const selected = role === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setRole(option.value)}
+                className={`
+                  rounded-xl border p-3 text-left transition-colors
+                  ${selected
+                    ? "border-accent/40 bg-accent/[0.06] text-accent"
+                    : "border-border/70 bg-card/70 text-muted-foreground"
+                  }
+                `}
+                disabled={saving}
+              >
+                <span className="block text-[11px] font-semibold uppercase tracking-wider">
+                  {option.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label
+          htmlFor="name"
+          className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+          Tu nombre
+        </label>
+        <input
+          id="name"
+          type="text"
+          value={profile.name}
+          onChange={(event) =>
+            setProfile({ ...profile, name: event.target.value })
+          }
+          placeholder="Camila Duarte"
+          className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm "
+          disabled={saving}
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label
+          htmlFor="email"
+          className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+          Tu email
+        </label>
+        <div className="relative">
+          <Input
+            id="email"
+            type="email"
+            value={profile.email}
+            onChange={(event) =>
+              setProfile({ ...profile, email: event.target.value })
+            }
+            placeholder="vos@email.com"
+            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 pl-9 text-sm "
+            disabled={saving}
+            required
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-3">
+        <div className="space-y-1.5">
+          <label
+            htmlFor="password"
+            className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Contraseña
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={profile.password}
+            onChange={(event) =>
+              setProfile({ ...profile, password: event.target.value })
+            }
+            placeholder="Mínimo 8 caracteres"
+            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm "
+            disabled={saving}
+            required
+            minLength={8}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label
+            htmlFor="passwordConfirm"
+            className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            Confirmá tu contraseña
+          </label>
+          <input
+            id="passwordConfirm"
+            type="password"
+            value={profile.passwordConfirm}
+            onChange={(event) =>
+              setProfile({ ...profile, passwordConfirm: event.target.value })
+            }
+            placeholder="Repetí tu contraseña"
+            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 px-3 text-sm "
+            disabled={saving}
+            required
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+          {error}
+        </p>
+      )}
+
+      <Button
+        type="submit"
+        className="h-11 w-full gap-2 bg-ember-gradient text-black"
+        disabled={saving || profile.password !== profile.passwordConfirm}
+      >
+        {saving ? (
+          <>
+            <Sparkles className="size-4 animate-spin" />
+            Creando tu cuenta
+          </>
+        ) : (
+          <>
+            Crear mi cuenta
+          </>
+        )}
+      </Button>
+
+      <div className="relative py-1">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-border/70" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+            ya tenés cuenta
+          </span>
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="h-11 w-full gap-2 border-border/80"
+        onClick={onSwitchToSignIn}
+        disabled={saving}
+      >
+        <Mail className="size-4" />
+        Enviarme un código
+      </Button>
+    </form>
+  );
+}
+
+function SignInCard({
+  email,
+  setEmail,
+  saving,
+  error,
+  setError,
+  onSubmit,
+  onSwitchToSignUp,
+}: {
+  email: string;
+  setEmail: (next: string) => void;
+  saving: boolean;
+  error: string | null;
+  setError: (next: string | null) => void;
+  onSubmit: (email: string) => Promise<void>;
+  onSwitchToSignUp: () => void;
+}) {
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit(email);
+      }}
+      className="space-y-4"
+    >
+      <div className="space-y-1.5">
+        <label
+          htmlFor="signInEmail"
+          className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+          Tu email
+        </label>
+        <div className="relative">
+          <Input
+            id="signInEmail"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="vos@email.com"
+            className="h-11 w-full rounded-xl border border-border/70 bg-card/70 pl-9 text-sm "
+            disabled={saving}
+            required
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+          {error}
+        </p>
+      )}
+
+      <Button
+        type="submit"
+        className="h-11 w-full gap-2 bg-ember-gradient text-black"
+        disabled={saving || email.length === 0}
+      >
+        {saving ? (
+          <>
+            <Sparkles className="size-4 animate-spin" />
+            Enviando código
+          </>
+        ) : (
+          <>
+            Recibir código
+          </>
+        )}
+      </Button>
+
+      <div className="relative py-1">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-border/70" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-card px-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+            no tenés cuenta
+          </span>
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="h-11 w-full gap-2 border-border/80"
+        onClick={onSwitchToSignUp}
+        disabled={saving}
+      >
+        <UserRound className="size-4" />
+        Crear mi cuenta
+      </Button>
+    </form>
   );
 }

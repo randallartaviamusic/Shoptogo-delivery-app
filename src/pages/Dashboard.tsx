@@ -19,7 +19,7 @@ export default function Dashboard() {
     return <Navigate to="/auth?returnTo=%2Fdashboard" replace />;
   }
 
-  const role = user.role ?? (user.isAnonymous ? "buyer" : null);
+  const role = user.role ?? "buyer";
   if (!role) return <Navigate to="/onboarding" replace />;
 
   return <Navigate to={ROLE_HOME[role] ?? "/swipe"} replace />;

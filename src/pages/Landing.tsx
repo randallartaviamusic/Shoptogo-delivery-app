@@ -205,9 +205,6 @@ function PhoneMockup() {
 }
 
 export default function Landing() {
-  const { user } = useAuth();
-  const isGuest = Boolean(user?.isAnonymous);
-
   return (
     <div className="min-h-screen overflow-x-hidden">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/75 backdrop-blur-xl">
@@ -236,7 +233,7 @@ export default function Landing() {
           </nav>
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" className="hidden sm:inline-flex">
-              <Link to="/auth">{isGuest ? "Mi cuenta" : "Entrar"}</Link>
+              <Link to="/auth">Entrar</Link>
             </Button>
             <Button asChild className="gap-2 bg-ember-gradient text-black">
               <Link to="/swipe">
@@ -284,7 +281,7 @@ export default function Landing() {
               Capricho Express mezcla el marketplace con el gesto más adictivo
               del mundo. Productos al azar de los mejores locales de tu ciudad
               —comida, ropa, tecnología, farmacia y más—: a la derecha si te
-              gusta, a la izquierda si no. Sin crear cuenta. Así de simple.
+              gusta, a la izquierda si no.              Sin contraseñas. Así de simple.
             </motion.p>
 
             <motion.div
@@ -295,7 +292,7 @@ export default function Landing() {
             >
               <Button asChild size="lg" className="h-12 gap-2 bg-ember-gradient px-6 text-black">
                 <Link to="/swipe">
-                  Deslizar sin cuenta
+                  Deslizar gratis
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
@@ -635,13 +632,13 @@ export default function Landing() {
             Tu próximo antojo está a un swipe de distancia
           </h2>
           <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-            Entrá y deslizá gratis, sin cuenta. Si querés vender o repartir,
+            Entrá y deslizá gratis. Si querés vender o repartir,
             creá tu cuenta y elegí tu rol. Sin planes ni suscripciones.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" className="h-12 gap-2 bg-ember-gradient px-7 text-black">
               <Link to="/swipe">
-                Deslizar ahora
+                Deslizar gratis
                 <ArrowRight className="size-4" />
               </Link>
             </Button>
