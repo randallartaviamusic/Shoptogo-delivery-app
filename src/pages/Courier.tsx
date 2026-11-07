@@ -2,9 +2,19 @@ import { EmptyState } from "@/components/AppShell";
 import { DishImage } from "@/components/DishImage";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, useAuthActions } from "@/hooks/use-auth";
+import { getDepartment } from "@/lib/departments";
 import { clockTime, money, relativeTime, ROLE_HOME } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -15,13 +25,14 @@ import {
   CheckCircle2,
   History,
   Loader2,
+  Mail,
   MapPin,
   Navigation,
   PackageCheck,
   Store,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -31,8 +42,38 @@ const TABS = [
   { key: "history", label: "Historial", to: "/courier?tab=history" },
 ];
 
+function StatCard({
+  label,
+  value,
+  hint,
+  accent,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  accent?: "chili" | "ember";
+}) {
+  return (
+    <div className="surface-raised rounded-2xl p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-2 font-display text-xl font-extrabold",
+          accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "",
+        )}
+      >
+        {value}
+      </p>
+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
 export default function CourierPage() {
   const { user } = useAuth();
+  const { signIn } = useAuthActions();
   const [params] = useSearchParams();
   const tab = params.get("tab") ?? "available";
 
@@ -40,6 +81,11 @@ export default function CourierPage() {
   const accept = useMutation(api.orders.courierAccept);
   const updateStatus = useMutation(api.orders.courierUpdateStatus);
   const [busy, setBusy] = useState<string | null>(null);
+
+  const [allowCourier, setAllowCourier] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState("");
+  const [verifySending, setVerifySending] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   if (user && user.role !== "courier") {
     return (
@@ -54,6 +100,80 @@ export default function CourierPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="size-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!allowCourier) {
+    return (
+      <div className="mx-auto max-w-xl">
+        <div className="surface-raised rounded-3xl p-5 sm:p-6">
+          <div className="mb-5 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-ember-gradient text-black">
+                <Bike className="size-6" />
+              </div>
+              <div>
+                <p className="font-display text-lg font-bold">Verificá tu cuenta</p>
+                <p className="text-sm text-muted-foreground">
+                  Para activar el modo repartidor, iniciá sesión con tu email y contraseña.\Tiene 2 caracteres
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="courier-email">Tu email</Label>
+              <Input
+                id="courier-email"
+                type="email"
+                value={verifyEmail}
+                onChange={(e) => setVerifyEmail(e.target.value)}
+                placeholder="vos@email.com"
+              />
+            </div>
+
+            {verifyError && (
+              <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
+                {verifyError}
+              </p>
+            )}
+          </div>
+
+          <Button
+            className="gap-2 bg-ember-gradient text-black"
+            disabled={verifySending || verifyEmail.length === 0}
+            onClick={async () => {
+              setVerifySending(true);
+              setVerifyError(null);
+              try {
+                await signIn("email-otp", { email: verifyEmail });
+                setAllowCourier(true);
+              } catch (err) {
+                setVerifyError(
+                  err instanceof Error ? err.message : "No pudimos verificar tu cuenta",
+                );
+              } finally {
+                setVerifySending(false);
+              }
+            }}
+          >
+            {verifySending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Enviando código
+              </>
+            ) : (
+              <>
+                <Mail className="size-4" />
+                Enviarme un código
+              </>
+            )}
+          </Button>
+
+          <p className="mt-4 text-[11px] text-muted-foreground">
+            ¿No tenés cuenta? Creá una nueva en /auth seleccionando “Repartidor”.
+          </p>
+        </div>
       </div>
     );
   }
@@ -337,7 +457,7 @@ export default function CourierPage() {
 
                 {order.notes && (
                   <p className="mt-3 rounded-xl bg-secondary/50 p-2.5 text-xs italic text-muted-foreground">
-                    “{order.notes}”
+                    "{order.notes}"
                   </p>
                 )}
 
