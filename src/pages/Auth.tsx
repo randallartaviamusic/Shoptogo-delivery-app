@@ -1,10 +1,8 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
-import { useMutation } from "convex/react";
+import { GUEST_HANDOFF_KEY } from "@/lib/guest-cart";
 import { motion } from "framer-motion";
 import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -74,8 +72,6 @@ function friendlyError(error: unknown, mode: Mode) {
   );
 }
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 interface AuthProps {
   redirectAfterAuth?: string;
 }
@@ -83,7 +79,6 @@ interface AuthProps {
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
   const { signIn } = useAuthActions();
-  const adoptGuestCart = useMutation(api.guests.adoptGuestCart);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get("returnTo");
@@ -100,13 +95,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     passwordConfirm: "",
   });
   const [saving, setSaving] = useState(false);
-  // Mientras se traspasa el carrito del invitado no dejamos que la redirección
-  // automática se adelante y muestre el carrito vacío.
-  const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Si venía navegando como invitado, guardamos su id para traspasarle el carrito.
-  const guestRef = useRef<Id<"users"> | null>(null);
+  const guestRef = useRef<string | null>(null);
   useEffect(() => {
     if (user?.isAnonymous) guestRef.current = user._id;
   }, [user]);
@@ -140,7 +132,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   }
 
   // Un invitado puede ver este formulario; una cuenta de verdad sigue de largo.
-  if (isAuthenticated && user && !user.isAnonymous && !finishing) {
+  if (isAuthenticated && user && !user.isAnonymous) {
     return (
       <Navigate
         to={resolveRedirectAfterAuth(redirectParam, redirectAfterAuth)}
@@ -153,6 +145,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setSaving(true);
     setError(null);
     const guestId = guestRef.current;
+    // Si ya había una sesión abierta (la de invitado), el cliente de Convex no
+    // vuelve a leer el token por su cuenta: hay que recargar para que tome la
+    // cuenta nueva.
+    const hadSession = isAuthenticated;
     try {
       await signIn("password", {
         email: form.email.trim().toLowerCase(),
@@ -162,30 +158,30 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         flow: mode === "signup" ? "signUp" : "signIn",
       });
 
-      // El carrito que armó como invitado pasa a la cuenta antes de salir, así
-      // vuelve al checkout con sus antojos y puede confirmar el pedido.
+      // El carrito del invitado se traspasa cuando la cuenta ya está activa,
+      // después de recargar: antes de eso la petición saldría como invitado.
       if (guestId) {
-        setFinishing(true);
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-          try {
-            await adoptGuestCart({ guestId });
-            break;
-          } catch {
-            await wait(250);
-          }
+        try {
+          window.sessionStorage.setItem(GUEST_HANDOFF_KEY, guestId);
+        } catch {
+          // Sin sessionStorage el carrito simplemente no se traspasa.
         }
       }
 
       const destination = resolveRedirectAfterAuth(redirectParam, redirectAfterAuth);
-      navigate(
-        destination === "/cart" ? "/cart?confirm=1" : destination,
-        { replace: true },
-      );
+      const target = destination === "/cart" ? "/cart?confirm=1" : destination;
+      if (hadSession) {
+        // Con una sesión de invitado abierta el cliente de Convex no vuelve a
+        // leer el token por su cuenta: recargamos en el destino para entrar a la
+        // cuenta en el acto.
+        window.location.replace(target);
+      } else {
+        navigate(target, { replace: true });
+      }
     } catch (submitError) {
       setError(friendlyError(submitError, mode));
     } finally {
       setSaving(false);
-      setFinishing(false);
     }
   };
 
