@@ -71,17 +71,29 @@ export const rolePassword = ConvexCredentials({
       throw new ConvexError("Forma de ingreso no válida");
     }
 
-    try {
-      const retrieved = await retrieveAccount(ctx, {
-        provider: "password",
-        account: { id: accountId, secret: password },
-      });
-      if (!retrieved) throw new ConvexError("Correo o contraseña incorrectos.");
-      return { userId: retrieved.user._id };
-    } catch (error) {
-      if (error instanceof ConvexError) throw error;
-      throw new ConvexError(friendlyAuthError(error));
+    // Para entrar no hace falta recordar con qué rol se creó la cuenta: probamos
+    // el rol elegido y después los otros. La contraseña sigue siendo la llave, así
+    // que las cuentas siguen siendo separadas.
+    const candidates: AccountRole[] = [
+      role,
+      ...ROLES.filter((item) => item !== role),
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        const retrieved = await retrieveAccount(ctx, {
+          provider: "password",
+          account: { id: `${candidate}:${email}`, secret: password },
+        });
+        if (retrieved) return { userId: retrieved.user._id };
+      } catch {
+        // No hay cuenta con ese rol o la contraseña no coincide: seguimos.
+      }
     }
+
+    throw new ConvexError(
+      "Correo o contraseña incorrectos. Si tu cuenta es de antes de este cambio, volvé a crearla con correo y contraseña.",
+    );
   },
   crypto: {
     hashSecret: (secret) => scrypt.hash(secret),

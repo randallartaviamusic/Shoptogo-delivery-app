@@ -20,14 +20,15 @@ import {
   Store,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 export default function CartPage() {
   const { user } = useAuth();
   const isGuest = Boolean(user?.isAnonymous);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const cart = useQuery(api.cart.myCart);
   const setQuantity = useMutation(api.cart.setQuantity);
   const removeItem = useMutation(api.cart.remove);
@@ -41,6 +42,20 @@ export default function CartPage() {
   const groups = cart?.groups ?? [];
   const count = cart?.count ?? 0;
   const hasClosed = groups.some((group) => !group.isOpen);
+
+  // Volvemos acá después de crear la cuenta o iniciar sesión: llevamos la vista
+  // directo al bloque para confirmar el pedido.
+  const summaryRef = useRef<HTMLElement>(null);
+  const confirmRequested = searchParams.get("confirm") === "1";
+  const welcomed = useRef(false);
+  useEffect(() => {
+    if (!confirmRequested || welcomed.current || isGuest || count === 0) return;
+    welcomed.current = true;
+    toast.success("Tu cuenta está lista", {
+      description: "Ya podés confirmar tu pedido.",
+    });
+    summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [confirmRequested, isGuest, count]);
 
   const handleCheckout = async () => {
     if (isGuest) {
@@ -235,6 +250,7 @@ export default function CartPage() {
           </div>
 
           <motion.aside
+            ref={summaryRef}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             className="surface-raised rounded-3xl p-5 lg:sticky lg:top-8"
@@ -290,10 +306,29 @@ export default function CartPage() {
             )}
 
             {isGuest && (
-              <p className="mt-3 rounded-xl border border-accent/25 bg-accent/[0.06] p-2.5 text-[11px] leading-relaxed text-accent">
-                Estás deslizando sin cuenta. Al confirmar te pedimos crear tu
-                cuenta o iniciar sesión: tu carrito no se pierde.
-              </p>
+              <div className="mt-3 rounded-xl border border-accent/25 bg-accent/[0.06] p-3">
+                <p className="text-[11px] leading-relaxed text-accent">
+                  Deslizás sin cuenta. Al confirmar te pedimos crear tu cuenta o
+                  iniciar sesión: tu carrito no se pierde.
+                </p>
+                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                  <Button asChild size="sm" className="bg-ember-gradient text-black">
+                    <Link to="/auth?role=buyer&returnTo=%2Fcart">
+                      Crear cuenta
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    size="sm"
+                    variant="outline"
+                    className="border-accent/30 text-accent hover:bg-accent/10"
+                  >
+                    <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fcart">
+                      Iniciar sesión
+                    </Link>
+                  </Button>
+                </div>
+              </div>
             )}
 
             <Button

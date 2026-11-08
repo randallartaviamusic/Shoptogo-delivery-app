@@ -8,7 +8,7 @@ import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
 import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 
 type Role = "buyer" | "business" | "courier";
 type Mode = "signup" | "signIn";
@@ -86,11 +86,14 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
   const { signIn } = useAuthActions();
   const adoptGuestCart = useMutation(api.guests.adoptGuestCart);
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get("returnTo");
   const roleParam = searchParams.get("role");
 
-  const [mode, setMode] = useState<Mode>("signup");
+  const [mode, setMode] = useState<Mode>(() =>
+    searchParams.get("mode") === "signin" ? "signIn" : "signup",
+  );
   const [role, setRole] = useState<Role>(roleFromUrl(redirectParam, roleParam));
   const [form, setForm] = useState({
     name: "",
@@ -99,6 +102,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     passwordConfirm: "",
   });
   const [saving, setSaving] = useState(false);
+  // Mientras se traspasa el carrito del invitado no dejamos que la redirección
+  // automática se adelante y muestre el carrito vacío.
+  const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Si venía navegando como invitado, guardamos su id para traspasarle el carrito.
@@ -136,7 +142,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   }
 
   // Un invitado puede ver este formulario; una cuenta de verdad sigue de largo.
-  if (isAuthenticated && user && !user.isAnonymous) {
+  if (isAuthenticated && user && !user.isAnonymous && !finishing) {
     return (
       <Navigate
         to={resolveRedirectAfterAuth(
@@ -162,9 +168,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         flow: mode === "signup" ? "signUp" : "signIn",
       });
 
-      // El carrito que armó como invitado pasa a la cuenta nueva.
+      // El carrito que armó como invitado pasa a la cuenta antes de salir, así
+      // vuelve al checkout con sus antojos y puede confirmar el pedido.
       if (guestId) {
-        for (let attempt = 0; attempt < 4; attempt += 1) {
+        setFinishing(true);
+        for (let attempt = 0; attempt < 5; attempt += 1) {
           try {
             await adoptGuestCart({ guestId });
             break;
@@ -173,17 +181,28 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           }
         }
       }
+
+      const destination = resolveRedirectAfterAuth(
+        redirectParam,
+        role,
+        redirectAfterAuth,
+      );
+      navigate(
+        destination === "/cart" ? "/cart?confirm=1" : destination,
+        { replace: true },
+      );
     } catch (submitError) {
       setError(friendlyError(submitError, mode));
     } finally {
       setSaving(false);
+      setFinishing(false);
     }
   };
 
   const signupReady =
-    form.name.trim().length >= 2 &&
+    form.name.trim().length > 0 &&
     form.email.includes("@") &&
-    form.password.length >= 8 &&
+    form.password.length > 0 &&
     form.password === form.passwordConfirm;
   const signInReady = form.email.includes("@") && form.password.length > 0;
 
@@ -235,7 +254,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {option === "signup" ? "Crear cuenta" : "Ya tengo cuenta"}
+                  {option === "signup" ? "Crear cuenta" : "Iniciar sesión"}
                 </button>
               ))}
             </div>
@@ -324,6 +343,13 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   placeholder={mode === "signup" ? "Mínimo 8 caracteres" : "Tu contraseña"}
                   disabled={saving}
                 />
+                {mode === "signup" &&
+                  form.password.length > 0 &&
+                  form.password.length < 8 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      La contraseña necesita al menos 8 caracteres.
+                    </p>
+                  )}
               </Field>
 
               {mode === "signup" && (

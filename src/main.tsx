@@ -121,8 +121,8 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
-        <GuestSession />
         <BrowserRouter>
+          <GuestSession />
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
             <Routes>

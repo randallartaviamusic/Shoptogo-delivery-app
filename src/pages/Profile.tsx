@@ -168,11 +168,23 @@ export default function ProfilePage() {
             Podés deslizar y armar tu carrito sin cuenta. Para confirmar el
             pedido te vamos a pedir registrarte.
           </p>
-          <Button asChild size="sm" className="mt-3 bg-ember-gradient text-black">
-            <Link to="/auth?role=buyer&returnTo=%2Fprofile">
-              Crear mi cuenta de comprador
-            </Link>
-          </Button>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:max-w-xs">
+            <Button asChild size="sm" className="bg-ember-gradient text-black">
+              <Link to="/auth?role=buyer&returnTo=%2Fprofile">
+                Crear cuenta
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="border-accent/30 text-accent hover:bg-accent/10"
+            >
+              <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fprofile">
+                Iniciar sesión
+              </Link>
+            </Button>
+          </div>
         </div>
       )}
 
