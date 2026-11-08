@@ -19,25 +19,23 @@ const ROLES: { value: Role; label: string; icon: typeof Store }[] = [
   { value: "courier", label: "Repartidor", icon: Bike },
 ];
 
-const ROLE_HOME: Record<Role, string> = {
-  buyer: "/swipe",
-  business: "/business",
-  courier: "/courier",
-};
+// Apenas inicia sesión (o crea su cuenta) la persona entra al perfil de esa
+// cuenta. Si venía de una página puntual —el carrito para confirmar el pedido,
+// por ejemplo— esa página manda.
+const AFTER_AUTH_FALLBACK = "/profile";
+// Volver a estas rutas dejaría a la persona otra vez fuera de su cuenta.
+const PUBLIC_RETURNS = ["/", "/auth", "/bienvenida"];
 
 function isRole(value: string | null | undefined): value is Role {
   return value === "buyer" || value === "business" || value === "courier";
 }
 
-function resolveRedirectAfterAuth(
-  returnTo: string | null,
-  role: Role,
-  fallback = ROLE_HOME.buyer,
-) {
+function resolveRedirectAfterAuth(returnTo: string | null, fallback?: string) {
   if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
-    return returnTo;
+    const base = returnTo.split("?")[0];
+    if (!PUBLIC_RETURNS.includes(base)) return returnTo;
   }
-  return ROLE_HOME[role] ?? fallback;
+  return fallback ?? AFTER_AUTH_FALLBACK;
 }
 
 function roleFromUrl(returnTo: string | null, roleParam: string | null): Role {
@@ -145,11 +143,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   if (isAuthenticated && user && !user.isAnonymous && !finishing) {
     return (
       <Navigate
-        to={resolveRedirectAfterAuth(
-          redirectParam,
-          (user.role as Role | undefined) ?? role,
-          redirectAfterAuth,
-        )}
+        to={resolveRedirectAfterAuth(redirectParam, redirectAfterAuth)}
         replace
       />
     );
@@ -182,11 +176,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         }
       }
 
-      const destination = resolveRedirectAfterAuth(
-        redirectParam,
-        role,
-        redirectAfterAuth,
-      );
+      const destination = resolveRedirectAfterAuth(redirectParam, redirectAfterAuth);
       navigate(
         destination === "/cart" ? "/cart?confirm=1" : destination,
         { replace: true },

@@ -223,13 +223,13 @@ export function AppShell() {
         {isGuest && (
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Link
-              to={`/auth?role=buyer&returnTo=${encodeURIComponent(current || "/swipe")}`}
+              to="/auth?role=buyer&returnTo=%2Fprofile"
               className="rounded-xl bg-ember-gradient px-2 py-2 text-center text-[11px] font-semibold text-black transition-opacity hover:opacity-90"
             >
               Crear cuenta
             </Link>
             <Link
-              to={`/auth?role=buyer&mode=signin&returnTo=${encodeURIComponent(current || "/swipe")}`}
+              to="/auth?role=buyer&mode=signin&returnTo=%2Fprofile"
               className="rounded-xl border border-accent/25 bg-accent/[0.06] px-2 py-2 text-center text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10"
             >
               Iniciar sesión

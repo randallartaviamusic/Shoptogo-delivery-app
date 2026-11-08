@@ -130,7 +130,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/bienvenida" element={<Landing />} />
               <Route
                 path="/auth"
-                element={<AuthPage redirectAfterAuth="/swipe" />}
+                element={<AuthPage redirectAfterAuth="/profile" />}
               />
               <Route
                 path="/dashboard"
