@@ -223,8 +223,7 @@ export default function Landing() {
               <BrandMark size={32} />
             </span>
             <span className="hidden sm:block">
-              <BrandMark size={32} />
-              <Wordmark markSize={30} />
+              <Wordmark markSize={32} />
             </span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">

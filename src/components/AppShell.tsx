@@ -290,7 +290,9 @@ export function AppShell() {
       >
         <Link to={home} aria-label="Capricho Express">
           <BrandMark size={30} />
-          <Wordmark markSize={22} />
+          <span className="ml-2 whitespace-nowrap font-display text-[11px] font-extrabold tracking-tight text-foreground">
+            Capricho <span className="text-accent">Express</span>
+          </span>
         </Link>
         <div className="flex items-center gap-1">
           {role === "buyer" && (
