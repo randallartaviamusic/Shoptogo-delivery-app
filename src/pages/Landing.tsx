@@ -1,4 +1,4 @@
-import { BrandHeadline, BrandMark } from "@/components/Brand";
+import { BrandMark } from "@/components/Brand";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
@@ -221,11 +221,9 @@ export default function Landing() {
           <Link to="/bienvenida" aria-label="Capricho Express">
             <span className="sm:hidden">
               <BrandMark size={28} />
-              <BrandHeadline className="ml-2 text-[11px]" />
             </span>
             <span className="hidden sm:block">
               <BrandMark size={32} />
-              <BrandHeadline className="ml-2" />
             </span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
