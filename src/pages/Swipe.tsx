@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useAuth } from "@/hooks/use-auth";
 import {
   DEFAULT_DEPARTMENT,
   DEPARTMENTS,
@@ -40,7 +41,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
 const TIPS = [
@@ -62,6 +63,8 @@ const TIPS = [
 ];
 
 export default function SwipePage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [departmentSlug, setDepartmentSlug] = useState(DEFAULT_DEPARTMENT);
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -135,7 +138,19 @@ export default function SwipePage() {
     setDecided(new Set());
   };
 
+  // Mirar el mazo no pide cuenta; deslizar (o guardar, o recargar) sí.
+  const askForAccount = () => {
+    toast("Creá tu cuenta para deslizar", {
+      description: "Con tu cuenta guardamos tus antojos, tus guardados y tu carrito.",
+    });
+    navigate("/auth?role=buyer&returnTo=%2Fswipe");
+  };
+
   const handleDecide = (id: string, direction: SwipeDirection) => {
+    if (!user) {
+      askForAccount();
+      return;
+    }
     const dish = cards.find((card) => card._id === id);
     setDecided((prev) => new Set(prev).add(id));
     swipe({ productId: id as Id<"products">, direction })
@@ -162,6 +177,10 @@ export default function SwipePage() {
   };
 
   const handleUndo = async () => {
+    if (!user) {
+      askForAccount();
+      return;
+    }
     try {
       const result = await undo();
       setDecided(new Set());
@@ -180,6 +199,10 @@ export default function SwipePage() {
   };
 
   const handleReset = async () => {
+    if (!user) {
+      askForAccount();
+      return;
+    }
     try {
       const result = await resetDeck();
       setDecided(new Set());
@@ -221,7 +244,9 @@ export default function SwipePage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    // `user` cambia cuando la persona entra: el atajo se reengancha con el
+    // handleUndo de esa sesión.
+  }, [user]);
 
   const visible = cards.slice(0, 3);
   const isLoading = deck === undefined;
@@ -231,6 +256,30 @@ export default function SwipePage() {
 
   return (
     <div>
+      {!user && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/25 bg-accent/[0.06] px-4 py-3">
+          <p className="text-xs leading-relaxed text-accent">
+            Estás mirando el mazo sin cuenta. Para deslizar, guardar y pedir,
+            creá tu cuenta o iniciá sesión.
+          </p>
+          <div className="flex gap-2">
+            <Button asChild size="sm" className="bg-ember-gradient text-black">
+              <Link to="/auth?role=buyer&returnTo=%2Fswipe">Crear cuenta</Link>
+            </Button>
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="border-accent/30 text-accent hover:bg-accent/10"
+            >
+              <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fswipe">
+                Iniciar sesión
+              </Link>
+            </Button>
+          </div>
+        </div>
+      )}
+
       <PageHeader
         eyebrow={`Modo antojo · ${department.label}`}
         title={department.headline}
@@ -449,27 +498,50 @@ export default function SwipePage() {
 
         <aside className="hidden space-y-4 lg:block">
           <div className="surface-raised rounded-3xl p-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
-              Tu sesión
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {[
-                { label: "Elegidos", value: stats?.likes ?? 0 },
-                { label: "Guardados", value: stats?.saved ?? 0 },
-                { label: "Descartados", value: stats?.passes ?? 0 },
-                { label: "Pedidos", value: stats?.orders ?? 0 },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-2xl border border-border/70 bg-black/25 px-4 py-3"
-                >
-                  <p className="font-display text-2xl font-bold">{item.value}</p>
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                    {item.label}
-                  </p>
+            {user ? (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                  Tu sesión
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Elegidos", value: stats?.likes ?? 0 },
+                    { label: "Guardados", value: stats?.saved ?? 0 },
+                    { label: "Descartados", value: stats?.passes ?? 0 },
+                    { label: "Pedidos", value: stats?.orders ?? 0 },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-2xl border border-border/70 bg-black/25 px-4 py-3"
+                    >
+                      <p className="font-display text-2xl font-bold">{item.value}</p>
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                        {item.label}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                  Modo visita
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  Estás mirando el mazo sin cuenta. Cuando deslices o toques un
+                  botón te pedimos crearla para guardar tus antojos.
+                </p>
+                <Button
+                  asChild
+                  className="mt-4 w-full gap-2 bg-ember-gradient text-black"
+                >
+                  <Link to="/auth?role=buyer&returnTo=%2Fswipe">
+                    Crear cuenta
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
 
           <div className="surface-raised rounded-3xl p-5">

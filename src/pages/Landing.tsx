@@ -236,7 +236,7 @@ export default function Landing() {
               <Link to="/auth?mode=signin&returnTo=%2Fswipe">Entrar</Link>
             </Button>
             <Button asChild className="gap-2 bg-ember-gradient text-black">
-              <Link to="/auth?role=buyer&returnTo=%2Fswipe">
+              <Link to="/swipe">
                 Abrir la app
                 <ArrowRight className="size-4" />
               </Link>

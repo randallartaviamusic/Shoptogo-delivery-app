@@ -87,7 +87,7 @@ export function AppShell() {
   // Si la sesión no resuelve, mostramos una salida en vez de girar para siempre.
   const [authStuck, setAuthStuck] = useState(false);
   useEffect(() => {
-    if (!isLoading && user) {
+    if (!isLoading) {
       setAuthStuck(false);
       return;
     }
@@ -95,8 +95,9 @@ export function AppShell() {
     return () => clearTimeout(timer);
   }, [isLoading, user]);
 
-  // Mientras se resuelve la sesión no mostramos la app vacía.
-  if (isLoading || !user) {
+  // Mientras se resuelve la sesión no mostramos la app vacía. Sin sesión sí
+  // mostramos la app: se puede mirar el mazo, pero cada acción pide cuenta.
+  if (isLoading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
         {authStuck ? (
@@ -125,18 +126,22 @@ export function AppShell() {
     );
   }
 
-  // Toda la app va con cuenta: el rol define la sección de cada persona.
-  const role = user.role ?? null;
-  if (!role) return <Navigate to="/onboarding" replace />;
+  // Sin cuenta se puede recorrer el mazo como visitante; el resto de la app
+  // está protegido por RequireAuth y pide crear la cuenta.
+  const isGuest = !user;
+  const role = user?.role ?? "buyer";
+  if (user && !user.role) return <Navigate to="/onboarding" replace />;
 
   const home = ROLE_HOME[role] ?? "/swipe";
-  const isBuyerRoute = BUYER_ROUTES.includes(location.pathname);
-  if (role !== "buyer" && isBuyerRoute) {
-    return <Navigate to={home} replace />;
-  }
-  // Una cuenta de comprador no administra locales ni entregas.
-  if (role === "buyer" && ["/business", "/courier"].includes(location.pathname)) {
-    return <Navigate to="/swipe" replace />;
+  if (user) {
+    const isBuyerRoute = BUYER_ROUTES.includes(location.pathname);
+    if (role !== "buyer" && isBuyerRoute) {
+      return <Navigate to={home} replace />;
+    }
+    // Una cuenta de comprador no administra locales ni entregas.
+    if (role === "buyer" && ["/business", "/courier"].includes(location.pathname)) {
+      return <Navigate to="/swipe" replace />;
+    }
   }
 
   const nav = navFor(role);
@@ -146,7 +151,7 @@ export function AppShell() {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/auth");
+    navigate("/swipe");
   };
 
   return (
@@ -158,7 +163,7 @@ export function AppShell() {
 
         <div className="mt-8 space-y-1.5">
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/70">
-            {ROLE_LABEL[role]}
+            {isGuest ? "Visitante" : ROLE_LABEL[role]}
           </p>
           {nav.map((item) => {
             const active = current === item.to;
@@ -193,7 +198,20 @@ export function AppShell() {
           })}
         </div>
 
-        {role === "buyer" && (
+        {role === "buyer" && isGuest && (
+          <div className="surface-raised mt-6 rounded-2xl p-4">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <ShoppingBag className="size-4 text-accent" />
+              Sin cuenta
+            </p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              Mirá el mazo tranquilo. Cuando deslices o toques un botón te
+              pedimos tu cuenta.
+            </p>
+          </div>
+        )}
+
+        {role === "buyer" && !isGuest && (
           <Link
             to="/cart"
             className="surface-raised mt-6 block rounded-2xl p-4 transition-colors hover:border-accent/30"
@@ -214,21 +232,33 @@ export function AppShell() {
           </Link>
         )}
 
+        {isGuest ? (
+          <div className="mt-auto grid gap-2">
+            <Button asChild className="bg-ember-gradient text-black">
+              <Link to="/auth?role=buyer&returnTo=%2Fswipe">Crear cuenta</Link>
+            </Button>
+            <Button asChild variant="outline" className="border-border/80">
+              <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fswipe">
+                Iniciar sesión
+              </Link>
+            </Button>
+          </div>
+        ) : (
         <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
             <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
-              {user.image ? (
+              {user?.image ? (
                 <img
-                  src={user.image}
-                  alt={user.name ?? "Foto de perfil"}
+                  src={user?.image}
+                  alt={user?.name ?? "Foto de perfil"}
                   className="size-full object-cover"
                 />
               ) : (
-                initials(user.name)
+                initials(user?.name)
               )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">
-                {user.name ?? "Sin nombre"}
+                {user?.name ?? "Sin nombre"}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">
                 {ROLE_LABEL[role]}
@@ -244,6 +274,7 @@ export function AppShell() {
               <LogOut className="size-4" />
             </Button>
         </div>
+        )}
       </aside>
 
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-xl lg:hidden">
@@ -270,11 +301,20 @@ export function AppShell() {
               </Button>
             </Link>
           )}
-          <Link to="/profile" aria-label="Perfil">
-            <div className="ml-1 flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
-              {initials(user.name)}
-            </div>
-          </Link>
+          {isGuest ? (
+            <Link
+              to="/auth?role=buyer&returnTo=%2Fswipe"
+              className="ml-1 rounded-xl bg-ember-gradient px-3 py-1.5 text-xs font-semibold text-black"
+            >
+              Entrar
+            </Link>
+          ) : (
+            <Link to="/profile" aria-label="Perfil">
+              <div className="ml-1 flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
+                {initials(user?.name)}
+              </div>
+            </Link>
+          )}
         </div>
       </header>
 

@@ -169,20 +169,43 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
-              {/* La app arranca en la sección de antojo y pide cuenta: no hay
-                  sesión de invitado. */}
-              <Route
-                element={
-                  <RequireAuth redirectImmediately>
-                    <AppShell />
-                  </RequireAuth>
-                }
-              >
+              {/* La sección de antojo es pública: se abre el mazo sin cuenta.
+                  Cada acción que guarda algo (carrito, pedidos, guardados,
+                  perfil) pide crear cuenta o iniciar sesión. */}
+              <Route element={<AppShell />}>
                 <Route path="/swipe" element={<SwipePage />} />
-                <Route path="/cart" element={<CartPage />} />
-                <Route path="/orders" element={<OrdersPage />} />
-                <Route path="/favorites" element={<FavoritesPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
+                <Route
+                  path="/cart"
+                  element={
+                    <RequireAuth redirectImmediately>
+                      <CartPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/orders"
+                  element={
+                    <RequireAuth redirectImmediately>
+                      <OrdersPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/favorites"
+                  element={
+                    <RequireAuth redirectImmediately>
+                      <FavoritesPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/profile"
+                  element={
+                    <RequireAuth redirectImmediately>
+                      <ProfilePage />
+                    </RequireAuth>
+                  }
+                />
                 <Route
                   path="/business"
                   element={
