@@ -13,6 +13,10 @@ export const DEFAULT_LOGO_SIZE = 40;
 export const MIN_LOGO_SIZE = 20;
 export const MAX_LOGO_SIZE = 88;
 
+export const DEFAULT_BRAND_TITLE = "Capricho Express";
+export const DEFAULT_BRAND_TITLE_COLOR = "";
+export const DEFAULT_BRAND_TITLE_FONT = "";
+
 async function brandDoc(ctx: QueryCtx | MutationCtx) {
   return await ctx.db
     .query("settings")
@@ -44,6 +48,19 @@ export const brand = query({
       logoUrl: doc?.logoUrl ?? null,
       logoSize: Math.min(MAX_LOGO_SIZE, Math.max(MIN_LOGO_SIZE, size)),
       updatedAt: doc?.updatedAt ?? null,
+    };
+  },
+});
+
+/** Título, color y familia de letra del nombre en la barra superior. Es público. */
+export const brandHeadline = query({
+  args: {},
+  handler: async (ctx) => {
+    const doc = await brandDoc(ctx);
+    return {
+      title: doc?.brandTitle ?? DEFAULT_BRAND_TITLE,
+      color: doc?.brandTitleColor ?? DEFAULT_BRAND_TITLE_COLOR,
+      font: doc?.brandTitleFont ?? DEFAULT_BRAND_TITLE_FONT,
     };
   },
 });
@@ -117,5 +134,61 @@ export const resetLogo = mutation({
     const doc = await brandDoc(ctx);
     if (doc) await ctx.db.patch(doc._id, { logoUrl: undefined, updatedAt: Date.now() });
     return null;
+  },
+});
+
+export const setBrandTitle = mutation({
+  args: { title: v.string() },
+  handler: async (ctx, { title }) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    const trimmed = title.trim();
+    if (!trimmed) throw new Error("El título no puede estar vacío");
+    if (doc) {
+      await ctx.db.patch(doc._id, { brandTitle: trimmed, updatedAt: Date.now() });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        brandTitle: trimmed,
+        updatedAt: Date.now(),
+      });
+    }
+    return trimmed;
+  },
+});
+
+export const setBrandTitleColor = mutation({
+  args: { color: v.string() },
+  handler: async (ctx, { color }) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, { brandTitleColor: color, updatedAt: Date.now() });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        brandTitleColor: color,
+        updatedAt: Date.now(),
+      });
+    }
+    return color;
+  },
+});
+
+export const setBrandTitleFont = mutation({
+  args: { font: v.string() },
+  handler: async (ctx, { font }) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, { brandTitleFont: font, updatedAt: Date.now() });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        brandTitleFont: font,
+        updatedAt: Date.now(),
+      });
+    }
+    return font;
   },
 });

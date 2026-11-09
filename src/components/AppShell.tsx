@@ -1,4 +1,4 @@
-import { BrandMark } from "@/components/Brand";
+import { BrandHeadline, BrandMark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -161,7 +161,8 @@ export function AppShell() {
     <div className="min-h-screen lg:pl-[272px]">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex">
         <Link to={home} className="px-1">
-          <BrandMark size={36} />
+          <BrandMark size={32} />
+          <BrandHeadline className="ml-2" />
         </Link>
 
         <div className="mt-8 space-y-1.5">
@@ -289,7 +290,8 @@ export function AppShell() {
         )}
       >
         <Link to={home} aria-label="Capricho Express">
-          <BrandMark size={30} />
+          <BrandMark size={28} />
+          <BrandHeadline className="ml-2 text-[11px]" />
         </Link>
         <div className="flex items-center gap-1">
           {role === "buyer" && (
@@ -441,4 +443,4 @@ export function EmptyState({
   );
 }
 
-export { BrandMark };
+export { BrandHeadline, BrandMark };

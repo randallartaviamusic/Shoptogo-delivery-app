@@ -1,7 +1,9 @@
 import defaultLogo from "@/assets/logo.svg";
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
-import { useQuery } from "convex/react";/**
+import { useQuery } from "convex/react";
+
+/**
  * Logo de la plataforma. Si el perfil administrador subió uno propio, todas las
  * instancias lo usan con el tamaño que eligió; si no, va el logo original.
  */
@@ -31,3 +33,29 @@ export function BrandMark({
   );
 }
 
+/** Título de la plataforma que puede editar el perfil administrador. */
+export function BrandHeadline({
+  className,
+}: {
+  className?: string;
+}) {
+  const headline = useQuery(api.branding.brandHeadline);
+  const title = headline?.title ?? "Capricho Express";
+  const color = headline?.color;
+  const font = headline?.font;
+
+  return (
+    <span
+      className={cn(
+        "whitespace-nowrap font-display font-extrabold tracking-tight text-foreground",
+        className,
+      )}
+      style={{
+        ...(font && { fontFamily: font }),
+        ...(color && { color }),
+      }}
+    >
+      {title}
+    </span>
+  );
+}

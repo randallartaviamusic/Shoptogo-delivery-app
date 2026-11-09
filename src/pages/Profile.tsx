@@ -1,9 +1,10 @@
 import defaultLogo from "@/assets/logo.svg";
-import { PageHeader } from "@/components/AppShell";
+import { BrandHeadline, PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,6 +33,14 @@ import { toast } from "sonner";
 
 const LOGO_MIN = 20;
 const LOGO_MAX = 88;
+
+const BRAND_FONTS = [
+  { value: "", label: "Tipografía predeterminada" },
+  { value: "Georgia, serif", label: "Georgia (serif)" },
+  { value: "'Courier New', monospace", label: "Courier New (monoespaciada)" },
+  { value: "Verdana, sans-serif", label: "Verdana (sans)" },
+  { value: "Impact, sans-serif", label: "Impact (strong)" },
+];
 
 const ROLES = [
   {
@@ -66,10 +75,14 @@ export default function ProfilePage() {
   // Administración de la marca (sólo para el perfil administrador).
   const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
   const brand = useQuery(api.branding.brand);
+  const headline = useQuery(api.branding.brandHeadline);
   const generateLogoUploadUrl = useMutation(api.branding.generateLogoUploadUrl);
   const setLogo = useMutation(api.branding.setLogo);
   const setLogoSize = useMutation(api.branding.setLogoSize);
   const resetLogo = useMutation(api.branding.resetLogo);
+  const setBrandTitle = useMutation(api.branding.setBrandTitle);
+  const setBrandTitleColor = useMutation(api.branding.setBrandTitleColor);
+  const setBrandTitleFont = useMutation(api.branding.setBrandTitleFont);
 
   const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -89,6 +102,14 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
 
+  // Estado de edición del título de la marca.
+  const [titleDraft, setTitleDraft] = useState(headline?.title ?? "Capricho Express");
+  const [colorDraft, setColorDraft] = useState(headline?.color ?? "");
+  const [fontDraft, setFontDraft] = useState(headline?.font ?? "");
+  const [savingTitle, setSavingTitle] = useState(false);
+  const [savingColor, setSavingColor] = useState(false);
+  const [savingFont, setSavingFont] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     setForm({
@@ -102,6 +123,14 @@ export default function ProfilePage() {
   useEffect(() => {
     if (brand?.logoSize) setLogoSizeDraft(brand.logoSize);
   }, [brand?.logoSize]);
+
+  useEffect(() => {
+    if (headline) {
+      setTitleDraft(headline.title);
+      setColorDraft(headline.color);
+      setFontDraft(headline.font);
+    }
+  }, [headline]);
 
   if (!user) {
     return (
@@ -197,12 +226,45 @@ export default function ProfilePage() {
     try {
       await setLogoSize({ size: logoSizeDraft });
       toast.success(`Tamaño del logo guardado en ${logoSizeDraft}px`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
     } finally {
       setSavingLogoSize(false);
     }
   };
+
+  const handleTitleSave = async () => {
+    setSavingTitle(true);
+    try {
+      await setBrandTitle({ title: titleDraft });
+      toast.success("Título de la barra actualizado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
+  const handleColorSave = async () => {
+    setSavingColor(true);
+    try {
+      await setBrandTitleColor({ color: colorDraft });
+      toast.success("Color del título actualizado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSavingColor(false);
+    }
+  };
+
+  const handleFontSave = async () => {
+    setSavingFont(true);
+    try {
+      await setBrandTitleFont({ font: fontDraft });
+      toast.success("Tipo de letra del título actualizado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSavingFont(false);
+    }    };
 
   const handleLogoReset = async () => {
     setUploadingLogo(true);
@@ -375,10 +437,11 @@ export default function ProfilePage() {
                 <ShieldCheck className="size-3.5" />
                 Perfil administrador
               </p>
-              <h2 className="font-display text-lg font-bold">Logo de la plataforma</h2>
+              <h2 className="font-display text-lg font-bold">Logo y nombre de la plataforma</h2>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Subí tu imagen y ajustá el tamaño a gusto. Se aplica en toda la
-                plataforma: barra lateral, cabecera, portada y pantallas de acceso.
+                Subí tu imagen, ajustá el tamaño y escribí el nombre que aparece en la
+                barra superior. Se aplica en toda la plataforma: barra lateral, cabecera,
+                portada y pantallas de acceso.
               </p>
             </div>
           </div>
@@ -465,6 +528,122 @@ export default function ProfilePage() {
                 <Save className="size-4" />
               )}
               Guardar tamaño
+            </Button>
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            PNG, JPG, WebP o SVG hasta 4 MB. Si subís un logo horizontal se
+            respeta su proporción.
+          </p>
+
+          {/* Panel de edición del nombre de la plataforma. */}
+          <div className="mt-6 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div className="mb-3 flex items-baseline justify-between">
+              <Label htmlFor="brand-title">Título de la barra</Label>
+              <span className="rounded-full border border-border/70 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {titleDraft}
+              </span>
+            </div>
+            <Input
+              id="brand-title"
+              value={titleDraft}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              placeholder="Capricho Express"
+              className="mt-1"
+            />
+            <Button
+              className="mt-3 gap-2"
+              disabled={savingTitle || titleDraft === headline?.title}
+              onClick={handleTitleSave}
+            >
+              {savingTitle ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              Guardar título
+            </Button>
+          </div>
+
+          {/* Color del título. */}
+          <div className="mt-5 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div className="mb-3 flex items-baseline justify-between">
+              <Label htmlFor="brand-color">Color del título</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="brand-color"
+                  type="color"
+                  value={colorDraft || "#ffffff"}
+                  onChange={(event) => setColorDraft(event.target.value)}
+                  className="block size-8 rounded border border-border/70 p-0.5 cursor-pointer"
+                />
+                <span className="rounded-full border border-border/70 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                  {colorDraft || "Sin color (predeterminado)"}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                className="gap-2"
+                disabled={savingColor}
+                onClick={handleColorSave}
+              >
+                {savingColor ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                Guardar color
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2 border-border/80"
+                disabled={savingColor}
+                onClick={() => {
+                  setColorDraft("");
+                  handleColorSave();
+                }}
+              >
+                <RotateCcw className="size-4" />
+                Usar color por defecto
+              </Button>
+            </div>
+          </div>
+
+          {/* Familia de letra del título. */}
+          <div className="mt-5 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div className="mb-3 flex items-baseline justify-between">
+              <Label htmlFor="brand-font">Tipo de letra del título</Label>
+              <span className="rounded-full border border-border/70 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {fontDraft ? fontDraft : "Predeterminado"}
+              </span>
+            </div>
+            <Select
+              value={fontDraft}
+              onValueChange={(value) => setFontDraft(value)}
+            >
+              <SelectTrigger id="brand-font">
+                <SelectValue placeholder="Seleccioná una tipografía" />
+              </SelectTrigger>
+              <SelectContent>
+                {BRAND_FONTS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="mt-3 gap-2"
+              disabled={savingFont || fontDraft === headline?.font}
+              onClick={handleFontSave}
+            >
+              {savingFont ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              Guardar tipo de letra
             </Button>
           </div>
 
