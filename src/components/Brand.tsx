@@ -4,9 +4,6 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "convex/react";/**
  * Logo de la plataforma. Si el perfil administrador subió uno propio, todas las
  * instancias lo usan con el tamaño que eligió; si no, va el logo original.
- *
- * El palabra "Capricho Express" va pegado al derecho del logo cuando es horizontal
- * (ancho > alto). Si admin sube un logo quadrado, el icono va sólo.
  */
 
 export function BrandMark({
@@ -34,19 +31,3 @@ export function BrandMark({
   );
 }
 
-export function Wordmark({
-  className,
-  markSize = 36,
-}: {
-  className?: string;
-  markSize?: number;
-}) {
-  return (
-    <span className={cn("flex items-center gap-2.5", className)}>
-      <BrandMark size={markSize} />
-      <span className="whitespace-nowrap font-display text-[17px] font-extrabold tracking-tight text-foreground">
-        Capricho <span className="text-accent">Express</span>
-      </span>
-    </span>
-  );
-}

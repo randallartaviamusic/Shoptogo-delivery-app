@@ -1,4 +1,4 @@
-import { BrandMark, Wordmark } from "@/components/Brand";
+import { BrandMark } from "@/components/Brand";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
@@ -223,7 +223,7 @@ export default function Landing() {
               <BrandMark size={32} />
             </span>
             <span className="hidden sm:block">
-              <Wordmark markSize={32} />
+              <BrandMark size={32} />
             </span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
