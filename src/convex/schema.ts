@@ -158,6 +158,7 @@ const schema = defineSchema(
       brandTitle: v.optional(v.string()),
       brandTitleColor: v.optional(v.string()),
       brandTitleFont: v.optional(v.string()),
+      brandTitleAlign: v.optional(v.string()),
       updatedAt: v.optional(v.number()),
     }).index("by_key", ["key"]),
   },

@@ -42,6 +42,12 @@ const BRAND_FONTS = [
   { value: "Impact, sans-serif", label: "Impact (strong)" },
 ];
 
+const BRAND_ALIGN_OPTIONS = [
+  { value: "left", label: "Izquierda", description: "El nombre va pegado al lado derecho del logo" },
+  { value: "center", label: "Centro", description: "El nombre va centrado en la barra" },
+  { value: "right", label: "Derecha", description: "El nombre va al lado izquierdo del logo" },
+];
+
 const ROLES = [
   {
     value: "buyer" as const,
@@ -76,6 +82,7 @@ export default function ProfilePage() {
   const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
   const brand = useQuery(api.branding.brand);
   const headline = useQuery(api.branding.brandHeadline);
+  const setBrandTitleAlign = useMutation(api.branding.setBrandTitleAlign);
   const generateLogoUploadUrl = useMutation(api.branding.generateLogoUploadUrl);
   const setLogo = useMutation(api.branding.setLogo);
   const setLogoSize = useMutation(api.branding.setLogoSize);
@@ -106,9 +113,11 @@ export default function ProfilePage() {
   const [titleDraft, setTitleDraft] = useState(headline?.title ?? "Capricho Express");
   const [colorDraft, setColorDraft] = useState(headline?.color ?? "");
   const [fontDraft, setFontDraft] = useState(headline?.font ?? "");
+  const [alignDraft, setAlignDraft] = useState(headline?.align ?? "left");
   const [savingTitle, setSavingTitle] = useState(false);
   const [savingColor, setSavingColor] = useState(false);
   const [savingFont, setSavingFont] = useState(false);
+  const [savingAlign, setSavingAlign] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -129,6 +138,7 @@ export default function ProfilePage() {
       setTitleDraft(headline.title);
       setColorDraft(headline.color);
       setFontDraft(headline.font);
+      setAlignDraft(headline.align);
     }
   }, [headline]);
 
@@ -253,9 +263,7 @@ export default function ProfilePage() {
     } finally {
       setSavingColor(false);
     }
-  };
-
-  const handleFontSave = async () => {
+  };  const handleFontSave = async () => {
     setSavingFont(true);
     try {
       await setBrandTitleFont({ font: fontDraft });
@@ -264,7 +272,20 @@ export default function ProfilePage() {
       toast.error(error instanceof Error ? error.message : "No pudimos guardar");
     } finally {
       setSavingFont(false);
-    }    };
+    }
+  };
+
+  const handleAlignSave = async () => {
+    setSavingAlign(true);
+    try {
+      await setBrandTitleAlign({ align: alignDraft });
+      toast.success("Alineación del título actualizada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSavingAlign(false);
+    }
+  };
 
   const handleLogoReset = async () => {
     setUploadingLogo(true);
@@ -644,6 +665,46 @@ export default function ProfilePage() {
                 <Save className="size-4" />
               )}
               Guardar tipo de letra
+            </Button>
+          </div>
+
+          {/* Alinementación del título en la barra. */}
+          <div className="mt-5 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div className="mb-3 flex items-baseline justify-between">
+              <Label htmlFor="brand-align">Alineación del título en la barra</Label>
+              <span className="rounded-full border border-border/70 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {alignDraft === "left" ? "Izquierda" : alignDraft === "center" ? "Centro" : "Derecha"}
+              </span>
+            </div>
+            <Select
+              value={alignDraft}
+              onValueChange={(value) => setAlignDraft(value as "left" | "center" | "right")}
+            >
+              <SelectTrigger id="brand-align">
+                <SelectValue placeholder="Seleccioná la alineación" />
+              </SelectTrigger>
+              <SelectContent>
+                {BRAND_ALIGN_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div>
+                      <div className="font-medium">{option.label}</div>
+                      <div className="text-[11px] text-muted-foreground">{option.description}</div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              className="mt-3 gap-2"
+              disabled={savingAlign || alignDraft === headline?.align}
+              onClick={handleAlignSave}
+            >
+              {savingAlign ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              Guardar alineación
             </Button>
           </div>
 

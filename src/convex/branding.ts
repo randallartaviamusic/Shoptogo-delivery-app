@@ -16,6 +16,7 @@ export const MAX_LOGO_SIZE = 88;
 export const DEFAULT_BRAND_TITLE = "Capricho Express";
 export const DEFAULT_BRAND_TITLE_COLOR = "";
 export const DEFAULT_BRAND_TITLE_FONT = "";
+export const DEFAULT_BRAND_TITLE_ALIGN = "left";
 
 async function brandDoc(ctx: QueryCtx | MutationCtx) {
   return await ctx.db
@@ -52,7 +53,7 @@ export const brand = query({
   },
 });
 
-/** Título, color y familia de letra del nombre en la barra superior. Es público. */
+/** Título, color, familia de letra y alineación del nombre en la barra superior. Es público. */
 export const brandHeadline = query({
   args: {},
   handler: async (ctx) => {
@@ -61,6 +62,7 @@ export const brandHeadline = query({
       title: doc?.brandTitle ?? DEFAULT_BRAND_TITLE,
       color: doc?.brandTitleColor ?? DEFAULT_BRAND_TITLE_COLOR,
       font: doc?.brandTitleFont ?? DEFAULT_BRAND_TITLE_FONT,
+      align: doc?.brandTitleAlign ?? DEFAULT_BRAND_TITLE_ALIGN,
     };
   },
 });
@@ -190,5 +192,23 @@ export const setBrandTitleFont = mutation({
       });
     }
     return font;
+  },
+});
+
+export const setBrandTitleAlign = mutation({
+  args: { align: v.string() },
+  handler: async (ctx, { align }) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, { brandTitleAlign: align, updatedAt: Date.now() });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        brandTitleAlign: align,
+        updatedAt: Date.now(),
+      });
+    }
+    return align;
   },
 });

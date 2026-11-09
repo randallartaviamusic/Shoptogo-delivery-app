@@ -36,18 +36,23 @@ export function BrandMark({
 /** Título de la plataforma que puede editar el perfil administrador. */
 export function BrandHeadline({
   className,
+  align,
 }: {
   className?: string;
+  align?: "left" | "center" | "right";
 }) {
   const headline = useQuery(api.branding.brandHeadline);
   const title = headline?.title ?? "Capricho Express";
   const color = headline?.color;
   const font = headline?.font;
+  const effectiveAlign = align ?? headline?.align ?? "left";
 
   return (
     <span
       className={cn(
         "whitespace-nowrap font-display font-extrabold tracking-tight text-foreground",
+        effectiveAlign === "center" && "mx-auto text-center",
+        effectiveAlign === "right" && "ml-auto",
         className,
       )}
       style={{
