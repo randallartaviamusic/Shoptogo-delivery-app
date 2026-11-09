@@ -83,9 +83,6 @@ export default function OnboardingPage() {
             </span>
             <span className="hidden sm:block">
               <Wordmark markSize={32} />
-              <span className="ml-2 text-[11px] font-semibold tracking-tight text-muted-foreground">
-                Capricho <span className="text-accent">Express</span>
-              </span>
             </span>
           </Link>
           <Link

@@ -177,9 +177,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         <div className="flex items-center justify-between">
           <Link to="/bienvenida" aria-label="Capricho Express">
             <Wordmark markSize={30} />
-            <span className="ml-2 text-[11px] font-semibold tracking-tight text-muted-foreground">
-              Capricho <span className="text-accent">Express</span>
-            </span>
           </Link>
           <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
             <Link to="/bienvenida">Inicio</Link>
