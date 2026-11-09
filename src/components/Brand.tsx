@@ -19,26 +19,18 @@ export function BrandMark({
   const brand = useQuery(api.branding.brand);
   const src = brand?.logoUrl ?? defaultLogo;
   const px = brand?.logoSize ?? size;
-  const isSquare = src === defaultLogo || brand?.logoUrl === undefined;
 
   return (
-    <div className={cn("inline-flex items-center gap-2.5", className)}>
-      {isSquare && (
-        <span className="font-display text-[14px] font-extrabold tracking-tight text-foreground">
-          Capricho <span className="text-accent">Express</span>
-        </span>
-      )}
-      <img
-        src={src}
-        alt="Capricho Express"
-        style={{
-          height: px,
-          maxWidth: isSquare ? px * 2.6 : Math.min(px, 64),
-          width: "auto",
-        }}
-        className="shrink-0 rounded-2xl object-contain"
-      />
-    </div>
+    <img
+      src={src}
+      alt="Capricho Express"
+      style={{
+        height: px,
+        maxWidth: Math.min(px, 64),
+        width: "auto",
+      }}
+      className={cn("shrink-0 rounded-2xl object-contain", className)}
+    />
   );
 }
 
