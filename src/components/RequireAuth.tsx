@@ -39,8 +39,8 @@ export function RequireAuth({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // La sesión de invitado permite navegar el mazo, pero no cuenta como cuenta
-  // registrada para entrar a un panel.
+  // Una sesión anónima de antes de este cambio no cuenta como cuenta: hay que
+  // entrar o registrarse con correo y contraseña.
   const signedIn = isAuthenticated && Boolean(user) && !user?.isAnonymous;
 
   if (isLoading) {
@@ -81,7 +81,7 @@ export function RequireAuth({
             <Button
               variant="ghost"
               className="w-full"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/bienvenida")}
             >
               Volver al inicio
             </Button>

@@ -26,7 +26,6 @@ import { toast } from "sonner";
 
 export default function CartPage() {
   const { user } = useAuth();
-  const isGuest = Boolean(user?.isAnonymous);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const cart = useQuery(api.cart.myCart);
@@ -49,18 +48,19 @@ export default function CartPage() {
   const confirmRequested = searchParams.get("confirm") === "1";
   const welcomed = useRef(false);
   useEffect(() => {
-    if (!confirmRequested || welcomed.current || isGuest || count === 0) return;
+    if (!confirmRequested || welcomed.current || count === 0) return;
     welcomed.current = true;
     toast.success("Tu cuenta está lista", {
       description: "Ya podés confirmar tu pedido.",
     });
     summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [confirmRequested, isGuest, count]);
+  }, [confirmRequested, count]);
 
   const handleCheckout = async () => {
-    if (isGuest) {
+    // Confirmar el pedido siempre pide cuenta: si no hay sesión, a registrarse.
+    if (!user || user.isAnonymous) {
       toast("Creá tu cuenta para confirmar el pedido", {
-        description: "Tu carrito queda guardado y vuelve con vos al entrar.",
+        description: "Entrás con tu correo y contraseña y volvés directo acá.",
       });
       navigate("/auth?role=buyer&returnTo=%2Fcart");
       return;
@@ -303,32 +303,6 @@ export default function CartPage() {
                 Hay un negocio cerrado en tu carrito. Quitá sus productos para
                 poder continuar.
               </p>
-            )}
-
-            {isGuest && (
-              <div className="mt-3 rounded-xl border border-accent/25 bg-accent/[0.06] p-3">
-                <p className="text-[11px] leading-relaxed text-accent">
-                  Deslizás sin cuenta. Al confirmar te pedimos crear tu cuenta o
-                  iniciar sesión: tu carrito no se pierde.
-                </p>
-                <div className="mt-2.5 grid grid-cols-2 gap-2">
-                  <Button asChild size="sm" className="bg-ember-gradient text-black">
-                    <Link to="/auth?role=buyer&returnTo=%2Fcart">
-                      Crear cuenta
-                    </Link>
-                  </Button>
-                  <Button
-                    asChild
-                    size="sm"
-                    variant="outline"
-                    className="border-accent/30 text-accent hover:bg-accent/10"
-                  >
-                    <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fcart">
-                      Iniciar sesión
-                    </Link>
-                  </Button>
-                </div>
-              </div>
             )}
 
             <Button

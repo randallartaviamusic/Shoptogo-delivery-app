@@ -22,7 +22,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 const ROLES = [
@@ -158,35 +158,6 @@ export default function ProfilePage() {
           "Tus datos de entrega, tu rol en Capricho Express y tus números de antojos."
         }
       />
-
-      {user.isAnonymous && (
-        <div className="mb-5 rounded-2xl border border-accent/25 bg-accent/[0.06] p-4">
-          <p className="text-sm font-semibold text-accent">
-            Estás navegando como invitado
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Podés deslizar y armar tu carrito sin cuenta. Para confirmar el
-            pedido te vamos a pedir registrarte.
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:max-w-xs">
-            <Button asChild size="sm" className="bg-ember-gradient text-black">
-              <Link to="/auth?role=buyer&returnTo=%2Fprofile">
-                Crear cuenta
-              </Link>
-            </Button>
-            <Button
-              asChild
-              size="sm"
-              variant="outline"
-              className="border-accent/30 text-accent hover:bg-accent/10"
-            >
-              <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fprofile">
-                Iniciar sesión
-              </Link>
-            </Button>
-          </div>
-        </div>
-      )}
 
       <div className="surface-raised overflow-hidden rounded-3xl">
         <div className="relative h-32 sm:h-44">
@@ -424,7 +395,7 @@ export default function ProfilePage() {
         className="mt-5 w-full gap-2 border-primary/25 text-primary hover:bg-primary/10"
         onClick={async () => {
           await signOut();
-          navigate("/swipe");
+          navigate("/auth");
         }}
       >
         <LogOut className="size-4" />

@@ -2,7 +2,7 @@ import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
-import { GuestSession } from "@/components/GuestSession";
+import { useAuth } from "@/hooks/use-auth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -31,6 +31,23 @@ function RouteLoading() {
       <div className="animate-pulse text-muted-foreground">Cargando...</div>
     </div>
   );
+}
+
+/**
+ * Ya no hay cuentas de invitado. Si en este navegador quedó abierta una sesión
+ * anónima de antes, la cerramos para que la persona entre con su cuenta.
+ */
+function LegacyGuestCleanup() {
+  const { isLoading, user, signOut } = useAuth();
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (handled.current || isLoading || !user?.isAnonymous) return;
+    handled.current = true;
+    signOut().catch(() => undefined);
+  }, [isLoading, user, signOut]);
+
+  return null;
 }
 
 class ToolbarErrorBoundary extends React.Component<
@@ -122,7 +139,7 @@ createRoot(document.getElementById("root")!).render(
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
         <BrowserRouter>
-          <GuestSession />
+          <LegacyGuestCleanup />
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
@@ -152,7 +169,15 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
-              <Route element={<AppShell />}>
+              {/* La app arranca en la sección de antojo y pide cuenta: no hay
+                  sesión de invitado. */}
+              <Route
+                element={
+                  <RequireAuth redirectImmediately>
+                    <AppShell />
+                  </RequireAuth>
+                }
+              >
                 <Route path="/swipe" element={<SwipePage />} />
                 <Route path="/cart" element={<CartPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
