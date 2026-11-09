@@ -60,8 +60,8 @@ const ROLES = [
       "Descubrí productos que no sabías que querías, de comida a tecnología. Un swipe y están en camino.",
     icon: ShoppingBag,
     points: ["13 rubros", "Filtros por rubro", "Seguimiento en vivo"],
-    href: "/auth?role=buyer&returnTo=%2Fswipe",
-    cta: "Crear mi cuenta",
+    href: "/swipe",
+    cta: "Probar sin cuenta",
   },
   {
     title: "Negocios",
@@ -281,8 +281,7 @@ export default function Landing() {
               Capricho Express mezcla el marketplace con el gesto más adictivo
               del mundo. Productos al azar de los mejores locales de tu ciudad
               —comida, ropa, tecnología, farmacia y más—: a la derecha si te
-              gusta, a la izquierda si no. Creá tu cuenta con correo y
-              contraseña y empezá a deslizar.
+              gusta, a la izquierda si no.              Sin contraseñas. Así de simple.
             </motion.p>
 
             <motion.div
@@ -292,8 +291,8 @@ export default function Landing() {
               className="mt-8 flex flex-wrap items-center gap-3"
             >
               <Button asChild size="lg" className="h-12 gap-2 bg-ember-gradient px-6 text-black">
-                <Link to="/auth?role=buyer&returnTo=%2Fswipe">
-                  Crear mi cuenta
+                <Link to="/swipe">
+                  Deslizar gratis
                   <ArrowRight className="size-4" />
                 </Link>
               </Button>
@@ -633,13 +632,13 @@ export default function Landing() {
             Tu próximo antojo está a un swipe de distancia
           </h2>
           <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-            Creá tu cuenta y deslizá gratis. Si querés vender o repartir, elegí
-            ese rol al registrarte. Sin planes ni suscripciones.
+            Entrá y deslizá gratis. Si querés vender o repartir,
+            creá tu cuenta y elegí tu rol. Sin planes ni suscripciones.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" className="h-12 gap-2 bg-ember-gradient px-7 text-black">
-              <Link to="/auth?role=buyer&returnTo=%2Fswipe">
-                Crear mi cuenta
+              <Link to="/swipe">
+                Deslizar gratis
                 <ArrowRight className="size-4" />
               </Link>
             </Button>

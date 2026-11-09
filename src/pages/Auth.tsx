@@ -2,9 +2,10 @@ import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
+import { GUEST_HANDOFF_KEY } from "@/lib/guest-cart";
 import { motion } from "framer-motion";
 import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 
 type Role = "buyer" | "business" | "courier";
@@ -96,6 +97,12 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Si venía navegando como invitado, guardamos su id para traspasarle el carrito.
+  const guestRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (user?.isAnonymous) guestRef.current = user._id;
+  }, [user]);
+
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     if (!authLoading) {
@@ -124,7 +131,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     );
   }
 
-  // Con una cuenta de verdad esta pantalla no tiene nada que hacer: sigue de largo.
+  // Un invitado puede ver este formulario; una cuenta de verdad sigue de largo.
   if (isAuthenticated && user && !user.isAnonymous) {
     return (
       <Navigate
@@ -137,8 +144,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const handleSubmit = async () => {
     setSaving(true);
     setError(null);
-    // Si quedó una sesión vieja abierta, el cliente de Convex no vuelve a leer el
-    // token por su cuenta: recargamos en el destino ya con la cuenta nueva.
+    const guestId = guestRef.current;
+    // Si ya había una sesión abierta (la de invitado), el cliente de Convex no
+    // vuelve a leer el token por su cuenta: hay que recargar para que tome la
+    // cuenta nueva.
     const hadSession = isAuthenticated;
     try {
       await signIn("password", {
@@ -149,10 +158,22 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         flow: mode === "signup" ? "signUp" : "signIn",
       });
 
+      // El carrito del invitado se traspasa cuando la cuenta ya está activa,
+      // después de recargar: antes de eso la petición saldría como invitado.
+      if (guestId) {
+        try {
+          window.sessionStorage.setItem(GUEST_HANDOFF_KEY, guestId);
+        } catch {
+          // Sin sessionStorage el carrito simplemente no se traspasa.
+        }
+      }
+
       const destination = resolveRedirectAfterAuth(redirectParam, redirectAfterAuth);
-      // Si venía a confirmar su pedido, la vuelta es al bloque de confirmar.
       const target = destination === "/cart" ? "/cart?confirm=1" : destination;
       if (hadSession) {
+        // Con una sesión de invitado abierta el cliente de Convex no vuelve a
+        // leer el token por su cuenta: recargamos en el destino para entrar a la
+        // cuenta en el acto.
         window.location.replace(target);
       } else {
         navigate(target, { replace: true });
@@ -362,9 +383,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           </div>
 
           <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
-            Tu cuenta se crea con correo y contraseña, sin códigos por mail.
-            Cada rol (comprador, negocio, repartidor) es una cuenta aparte con
-            su propio correo.
+            Podés mirar el mazo sin cuenta y registrarte recién al confirmar tu
+            pedido. Cada rol (comprador, negocio, repartidor) es una cuenta
+            aparte con su propio correo y contraseña.
           </p>
         </motion.div>
       </div>

@@ -39,8 +39,8 @@ export function RequireAuth({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Una sesión anónima de antes de este cambio no cuenta como cuenta: hay que
-  // entrar o registrarse con correo y contraseña.
+  // La sesión de invitado permite navegar el mazo, pero no cuenta como cuenta
+  // registrada para entrar a un panel.
   const signedIn = isAuthenticated && Boolean(user) && !user?.isAnonymous;
 
   if (isLoading) {
