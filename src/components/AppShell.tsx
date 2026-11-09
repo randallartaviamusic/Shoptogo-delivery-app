@@ -95,7 +95,7 @@ export function AppShell() {
     return () => clearTimeout(timer);
   }, [isLoading, user]);
 
-  // Mientras se abre la sesión de invitado no mostramos la app vacía.
+  // Mientras se resuelve la sesión no mostramos la app vacía.
   if (isLoading || !user) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
@@ -125,9 +125,8 @@ export function AppShell() {
     );
   }
 
-  // El invitado entra como comprador: puede mirar el mazo y armar el carrito.
-  const isGuest = Boolean(user.isAnonymous);
-  const role = user.role ?? (isGuest ? "buyer" : null);
+  // Toda la app va con cuenta: el rol define la sección de cada persona.
+  const role = user.role ?? null;
   if (!role) return <Navigate to="/onboarding" replace />;
 
   const home = ROLE_HOME[role] ?? "/swipe";
@@ -135,13 +134,8 @@ export function AppShell() {
   if (role !== "buyer" && isBuyerRoute) {
     return <Navigate to={home} replace />;
   }
-  // Una cuenta de comprador no administra locales ni entregas; el invitado sí
-  // puede llegar al bloqueo de esas páginas para registrarse con otra cuenta.
-  if (
-    role === "buyer" &&
-    !isGuest &&
-    ["/business", "/courier"].includes(location.pathname)
-  ) {
+  // Una cuenta de comprador no administra locales ni entregas.
+  if (role === "buyer" && ["/business", "/courier"].includes(location.pathname)) {
     return <Navigate to="/swipe" replace />;
   }
 
@@ -152,7 +146,7 @@ export function AppShell() {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/swipe");
+    navigate("/");
   };
 
   return (
@@ -220,23 +214,6 @@ export function AppShell() {
           </Link>
         )}
 
-        {isGuest && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <Link
-              to="/auth?role=buyer&returnTo=%2Fprofile"
-              className="rounded-xl bg-ember-gradient px-2 py-2 text-center text-[11px] font-semibold text-black transition-opacity hover:opacity-90"
-            >
-              Crear cuenta
-            </Link>
-            <Link
-              to="/auth?role=buyer&mode=signin&returnTo=%2Fprofile"
-              className="rounded-xl border border-accent/25 bg-accent/[0.06] px-2 py-2 text-center text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10"
-            >
-              Iniciar sesión
-            </Link>
-          </div>
-        )}
-
         <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
             <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
               {user.image ? (
@@ -251,10 +228,10 @@ export function AppShell() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">
-                {user.name ?? (isGuest ? "Invitado" : "Sin nombre")}
+                {user.name ?? "Sin nombre"}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">
-                {isGuest ? "Sin cuenta todavía" : ROLE_LABEL[role]}
+                {ROLE_LABEL[role]}
               </p>
             </div>
             <Button

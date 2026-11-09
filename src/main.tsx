@@ -2,7 +2,8 @@ import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
-import { GuestSession } from "@/components/GuestSession";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLE_HOME } from "@/lib/format";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -31,6 +32,19 @@ function RouteLoading() {
       <div className="animate-pulse text-muted-foreground">Cargando...</div>
     </div>
   );
+}
+
+/**
+ * La portada es pública: quien todavía no tiene cuenta ve la presentación y
+ * entra a registrarse. Una cuenta con sesión abierta sigue a su sección.
+ */
+function Home() {
+  const { isLoading, isAuthenticated, user } = useAuth();
+  if (isLoading) return <RouteLoading />;
+  if (isAuthenticated && user && !user.isAnonymous) {
+    return <Navigate to={ROLE_HOME[user.role ?? "buyer"] ?? "/swipe"} replace />;
+  }
+  return <Landing />;
 }
 
 class ToolbarErrorBoundary extends React.Component<
@@ -88,6 +102,23 @@ class RootErrorBoundary extends React.Component<
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+/**
+ * Ya no hay cuentas de invitado. Si en este navegador quedó abierta una sesión
+ * anónima de antes, la cerramos para que la persona entre con su cuenta.
+ */
+function LegacyGuestCleanup() {
+  const { isLoading, user, signOut } = useAuth();
+  const handled = useRef(false);
+
+  useEffect(() => {
+    if (handled.current || isLoading || !user?.isAnonymous) return;
+    handled.current = true;
+    signOut().catch(() => undefined);
+  }, [isLoading, user, signOut]);
+
+  return null;
+}
+
 function RouteSyncer() {
   const location = useLocation();
   const savedPath = useRef<string | null>(null);
@@ -122,11 +153,11 @@ createRoot(document.getElementById("root")!).render(
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
         <BrowserRouter>
-          <GuestSession />
+          <LegacyGuestCleanup />
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
-              <Route path="/" element={<Navigate to="/swipe" replace />} />
+              <Route path="/" element={<Home />} />
               <Route path="/bienvenida" element={<Landing />} />
               <Route
                 path="/auth"
@@ -152,7 +183,14 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
-              <Route element={<AppShell />}>
+              {/* Todo lo que es la app pide una cuenta: no hay sesión de invitado. */}
+              <Route
+                element={
+                  <RequireAuth redirectImmediately>
+                    <AppShell />
+                  </RequireAuth>
+                }
+              >
                 <Route path="/swipe" element={<SwipePage />} />
                 <Route path="/cart" element={<CartPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
