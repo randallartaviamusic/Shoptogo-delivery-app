@@ -1,7 +1,9 @@
+import defaultLogo from "@/assets/logo.svg";
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
@@ -13,9 +15,12 @@ import {
   Camera,
   Check,
   Flame,
+  ImageUp,
   Loader2,
   LogOut,
+  RotateCcw,
   Save,
+  ShieldCheck,
   ShoppingBag,
   Star,
   Store,
@@ -24,6 +29,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
+
+const LOGO_MIN = 20;
+const LOGO_MAX = 88;
 
 const ROLES = [
   {
@@ -55,9 +63,22 @@ export default function ProfilePage() {
   const generatePhotoUploadUrl = useMutation(api.profiles.generatePhotoUploadUrl);
   const setPhoto = useMutation(api.profiles.setPhoto);
 
+  // Administración de la marca (sólo para el perfil administrador).
+  const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
+  const brand = useQuery(api.branding.brand);
+  const generateLogoUploadUrl = useMutation(api.branding.generateLogoUploadUrl);
+  const setLogo = useMutation(api.branding.setLogo);
+  const setLogoSize = useMutation(api.branding.setLogoSize);
+  const resetLogo = useMutation(api.branding.resetLogo);
+
   const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [savingLogoSize, setSavingLogoSize] = useState(false);
+  const [logoSizeDraft, setLogoSizeDraft] = useState(40);
 
   const [form, setForm] = useState({
     name: "",
@@ -77,6 +98,10 @@ export default function ProfilePage() {
       city: user.city ?? "",
     });
   }, [user]);
+
+  useEffect(() => {
+    if (brand?.logoSize) setLogoSizeDraft(brand.logoSize);
+  }, [brand?.logoSize]);
 
   if (!user) {
     return (
@@ -132,6 +157,62 @@ export default function ProfilePage() {
       );
     } finally {
       setUploading(null);
+    }
+  };
+
+  const handleLogoUpload = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Elegí una imagen (PNG, JPG, WebP o SVG)");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error("El logo no puede pesar más de 4 MB");
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const uploadUrl = await generateLogoUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir la imagen");
+      const { storageId } = (await response.json()) as { storageId: string };
+      await setLogo({ storageId: storageId as Id<"_storage"> });
+      toast.success("Logo de la plataforma actualizado");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir el logo",
+      );
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleLogoSave = async () => {
+    setSavingLogoSize(true);
+    try {
+      await setLogoSize({ size: logoSizeDraft });
+      toast.success(`Tamaño del logo guardado en ${logoSizeDraft}px`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSavingLogoSize(false);
+    }
+  };
+
+  const handleLogoReset = async () => {
+    setUploadingLogo(true);
+    try {
+      await resetLogo();
+      toast.success("Volvimos al logo original");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos cambiarlo");
+    } finally {
+      setUploadingLogo(false);
     }
   };
 
@@ -246,8 +327,16 @@ export default function ProfilePage() {
               <p className="truncate text-sm text-muted-foreground">
                 {user.email ?? "Sin email"}
               </p>
-              <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent">
-                {ROLE_LABEL[role]}
+              <span className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent">
+                  {ROLE_LABEL[role]}
+                </span>
+                {isAdmin && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                    <ShieldCheck className="size-3" />
+                    Administrador
+                  </span>
+                )}
               </span>
             </div>
           </div>
@@ -278,6 +367,114 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {isAdmin && (
+        <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                <ShieldCheck className="size-3.5" />
+                Perfil administrador
+              </p>
+              <h2 className="font-display text-lg font-bold">Logo de la plataforma</h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Subí tu imagen y ajustá el tamaño a gusto. Se aplica en toda la
+                plataforma: barra lateral, cabecera, portada y pantallas de acceso.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex min-h-[148px] items-center justify-center rounded-2xl border border-border/70 bg-black/30 p-6">
+            <img
+              src={brand?.logoUrl ?? defaultLogo}
+              alt="Logo de Capricho Express"
+              style={{
+                height: logoSizeDraft,
+                maxWidth: logoSizeDraft * 2.6,
+                width: "auto",
+              }}
+              className="rounded-2xl object-contain"
+            />
+          </div>
+
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              handleLogoUpload(file);
+            }}
+          />
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              className="gap-2 bg-ember-gradient text-black"
+              disabled={uploadingLogo}
+              onClick={() => logoInputRef.current?.click()}
+            >
+              {uploadingLogo ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImageUp className="size-4" />
+              )}
+              {uploadingLogo ? "Subiendo" : brand?.logoUrl ? "Cambiar logo" : "Subir imagen"}
+            </Button>
+            {brand?.logoUrl && (
+              <Button
+                variant="outline"
+                className="gap-2 border-border/80"
+                disabled={uploadingLogo}
+                onClick={handleLogoReset}
+              >
+                <RotateCcw className="size-4" />
+                Usar logo original
+              </Button>
+            )}
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div className="flex items-baseline justify-between">
+              <Label htmlFor="logo-size">Tamaño del logo</Label>
+              <span className="rounded-full border border-border/70 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {logoSizeDraft}px
+              </span>
+            </div>
+            <Slider
+              id="logo-size"
+              className="mt-3"
+              min={LOGO_MIN}
+              max={LOGO_MAX}
+              step={2}
+              value={[logoSizeDraft]}
+              onValueChange={([value]) => setLogoSizeDraft(value ?? LOGO_MIN)}
+            />
+            <div className="mt-1 flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span>Más chico</span>
+              <span>Más grande</span>
+            </div>
+            <Button
+              className="mt-3 gap-2"
+              disabled={savingLogoSize || logoSizeDraft === brand?.logoSize}
+              onClick={handleLogoSave}
+            >
+              {savingLogoSize ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              Guardar tamaño
+            </Button>
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            PNG, JPG, WebP o SVG hasta 4 MB. Si subís un logo horizontal se
+            respeta su proporción.
+          </p>
+        </section>
+      )}
+
       <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
         <h2 className="font-display text-lg font-bold">Datos de entrega</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -299,7 +496,7 @@ export default function ProfilePage() {
               id="phone"
               value={form.phone}
               onChange={(event) => setForm({ ...form, phone: event.target.value })}
-              placeholder="+54 11 5555 5555"
+              placeholder="+506 8888 8888"
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
@@ -310,7 +507,7 @@ export default function ProfilePage() {
               onChange={(event) =>
                 setForm({ ...form, address: event.target.value })
               }
-              placeholder="Av. Siempreviva 742, 3B"
+              placeholder="200 m norte del parque central, casa 3B"
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
@@ -319,7 +516,7 @@ export default function ProfilePage() {
               id="city"
               value={form.city}
               onChange={(event) => setForm({ ...form, city: event.target.value })}
-              placeholder="Buenos Aires"
+              placeholder="San José"
             />
           </div>
         </div>

@@ -2,6 +2,7 @@ import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
+import { useHideOnScroll } from "@/hooks/use-hide-on-scroll";
 import { money, ROLE_HOME, ROLE_LABEL, initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -73,8 +74,10 @@ export function AppShell() {
   const navigate = useNavigate();
   const outlet = useOutlet();
   const cart = useQuery(api.cart.myCart);
+  const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
   const ensureCatalog = useMutation(api.seed.ensure);
   const seeded = useRef(false);
+  const headerHidden = useHideOnScroll();
 
   useEffect(() => {
     if (seeded.current) return;
@@ -163,7 +166,7 @@ export function AppShell() {
 
         <div className="mt-8 space-y-1.5">
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/70">
-            {isGuest ? "Visitante" : ROLE_LABEL[role]}
+            {isGuest ? "Visitante" : isAdmin ? "Administrador" : ROLE_LABEL[role]}
           </p>
           {nav.map((item) => {
             const active = current === item.to;
@@ -261,7 +264,7 @@ export function AppShell() {
                 {user?.name ?? "Sin nombre"}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">
-                {ROLE_LABEL[role]}
+                {isAdmin ? "Administrador" : ROLE_LABEL[role]}
               </p>
             </div>
             <Button
@@ -277,7 +280,14 @@ export function AppShell() {
         )}
       </aside>
 
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur-xl lg:hidden">
+      <header
+        className={cn(
+          "sticky top-0 z-30 flex items-center justify-between border-b bg-background/85 px-4 py-3 backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out lg:hidden",
+          headerHidden
+            ? "-translate-y-full border-transparent"
+            : "translate-y-0 border-border/60",
+        )}
+      >
         <Link to={home} aria-label="Capricho Express">
           <BrandMark size={30} />
         </Link>

@@ -1,6 +1,12 @@
-import logo from "@/assets/logo.svg";
+import defaultLogo from "@/assets/logo.svg";
+import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
+import { useQuery } from "convex/react";
 
+/**
+ * Logo de la plataforma. Si el perfil administrador subió uno propio, todas las
+ * instancias lo usan con el tamaño que eligió; si no, va el logo original.
+ */
 export function BrandMark({
   size = 40,
   className,
@@ -8,14 +14,16 @@ export function BrandMark({
   size?: number;
   className?: string;
 }) {
+  const brand = useQuery(api.branding.brand);
+  const src = brand?.logoUrl ?? defaultLogo;
+  const px = brand?.logoSize ?? size;
+
   return (
     <img
-      src={logo}
+      src={src}
       alt="Capricho Express"
-      width={size}
-      height={size}
-      style={{ width: size, height: size }}
-      className={cn("rounded-2xl", className)}
+      style={{ height: px, maxWidth: px * 2.6, width: "auto" }}
+      className={cn("shrink-0 rounded-2xl object-contain", className)}
     />
   );
 }

@@ -3,6 +3,7 @@ import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { useHideOnScroll } from "@/hooks/use-hide-on-scroll";
 import { DEFAULT_DEPARTMENT, DEPARTMENTS } from "@/lib/departments";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -205,9 +206,17 @@ function PhoneMockup() {
 }
 
 export default function Landing() {
+  const headerHidden = useHideOnScroll();
   return (
     <div className="min-h-screen overflow-x-hidden">
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/75 backdrop-blur-xl">
+      <header
+        className={cn(
+          "sticky top-0 z-50 border-b bg-background/80 backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out",
+          headerHidden
+            ? "-translate-y-full border-transparent"
+            : "translate-y-0 border-border/50",
+        )}
+      >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
           <Link to="/bienvenida" aria-label="Capricho Express">
             <span className="sm:hidden">

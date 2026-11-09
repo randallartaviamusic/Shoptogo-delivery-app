@@ -149,6 +149,14 @@ const schema = defineSchema(
       key: v.string(),
       value: v.string(),
     }).index("by_key", ["key"]),
+
+    // Identidad visual de la plataforma que edita el perfil administrador.
+    settings: defineTable({
+      key: v.string(),
+      logoUrl: v.optional(v.string()),
+      logoSize: v.optional(v.number()),
+      updatedAt: v.optional(v.number()),
+    }).index("by_key", ["key"]),
   },
   {
     schemaValidation: false,

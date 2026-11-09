@@ -1,13 +1,12 @@
 import type { OrderStatus } from "@/convex/schema";
 
-const currency = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  maximumFractionDigits: 0,
-});
+// Costa Rica: colones con separador de miles con punto (₡12.500).
+const amount = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 });
 
 export function money(value: number) {
-  return currency.format(value).replace("ARS", "$").replace(/\s+/g, " ").trim();
+  const rounded = Math.round(Number.isFinite(value) ? value : 0);
+  const sign = rounded < 0 ? "-" : "";
+  return `${sign}₡${amount.format(Math.abs(rounded))}`;
 }
 
 export const ORDER_STATUS: Record<
