@@ -247,17 +247,17 @@ export function AppShell() {
           </div>
         ) : (
         <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
-            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
-              {user?.image ? (
-                <img
-                  src={user?.image}
-                  alt={user?.name ?? "Foto de perfil"}
-                  className="size-full object-cover"
-                />
-              ) : (
-                initials(user?.name)
-              )}
-            </div>
+            {(user?.image) ? (
+              <img
+                src={user.image}
+                alt={user.name ?? "Tu perfil"}
+                className="flex size-[34px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary object-cover ring-1 ring-border/80"
+              />
+            ) : (
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
+                {initials(user?.name)}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">
                 {user?.name ?? "Sin nombre"}
@@ -319,9 +319,17 @@ export function AppShell() {
             </Link>
           ) : (
             <Link to="/profile" aria-label="Perfil">
-              <div className="ml-1 flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
-                {initials(user?.name)}
-              </div>
+              {(user?.image) ? (
+                <img
+                  src={user.image}
+                  alt={user.name ?? "Tu perfil"}
+                  className="ml-1 size-[34px] rounded-xl object-cover ring-1 ring-border/80"
+                />
+              ) : (
+                <div className="ml-1 flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
+                  {initials(user?.name)}
+                </div>
+              )}
             </Link>
           )}
         </div>
