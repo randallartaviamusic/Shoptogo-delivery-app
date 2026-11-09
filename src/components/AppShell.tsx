@@ -290,6 +290,7 @@ export function AppShell() {
       >
         <Link to={home} aria-label="Capricho Express">
           <BrandMark size={30} />
+          <Wordmark markSize={22} />
         </Link>
         <div className="flex items-center gap-1">
           {role === "buyer" && (
