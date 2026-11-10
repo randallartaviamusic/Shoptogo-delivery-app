@@ -22,10 +22,32 @@ function foodTipo(category: string) {
   return "Principales";
 }
 
+/**
+ * El filtro "Tipo de cocina" usa una taxonomía más amplia que el rubro del
+ * local: varios rubros caen en un mismo tipo (hamburguesas y pollo frito son
+ * comida rápida, por ejemplo).
+ */
+const CUISINE_BY_CATEGORY: Record<string, string> = {
+  Hamburguesas: "Comida rápida",
+  "Pollo frito": "Comida rápida",
+  Pizza: "Comida italiana",
+  Pasta: "Comida italiana",
+  Sushi: "Comida japonesa",
+  Asiática: "Comida japonesa",
+  Mexicana: "Comida mexicana",
+  Postres: "Otra",
+  Café: "Otra",
+  Saludable: "Comida casera o tradicional",
+};
+
+function cuisineFor(category: string) {
+  return CUISINE_BY_CATEGORY[category] ?? "Otra";
+}
+
 /** Every food dish gets facet values so the deck filters work for comida too. */
 function foodAttributes(category: string, tags: string[], cuisine: string) {
   const attributes: Array<{ key: string; value: string }> = [
-    { key: "cocina", value: cuisine },
+    { key: "cocina", value: cuisineFor(cuisine) },
     { key: "tipo", value: foodTipo(category) },
     {
       key: "porcion",
@@ -703,6 +725,37 @@ async function tagLegacyCatalog(ctx: MutationCtx) {
   }
 }
 
+/**
+ * One-time upgrade: pasa los platos del catálogo demo a la nueva taxonomía de
+ * tipos de cocina sin tocar el resto de sus atributos.
+ */
+async function upgradeFoodFacets(ctx: MutationCtx) {
+  const businesses = await ctx.db.query("businesses").collect();
+  const byId = new Map(businesses.map((business) => [business._id, business]));
+  const products = await ctx.db.query("products").collect();
+  let updated = 0;
+  for (const product of products) {
+    if (!product.isDemo) continue;
+    const business = byId.get(product.businessId);
+    const department = product.department ?? business?.department;
+    if (!business || department !== DEFAULT_DEPARTMENT) continue;
+
+    const cuisine = cuisineFor(business.category);
+    const current = product.attributes ?? [];
+    if (current.some((attribute) => attribute.key === "cocina" && attribute.value === cuisine)) {
+      continue;
+    }
+    await ctx.db.patch(product._id, {
+      attributes: [
+        { key: "cocina", value: cuisine },
+        ...current.filter((attribute) => attribute.key !== "cocina"),
+      ],
+    });
+    updated += 1;
+  }
+  return updated;
+}
+
 async function findMeta(ctx: MutationCtx, key: string) {
   return await ctx.db
     .query("meta")
@@ -725,6 +778,15 @@ export const ensure = mutation({
       await ctx.db.insert("meta", {
         key: "whimy_catalog_verticals",
         value: "v1",
+      });
+    }
+
+    const facetsMarker = await findMeta(ctx, "whimy_catalog_cuisines");
+    if (!facetsMarker) {
+      await upgradeFoodFacets(ctx);
+      await ctx.db.insert("meta", {
+        key: "whimy_catalog_cuisines",
+        value: "v2",
       });
     }
 
