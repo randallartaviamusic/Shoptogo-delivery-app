@@ -193,9 +193,11 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
 
       <motion.div
         style={{ opacity: likeOpacity, scale: stampScale }}
-        className="pointer-events-none absolute left-4 top-20 -rotate-12 rounded-xl border-[3px] border-primary px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] text-primary sm:text-4xl"
+        className="pointer-events-none absolute left-4 top-20 -rotate-12 rounded-xl border-[3px] border-[#f97316] px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] sm:text-4xl"
       >
-        LO QUIERO
+        <span className="inline-block bg-[linear-gradient(95deg,var(--primary)_0%,#f97316_52%,var(--accent)_100%)] bg-clip-text text-transparent">
+          LO QUIERO
+        </span>
       </motion.div>
       <motion.div
         style={{ opacity: passOpacity, scale: stampScale }}
