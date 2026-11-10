@@ -287,7 +287,7 @@ export function AppShell() {
 
       <header
         className={cn(
-          "sticky top-0 z-30 flex items-center justify-between border-b bg-background/85 bg-gradient-to-b from-white/[0.14] via-white/[0.04] to-transparent px-4 py-3 backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out lg:hidden",
+          "sticky top-0 z-30 flex items-center justify-between border-b bg-background/85 bg-gradient-to-t from-white/[0.28] via-white/[0.08] to-transparent px-4 py-3 backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out lg:hidden",
           headerHidden
             ? "-translate-y-full border-transparent"
             : "translate-y-0 border-border/60",
@@ -359,7 +359,7 @@ export function AppShell() {
         </AnimatePresence>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 bg-gradient-to-t from-white/[0.14] via-white/[0.04] to-transparent px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 bg-gradient-to-b from-white/[0.28] via-white/[0.08] to-transparent px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-stretch justify-between">
           {nav.map((item) => {
             const active =
