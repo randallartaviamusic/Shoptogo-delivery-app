@@ -69,7 +69,9 @@ export default function SwipePage() {
   const [departmentSlug, setDepartmentSlug] = useState(DEFAULT_DEPARTMENT);
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [decided, setDecided] = useState<Set<string>>(new Set());
+  // Historial en orden de los swipe de esta sesión: el último es el que se
+  // puede volver a mirar sin deshacer nada en el servidor.
+  const [decided, setDecided] = useState<string[]>([]);
   const topCard = useRef<SwipeCardHandle>(null);
 
   const department = getDepartment(departmentSlug);
@@ -80,13 +82,12 @@ export default function SwipePage() {
   const cart = useQuery(api.cart.myCart);
   const stats = useQuery(api.catalog.myStats);
   const swipe = useMutation(api.catalog.swipe);
-  const undo = useMutation(api.catalog.undo);
   const resetDeck = useMutation(api.catalog.resetDeck);
 
   const cards = useMemo(
     () =>
       ((deck?.cards ?? []) as unknown as Dish[]).filter(
-        (card) => !decided.has(card._id),
+        (card) => !decided.includes(card._id),
       ),
     [deck?.cards, decided],
   );
@@ -136,7 +137,7 @@ export default function SwipePage() {
     if (slug === departmentSlug) return;
     setDepartmentSlug(slug);
     setFilters({});
-    setDecided(new Set());
+    setDecided([]);
   };
 
   // Mirar el mazo no pide cuenta; deslizar (o guardar, o recargar) sí.
@@ -153,7 +154,7 @@ export default function SwipePage() {
       return;
     }
     const dish = cards.find((card) => card._id === id);
-    setDecided((prev) => new Set(prev).add(id));
+    setDecided((prev) => (prev.includes(id) ? prev : [...prev, id]));
     swipe({ productId: id as Id<"products">, direction })
       .then(() => {
         if (direction === "like") {
@@ -168,35 +169,26 @@ export default function SwipePage() {
         }
       })
       .catch((error: Error) => {
-        setDecided((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+        setDecided((prev) => prev.filter((item) => item !== id));
         toast.error(error.message || "No pudimos registrar tu swipe");
       });
   };
 
-  const handleUndo = async () => {
-    if (!user) {
-      askForAccount();
+  // Volver atrás es solo visual: la tarjeta anterior reaparece en el mazo con
+  // el swipe ya registrado (carrito y guardados quedan como están).
+  const handleUndo = () => {
+    const previousId = decided[decided.length - 1];
+    if (!previousId) {
+      toast("No hay nada para volver atrás todavía");
       return;
     }
-    try {
-      const result = await undo();
-      setDecided(new Set());
-      if (result.reverted) {
-        toast(`Volvió ${result.reverted}`, {
-          description: "Deshicimos tu último swipe.",
-        });
-      } else {
-        toast("No hay nada para deshacer todavía");
-      }
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "No pudimos deshacer",
-      );
-    }
+    const dish = ((deck?.cards ?? []) as unknown as Dish[]).find(
+      (card) => card._id === previousId,
+    );
+    setDecided((prev) => prev.slice(0, -1));
+    toast(`Volvió ${dish?.name ?? "la tarjeta anterior"}`, {
+      description: "Tu swipe sigue registrado; podés decidir de nuevo.",
+    });
   };
 
   const handleReset = async () => {
@@ -206,7 +198,7 @@ export default function SwipePage() {
     }
     try {
       const result = await resetDeck();
-      setDecided(new Set());
+      setDecided([]);
       toast.success("Mazo recargado", {
         description:
           result.restored > 0
@@ -459,10 +451,7 @@ export default function SwipePage() {
 
           <DeckActions
             disabled={visible.length === 0}
-            canUndo={
-              (stats?.likes ?? 0) + (stats?.passes ?? 0) + (stats?.saved ?? 0) >
-              0
-            }
+            canUndo={decided.length > 0}
             onUndo={handleUndo}
             onPass={() => void topCard.current?.decide("pass")}
             onSave={() => void topCard.current?.decide("save")}
