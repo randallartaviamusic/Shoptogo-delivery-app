@@ -1,4 +1,4 @@
-import { BrandMark } from "@/components/Brand";
+import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,7 +82,7 @@ export default function OnboardingPage() {
               <BrandMark size={32} />
             </span>
             <span className="hidden sm:block">
-              <BrandMark size={32} />
+              <Wordmark markSize={32} />
             </span>
           </Link>
           <Link

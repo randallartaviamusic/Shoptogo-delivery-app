@@ -7,7 +7,6 @@ import { useQuery } from "convex/react";
  * Logo de la plataforma. Si el perfil administrador subió uno propio, todas las
  * instancias lo usan con el tamaño que eligió; si no, va el logo original.
  */
-
 export function BrandMark({
   size = 40,
   className,
@@ -23,44 +22,25 @@ export function BrandMark({
     <img
       src={src}
       alt="Capricho Express"
-      style={{
-        height: px,
-        maxWidth: Math.min(px, 64),
-        width: "auto",
-      }}
+      style={{ height: px, maxWidth: px * 2.6, width: "auto" }}
       className={cn("shrink-0 rounded-2xl object-contain", className)}
     />
   );
 }
 
-/** Título de la plataforma que puede editar el perfil administrador. */
-export function BrandHeadline({
+export function Wordmark({
   className,
-  align,
+  markSize = 36,
 }: {
   className?: string;
-  align?: "left" | "center" | "right";
+  markSize?: number;
 }) {
-  const headline = useQuery(api.branding.brandHeadline);
-  const title = headline?.title ?? "Capricho Express";
-  const color = headline?.color;
-  const font = headline?.font;
-  const effectiveAlign = align ?? headline?.align ?? "left";
-
   return (
-    <span
-      className={cn(
-        "whitespace-nowrap font-display font-extrabold tracking-tight text-foreground",
-        effectiveAlign === "center" && "mx-auto text-center",
-        effectiveAlign === "right" && "ml-auto",
-        className,
-      )}
-      style={{
-        ...(font && { fontFamily: font }),
-        ...(color && { color }),
-      }}
-    >
-      {title}
+    <span className={cn("flex items-center gap-2.5", className)}>
+      <BrandMark size={markSize} />
+      <span className="whitespace-nowrap font-display text-[19px] font-extrabold tracking-tight text-foreground">
+        Capricho <span className="text-accent">Express</span>
+      </span>
     </span>
   );
 }

@@ -1,4 +1,4 @@
-import { BrandMark } from "@/components/Brand";
+import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
@@ -176,7 +176,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       <div className="mx-auto flex max-w-lg flex-col gap-8">
         <div className="flex items-center justify-between">
           <Link to="/bienvenida" aria-label="Capricho Express">
-            <BrandMark size={30} />
+            <Wordmark markSize={30} />
           </Link>
           <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
             <Link to="/bienvenida">Inicio</Link>

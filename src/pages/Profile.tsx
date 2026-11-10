@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,11 +24,7 @@ import {
   ShoppingBag,
   Star,
   Store,
-  Trash2,
   UserRound,
-  Settings,
-  ArrowLeft,
-  Edit3,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -44,35 +39,31 @@ const ROLES = [
     label: "Comprador",
     description: "Deslizá antojos y pedí a domicilio.",
     icon: ShoppingBag,
-    home: "/swipe",
   },
   {
     value: "business" as const,
     label: "Negocio",
-    description: "Cociná, publicá y conectá con vecinos.",
+    description: "Publicá tu catálogo y gestioná pedidos.",
     icon: Store,
-    home: "/business",
   },
   {
     value: "courier" as const,
-    label: "Couriers",
-    description: "Elegí rutas y entregá pedidos frescos.",
+    label: "Repartidor",
+    description: "Tomá entregas y sumá ganancias.",
     icon: Bike,
-    home: "/courier",
   },
 ];
 
-const LANGUAGES = [
-  { value: "es", label: "Español" },
-  { value: "en", label: "English" },
-  { value: "pt", label: "Português" },
-];
-
-export function ProfilePage() {
-  const { isLoading, isAuthenticated, user, signOut } = useAuth();
+export default function ProfilePage() {
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const stats = useQuery(api.catalog.myStats);
+  const myBusiness = useQuery(api.businesses.mine);
+  const updateProfile = useMutation(api.profiles.updateProfile);
+  const generatePhotoUploadUrl = useMutation(api.profiles.generatePhotoUploadUrl);
+  const setPhoto = useMutation(api.profiles.setPhoto);
 
+  // Administración de la marca (sólo para el perfil administrador).
   const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
   const brand = useQuery(api.branding.brand);
   const generateLogoUploadUrl = useMutation(api.branding.generateLogoUploadUrl);
@@ -80,45 +71,134 @@ export function ProfilePage() {
   const setLogoSize = useMutation(api.branding.setLogoSize);
   const resetLogo = useMutation(api.branding.resetLogo);
 
-  const [logoSizeDraft, setLogoSizeDraft] = useState(
-    Math.min(LOGO_MAX, Math.max(LOGO_MIN, brand?.logoSize ?? LOGO_MIN)),
-  );
+  const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [savingLogoSize, setSavingLogoSize] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", address: "", city: "", notifications: { email: true, sms: false } });
-  const [notifications, setNotifications] = useState({ email: true, sms: false });
+  const [logoSizeDraft, setLogoSizeDraft] = useState(40);
+
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    address: "",
+    city: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    setForm({
+      name: user.name ?? "",
+      phone: user.phone ?? "",
+      address: user.address ?? "",
+      city: user.city ?? "",
+    });
+  }, [user]);
 
   useEffect(() => {
     if (brand?.logoSize) setLogoSizeDraft(brand.logoSize);
   }, [brand?.logoSize]);
 
-  const handleUploadClick = () => fileRef.current?.click();
+  if (!user) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
-  const handleLogoSave = async () => {
+  const role = user.role ?? "buyer";
+  const hasBusiness = Boolean(myBusiness?.business);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateProfile(form);
+      toast.success("Perfil actualizado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePhoto = async (kind: "avatar" | "cover", file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Elegí una imagen (JPG, PNG o WebP)");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("La imagen no puede pesar más de 8 MB");
+      return;
+    }
+
+    setUploading(kind);
+    try {
+      const uploadUrl = await generatePhotoUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir la imagen");
+      const { storageId } = (await response.json()) as { storageId: string };
+      await setPhoto({ kind, storageId: storageId as Id<"_storage"> });
+      toast.success(
+        kind === "avatar" ? "Foto de perfil actualizada" : "Portada actualizada",
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir la imagen",
+      );
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const handleLogoUpload = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Elegí una imagen (PNG, JPG, WebP o SVG)");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error("El logo no puede pesar más de 4 MB");
+      return;
+    }
+
     setUploadingLogo(true);
     try {
-      const url = await generateLogoUploadUrl();
-      const response = await fetch(url, {
+      const uploadUrl = await generateLogoUploadUrl();
+      const response = await fetch(uploadUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: await fetch(defaultLogo as string).then((r) => r.blob()),
+        headers: { "Content-Type": file.type },
+        body: file,
       });
-      if (!response.ok) throw new Error("No pudimos subir el logo");
-      const storageId = new URL(response.url).pathname.split("/").pop()!;
+      if (!response.ok) throw new Error("No pudimos subir la imagen");
+      const { storageId } = (await response.json()) as { storageId: string };
       await setLogo({ storageId: storageId as Id<"_storage"> });
-      toast.success("Logo guardado en tu perfil");
+      toast.success("Logo de la plataforma actualizado");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "No pudimos cambiarlo");
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir el logo",
+      );
     } finally {
       setUploadingLogo(false);
     }
   };
 
-  const handleSizeSave = async () => {
+  const handleLogoSave = async () => {
     setSavingLogoSize(true);
     try {
-      const logoSize = await setLogoSize({ size: logoSizeDraft });
+      await setLogoSize({ size: logoSizeDraft });
       toast.success(`Tamaño del logo guardado en ${logoSizeDraft}px`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
     } finally {
       setSavingLogoSize(false);
     }
@@ -136,261 +216,388 @@ export function ProfilePage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
+  const handleRole = async (next: "buyer" | "business" | "courier") => {
+    if (next === role) return;
+    // Cada rol es una cuenta aparte: cerramos esta sesión para que pueda entrar
+    // (o registrar) la cuenta de ese rol.
+    await signOut();
+    toast(`Entrá con tu cuenta de ${ROLE_LABEL[next].toLowerCase()}`, {
+      description:
+        "Cada rol es una cuenta separada. Iniciá sesión o creá una nueva con correo y contraseña.",
+    });
+    navigate(
+      `/auth?role=${next}&returnTo=${encodeURIComponent(ROLE_HOME[next])}`,
     );
-  }
-
-  if (!isAuthenticated || !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-sm text-muted-foreground">Iniciá sesión para ver tu perfil.</p>
-      </div>
-    );
-  }
-
-  const safeUser = user ?? { email: "", name: "", phone: "", address: "", city: "", role: undefined, onboarded: false };
-  const { email, name, phone, address, city, role, onboarded } = safeUser;
-
-  const initialsValue = initials(name ?? "");
-  const roleHome = ROLE_HOME[role ?? ""] ?? "/";
-  const roleLabel = ROLE_LABEL[role ?? ""] ?? role ?? "";
-  const roleEntry = ROLES.find((r) => r.value === role);
-
-  const handleSave = async () => {
-    toast.success("Datos guardados");
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Encabezado del perfil. */}
-      <PageHeader title={name?.trim() || email?.split("@")[0] || "Perfil"} description={onboarded ? roleLabel : "Completá tu perfil para desbloquear tu experiencia."} />
-      <div className="flex flex-wrap items-center gap-3 px-4 sm:px-6 lg:px-8">
-        {isAdmin && (
-          <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-700/30 dark:text-emerald-300">
-            Administrador
-          </span>
-        )}
-        <Button variant="outline" className="gap-2 border-border/80" onClick={() => navigate(-1)}>
-          <ArrowLeft className="size-4" />
-          Atrás
-        </Button>
-      </div>
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        eyebrow="Tu cuenta"
+        title="Perfil"
+        description={
+          "Tus datos de entrega, tu rol en Capricho Express y tus números de antojos."
+        }
+      />
 
-      <div className="mt-auto flex flex-1 flex-col gap-5 px-4 pb-6 pt-4 sm:px-6 lg:flex-row lg:px-8">
-        {/* Área de contenido principal. */}
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto">
-          {/* Foto de perfil. */}
-          <section className="surface-raised flex flex-col items-center gap-4 rounded-3xl p-5 sm:p-6">
-            <div className="flex items-center gap-5">
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-foreground/5 ring-1 ring-border/80">
-                {user.image ? (
-                  <img alt={name ?? "Tu foto"} className="h-full w-full object-cover" src={user.image} />
-                ) : (
-                  <span className="text-2xl font-bold">{initialsValue}</span>
-                )}
-              </div>
-              <div>
-                <h2 className="font-display text-lg font-bold">{name ?? "Sin nombre"}</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">{email}</p>
-                {role && <p className="mt-1 text-xs text-muted-foreground">{roleLabel}</p>}
-              </div>
-            </div>
-          </section>
-
-          {/* Panel de logo (solo administrador). */}
-          {isAdmin && (
-            <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
-              <div className="flex items-start justify-between">
-                <div className="min-w-0">
-                  <h2 className="font-display text-lg font-bold">Logo de la plataforma</h2>
-                  <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    Subí tu imagen y ajustá el tamaño a gusto. Se aplica en toda la
-                    plataforma: barra lateral, cabecera, portada y pantallas de acceso.
-                  </p>
-                </div>
-                <Button variant="outline" className="gap-2 border-border/80" onClick={handleUploadClick}>
-                  <Camera className="size-4" />
-                  Subir foto
-                </Button>
-              </div>
-
-              <div className="mt-4 flex min-h-[148px] items-center justify-center rounded-2xl border border-border/70 bg-black/30 p-6">
-                <img
-                  alt="Logo de la plataforma"
-                  className="rounded-2xl object-contain drop-shadow"
-                  height={logoSizeDraft}
-                  src={brand?.logoUrl ?? defaultLogo}
-                  style={{ maxWidth: Math.min(logoSizeDraft, 64), width: "auto" }}
-                />
-              </div>
-
-              <div className="mt-3 flex items-center gap-4">
-                <Label htmlFor="logo-size" className="shrink-0">
-                  Tamaño
-                </Label>
-                <div className="flex-1">
-                  <Slider
-                    id="logo-size"
-                    min={LOGO_MIN}
-                    max={LOGO_MAX}
-                    step={1}
-                    value={[logoSizeDraft]}
-                    onValueChange={([v]) => setLogoSizeDraft(v)}
-                    className="w-full"
-                  />
-                  <div className="mt-2 text-right text-[11px] text-muted-foreground tabular-nums">
-                    {logoSizeDraft}px
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-col items-center gap-2">
-                {uploadingLogo ? (
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin" />
-                    <p>Subiendo logo…</p>
-                  </div>
-                ) : (
-                  <>
-                    <Button className="gap-2" disabled={savingLogoSize} onClick={handleSizeSave}>
-                      {savingLogoSize ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Save className="size-4" />
-                      )}
-                      Guardar tamaño
-                    </Button>
-                    {brand?.logoUrl && (
-                      <Button variant="outline" className="gap-2 border-border/80 mt-2" onClick={handleLogoReset}>
-                        <RotateCcw className="size-4" />
-                        Volver al logo original
-                      </Button>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                PNG, JPG, WebP o SVG hasta 4 MB. Si subís un logo horizontal se
-                respeta su proporción.
-              </p>
-            </section>
+      <div className="surface-raised overflow-hidden rounded-3xl">
+        <div className="relative h-32 sm:h-44">
+          {user.coverImage ? (
+            <img
+              src={user.coverImage}
+              alt="Portada del perfil"
+              className="size-full object-cover"
+            />
+          ) : (
+            <div className="size-full bg-ember-gradient opacity-70" />
           )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-          {/* Datos de entrega. */}
-          <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
-            <h2 className="font-display text-lg font-bold">Datos de entrega</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Los usamos para completar tus pedidos más rápido.</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="name">Nombre y apellido</Label>
-                <Input id="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Camila Duarte" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="phone">Teléfono</Label>
-                <Input id="phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="+506 8888 8888" />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="address">Dirección</Label>
-                <Input id="address" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="200 m norte del parque central, casa 3B" />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="city">Ciudad</Label>
-                <Input id="city" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} placeholder="San José" />
-              </div>
-            </div>
-            <Button className="mt-4" onClick={handleSave}>
-              <Save className="size-4 gap-2" />
-              Guardar dirección
-            </Button>
-          </section>
-
-          {/* Preferencias. */}
-          <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
-            <h2 className="font-display text-lg font-bold">Preferéncias</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Ajustá cómo querés que te contactemos y cómo te sentís en la app.</p>
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Notificaciones por correo</span>
-                <input type="checkbox" checked={notifications.email} onChange={(event) => setNotifications({ ...notifications, email: event.target.checked })} className="h-4 w-4 rounded border-input" />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Notificaciones por SMS</span>
-                <input type="checkbox" checked={notifications.sms} onChange={(event) => setNotifications({ ...notifications, sms: event.target.checked })} className="h-4 w-4 rounded border-input" />
-              </div>
-            </div>
-            <Button className="mt-4" onClick={handleSave}>
-              <Save className="size-4 gap-2" />
-              Guardar preferéncias
-            </Button>
-          </section>
-
-          {/* Seguridad. */}
-          <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
-            <h2 className="font-display text-lg font-bold">Seguridad</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Cambiá tu contraseña o cerrá sesión en todos tus dispositivos.</p>
-            <div className="mt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Cambiar contraseña</p>
-                  <p className="text-xs text-muted-foreground">Actualizá tu contraseña cada 90 días.</p>
-                </div>
-                <Button variant="outline" className="gap-2 border-border/80">
-                  <ShieldCheck className="size-4 gap-2" />
-                  Cambiar
-                </Button>
-              </div>
-              <Button variant="outline" className="gap-2 border-border/80" onClick={() => toast.success("Sesión cerrada en todos los dispositivos")}>
-                <LogOut className="size-4 gap-2" />
-                Cerrar sesión en todos los dispositivos
-              </Button>
-            </div>
-          </section>
-
-          {/* Cuenta. */}
-          <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
-            <h2 className="font-display text-lg font-bold">Cuenta</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Cerrá sesión o eliminá tu cuenta este action no se puede undo.</p>
-            <div className="mt-4 space-y-4">
-              <Button variant="outline" className="gap-2 border-border/80 text-destructive hover:text-destructive" onClick={() => { toast.success("Acción próximamente"); }}>
-                <Trash2 className="size-4 gap-2" />
-                Eliminar cuenta
-              </Button>
-            </div>
-          </section>
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              handlePhoto("cover", file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => coverInputRef.current?.click()}
+            disabled={uploading === "cover"}
+            className="absolute right-3 top-3 flex cursor-pointer items-center gap-1.5 rounded-full border border-white/25 bg-black/55 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur transition-colors hover:bg-black/75 disabled:opacity-70"
+          >
+            {uploading === "cover" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Camera className="size-3.5" />
+            )}
+            {uploading === "cover" ? "Subiendo" : "Cambiar portada"}
+          </button>
         </div>
 
-        {/* Barra lateral de perfil. */}
-        <aside className="mt-5 flex h-0 flex-1 flex-col overflow-hidden border-t border-border/70 lg:mt-0 lg:flex-none">
-          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-4 text-sm">
-            {roleEntry && (
-              <Button variant="ghost" className="justify-start gap-2" onClick={() => navigate(roleEntry.home)}>
-                <roleEntry.icon className="size-4" />
-                {roleEntry.label}
+        <div className="px-5 pb-5 sm:px-6">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="relative -mt-10 shrink-0">
+              <div className="flex size-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-background bg-ember-gradient font-display text-2xl font-extrabold text-black">
+                {user.image ? (
+                  <img
+                    src={user.image}
+                    alt="Foto de perfil"
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  initials(user.name)
+                )}
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  handlePhoto("avatar", file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploading === "avatar"}
+                aria-label="Cambiar foto de perfil"
+                title="Cambiar foto de perfil"
+                className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full border-2 border-background bg-accent text-black transition-transform hover:scale-105 disabled:opacity-70"
+              >
+                {uploading === "avatar" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Camera className="size-4" />
+                )}
+              </button>
+            </div>
+
+            <div className="min-w-0 flex-1 pb-1">
+              <p className="truncate font-display text-xl font-bold">
+                {user.name ?? "Completá tu nombre"}
+              </p>
+              <p className="truncate text-sm text-muted-foreground">
+                {user.email ?? "Sin email"}
+              </p>
+              <span className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent">
+                  {ROLE_LABEL[role]}
+                </span>
+                {isAdmin && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                    <ShieldCheck className="size-3" />
+                    Administrador
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            Subí tu foto de perfil y tu portada desde la galería del teléfono o
+            los archivos de tu compu. JPG, PNG o WebP hasta 8 MB.
+          </p>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {[
+              { label: "Antojos", value: stats?.likes ?? 0, icon: Flame },
+              { label: "Guardados", value: stats?.saved ?? 0, icon: Star },
+              { label: "Pedidos", value: stats?.orders ?? 0, icon: ShoppingBag },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-2xl border border-border/70 bg-black/25 px-3 py-3 text-center"
+              >
+                <stat.icon className="mx-auto size-4 text-accent" />
+                <p className="mt-1 font-display text-xl font-bold">{stat.value}</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {stat.label}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {isAdmin && (
+        <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                <ShieldCheck className="size-3.5" />
+                Perfil administrador
+              </p>
+              <h2 className="font-display text-lg font-bold">Logo de la plataforma</h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Subí tu imagen y ajustá el tamaño a gusto. Se aplica en toda la
+                plataforma: barra lateral, cabecera, portada y pantallas de acceso.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex min-h-[148px] items-center justify-center rounded-2xl border border-border/70 bg-black/30 p-6">
+            <img
+              src={brand?.logoUrl ?? defaultLogo}
+              alt="Logo de Capricho Express"
+              style={{
+                height: logoSizeDraft,
+                maxWidth: logoSizeDraft * 2.6,
+                width: "auto",
+              }}
+              className="rounded-2xl object-contain"
+            />
+          </div>
+
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              handleLogoUpload(file);
+            }}
+          />
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              className="gap-2 bg-ember-gradient text-black"
+              disabled={uploadingLogo}
+              onClick={() => logoInputRef.current?.click()}
+            >
+              {uploadingLogo ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImageUp className="size-4" />
+              )}
+              {uploadingLogo ? "Subiendo" : brand?.logoUrl ? "Cambiar logo" : "Subir imagen"}
+            </Button>
+            {brand?.logoUrl && (
+              <Button
+                variant="outline"
+                className="gap-2 border-border/80"
+                disabled={uploadingLogo}
+                onClick={handleLogoReset}
+              >
+                <RotateCcw className="size-4" />
+                Usar logo original
               </Button>
             )}
-            <div className="my-2 border-t border-border/80" />
-            <Button variant="ghost" className="justify-start gap-2" onClick={() => navigate("/profile")}>
-              <UserRound className="size-4" />
-              Tu cuenta
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div className="flex items-baseline justify-between">
+              <Label htmlFor="logo-size">Tamaño del logo</Label>
+              <span className="rounded-full border border-border/70 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {logoSizeDraft}px
+              </span>
+            </div>
+            <Slider
+              id="logo-size"
+              className="mt-3"
+              min={LOGO_MIN}
+              max={LOGO_MAX}
+              step={2}
+              value={[logoSizeDraft]}
+              onValueChange={([value]) => setLogoSizeDraft(value ?? LOGO_MIN)}
+            />
+            <div className="mt-1 flex justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span>Más chico</span>
+              <span>Más grande</span>
+            </div>
+            <Button
+              className="mt-3 gap-2"
+              disabled={savingLogoSize || logoSizeDraft === brand?.logoSize}
+              onClick={handleLogoSave}
+            >
+              {savingLogoSize ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              Guardar tamaño
             </Button>
-            <Button variant="ghost" className="justify-start gap-2" onClick={() => { toast.success("Ajustes próximamente"); }}>
-              <Settings className="size-4" />
-              Ajustes
-            </Button>
-            <Button variant="ghost" className="justify-start gap-2 border-destructive/50 text-destructive hover:bg-destructive/10" onClick={() => { signOut(); navigate("/auth"); }}>
-              <LogOut className="size-4" />
-              Cerrar sesión
-            </Button>
-          </nav>
-        </aside>
-      </div>
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            PNG, JPG, WebP o SVG hasta 4 MB. Si subís un logo horizontal se
+            respeta su proporción.
+          </p>
+        </section>
+      )}
+
+      <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+        <h2 className="font-display text-lg font-bold">Datos de entrega</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Los usamos para completar tus pedidos más rápido.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Nombre y apellido</Label>
+            <Input
+              id="name"
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              placeholder="Camila Duarte"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="phone">Teléfono</Label>
+            <Input
+              id="phone"
+              value={form.phone}
+              onChange={(event) => setForm({ ...form, phone: event.target.value })}
+              placeholder="+506 8888 8888"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="address">Dirección</Label>
+            <Input
+              id="address"
+              value={form.address}
+              onChange={(event) =>
+                setForm({ ...form, address: event.target.value })
+              }
+              placeholder="200 m norte del parque central, casa 3B"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="city">Ciudad</Label>
+            <Input
+              id="city"
+              value={form.city}
+              onChange={(event) => setForm({ ...form, city: event.target.value })}
+              placeholder="San José"
+            />
+          </div>
+        </div>
+        <Button
+          className="mt-4 gap-2 bg-ember-gradient text-black"
+          disabled={saving}
+          onClick={handleSave}
+        >
+          {saving ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Guardando
+            </>
+          ) : (
+            <>
+              <Save className="size-4" />
+              Guardar cambios
+            </>
+          )}
+        </Button>
+      </section>
+
+      <section className="mt-5">
+        <h2 className="mb-3 font-display text-lg font-bold">Tu rol en Capricho Express</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {ROLES.map((option) => {
+            const active = role === option.value;
+            return (
+              <button
+                key={option.value}
+                onClick={() => handleRole(option.value)}
+                disabled={switching !== null}
+                className={cn(
+                  "rounded-2xl border p-4 text-left transition-colors",
+                  active
+                    ? "border-accent/40 bg-accent/[0.07]"
+                    : "border-border/70 bg-card/60 hover:border-accent/25",
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={cn(
+                      "flex size-9 items-center justify-center rounded-xl",
+                      active
+                        ? "bg-accent/15 text-accent"
+                        : "bg-secondary text-muted-foreground",
+                    )}
+                  >
+                    {switching === option.value ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <option.icon className="size-4" />
+                    )}
+                  </span>
+                  {active && <Check className="size-4 text-accent" />}
+                </div>
+                <p className="mt-3 text-sm font-semibold">{option.label}</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                  {option.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Cada rol es una cuenta aparte: comprador, negocio y repartidor se
+          registran con su propio correo y contraseña.
+        </p>
+      </section>
+
+      <Button
+        variant="outline"
+        className="mt-5 w-full gap-2 border-primary/25 text-primary hover:bg-primary/10"
+        onClick={async () => {
+          await signOut();
+          navigate("/auth");
+        }}
+      >
+        <LogOut className="size-4" />
+        Cerrar sesión
+      </Button>
     </div>
   );
 }
-
-export default ProfilePage;

@@ -1,4 +1,4 @@
-import { BrandMark } from "@/components/Brand";
+import { BrandMark, Wordmark } from "@/components/Brand";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
@@ -220,10 +220,10 @@ export default function Landing() {
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
           <Link to="/bienvenida" aria-label="Capricho Express">
             <span className="sm:hidden">
-              <BrandMark size={28} />
+              <BrandMark size={32} />
             </span>
             <span className="hidden sm:block">
-              <BrandMark size={32} />
+              <Wordmark markSize={34} />
             </span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
@@ -669,10 +669,7 @@ export default function Landing() {
 
       <footer className="border-t border-border/60">
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
-          <BrandMark size={28} />
-          <span className="ml-2 text-[10px] font-semibold tracking-tight text-muted-foreground">
-              Capricho <span className="text-accent">Express</span>
-            </span>
+          <Wordmark markSize={28} />
           <p className="text-xs text-muted-foreground">
             Capricho Express · el marketplace que se desliza. Del antojo al sillón.
           </p>

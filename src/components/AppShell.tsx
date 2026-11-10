@@ -1,4 +1,4 @@
-import { BrandHeadline, BrandMark } from "@/components/Brand";
+import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -159,8 +159,9 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen lg:pl-[272px]">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex">          <Link to={home} className="px-1">
-          <BrandMark size={32} />
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex">
+        <Link to={home} className="px-1">
+          <Wordmark />
         </Link>
 
         <div className="mt-8 space-y-1.5">
@@ -247,17 +248,17 @@ export function AppShell() {
           </div>
         ) : (
         <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
-            {(user?.image) ? (
-              <img
-                src={user.image}
-                alt={user.name ?? "Tu perfil"}
-                className="flex size-[34px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary object-cover ring-1 ring-border/80"
-              />
-            ) : (
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm font-bold text-primary">
-                {initials(user?.name)}
-              </div>
-            )}
+            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
+              {user?.image ? (
+                <img
+                  src={user?.image}
+                  alt={user?.name ?? "Foto de perfil"}
+                  className="size-full object-cover"
+                />
+              ) : (
+                initials(user?.name)
+              )}
+            </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold">
                 {user?.name ?? "Sin nombre"}
@@ -288,7 +289,7 @@ export function AppShell() {
         )}
       >
         <Link to={home} aria-label="Capricho Express">
-          <BrandMark size={28} />
+          <BrandMark size={30} />
         </Link>
         <div className="flex items-center gap-1">
           {role === "buyer" && (
@@ -319,17 +320,9 @@ export function AppShell() {
             </Link>
           ) : (
             <Link to="/profile" aria-label="Perfil">
-              {(user?.image) ? (
-                <img
-                  src={user.image}
-                  alt={user.name ?? "Tu perfil"}
-                  className="ml-1 size-[34px] rounded-xl object-cover ring-1 ring-border/80"
-                />
-              ) : (
-                <div className="ml-1 flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
-                  {initials(user?.name)}
-                </div>
-              )}
+              <div className="ml-1 flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
+                {initials(user?.name)}
+              </div>
             </Link>
           )}
         </div>
@@ -448,4 +441,4 @@ export function EmptyState({
   );
 }
 
-export { BrandHeadline, BrandMark };
+export { BrandMark };

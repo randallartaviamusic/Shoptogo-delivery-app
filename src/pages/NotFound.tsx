@@ -1,4 +1,4 @@
-import { BrandMark } from "@/components/Brand";
+import { Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { ArrowLeft, Flame } from "lucide-react";
@@ -8,7 +8,7 @@ export default function NotFound() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-6 text-center">
       <Link to="/" className="mb-10">
-        <BrandMark size={32} />
+        <Wordmark />
       </Link>
       <motion.div
         initial={{ opacity: 0, y: 16 }}
