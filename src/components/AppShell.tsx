@@ -1,4 +1,5 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
+import { CourierAlerts } from "@/components/CourierAlerts";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -76,6 +77,11 @@ export function AppShell() {
   const navigate = useNavigate();
   const outlet = useOutlet();
   const cart = useQuery(api.cart.myCart);
+  const isCourier = user?.role === "courier";
+  const courierBoard = useQuery(
+    api.orders.courierBoard,
+    isCourier ? {} : "skip",
+  );
   const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
   const ensureCatalog = useMutation(api.seed.ensure);
   const seeded = useRef(false);
@@ -156,6 +162,10 @@ export function AppShell() {
   const current = `${location.pathname}${location.search}`;
   const cartCount = cart?.count ?? 0;
   const cartTotal = cart?.total ?? 0;
+  const availableDeliveries =
+    isCourier && courierBoard?.canAccept
+      ? (courierBoard?.available.length ?? 0)
+      : 0;
 
   const handleSignOut = async () => {
     await signOut();
@@ -164,6 +174,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen lg:pl-[272px]">
+      <CourierAlerts enabled={isCourier} />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex">
         <Link to={home} className="px-1">
           <Wordmark />
@@ -202,6 +213,11 @@ export function AppShell() {
                   )}
                 />
                 {item.label}
+                {item.to === "/courier" && availableDeliveries > 0 && (
+                  <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                    {availableDeliveries}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -370,12 +386,19 @@ export function AppShell() {
                 to={item.to}
                 className="relative flex flex-1 flex-col items-center gap-1 py-3 text-[10px] font-semibold uppercase tracking-wider"
               >
-                <Icon
-                  className={cn(
-                    "size-5 transition-colors",
-                    active ? "text-primary" : "text-muted-foreground",
+                <span className="relative">
+                  <Icon
+                    className={cn(
+                      "size-5 transition-colors",
+                      active ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                  {item.to === "/courier" && availableDeliveries > 0 && (
+                    <span className="absolute -right-2 -top-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+                      {availableDeliveries}
+                    </span>
                   )}
-                />
+                </span>
                 <span
                   className={cn(
                     "transition-colors",

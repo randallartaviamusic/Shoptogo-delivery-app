@@ -91,6 +91,8 @@ export default function CourierPage() {
   const active = (board?.active ?? []) as unknown as OrderView[];
   const history = (board?.history ?? []) as unknown as OrderView[];
   const stats = board?.stats;
+  const canAccept = board?.canAccept ?? true;
+  const busyOrder = (board?.busyOrder ?? null) as unknown as OrderView | null;
 
   const handleAccept = async (order: OrderView) => {
     setBusy(order._id);
@@ -177,6 +179,32 @@ export default function CourierPage() {
         ))}
       </div>
 
+      {busyOrder && (
+        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] px-4 py-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+            <Bike className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Tenés una entrega en curso</p>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              {busyOrder.code} · {busyOrder.businessName}. Cuando la termines vas a
+              poder tomar otro pedido.
+            </p>
+          </div>
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="gap-1.5 border-accent/40 text-accent"
+          >
+            <Link to="/courier?tab=active">
+              Ver entrega
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </Button>
+        </div>
+      )}
+
       <div className="mb-6 flex gap-1 overflow-x-auto rounded-full border border-border/80 p-1 no-scrollbar sm:w-fit">
         {TABS.map((item) => (
           <Link
@@ -205,6 +233,14 @@ export default function CourierPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-3"
         >
+          {!canAccept && available.length > 0 && (
+            <p className="rounded-2xl border border-border/70 bg-secondary/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+              Mientras tengas una entrega en curso no podés tomar otra: los
+              pedidos quedan visibles, pero se habilitan cuando marques tu
+              entrega como entregada.
+            </p>
+          )}
+
           {available.length === 0 ? (
             <EmptyState
               icon={Bike}
@@ -288,7 +324,12 @@ export default function CourierPage() {
                   </div>
                   <Button
                     className="gap-2 bg-ember-gradient text-black"
-                    disabled={busy === order._id}
+                    disabled={busy === order._id || !canAccept}
+                    title={
+                      canAccept
+                        ? undefined
+                        : "Terminá la entrega que tenés en curso"
+                    }
                     onClick={() => handleAccept(order)}
                   >
                     {busy === order._id ? (

@@ -180,6 +180,9 @@ export const courierBoard = query({
       available,
       active,
       history: history.slice(0, 15),
+      // Un repartidor atiende una entrega a la vez.
+      canAccept: active.length === 0,
+      busyOrder: active[0] ?? null,
       stats: {
         available: available.length,
         active: active.length,
@@ -248,10 +251,29 @@ export const courierAccept = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Necesitás iniciar sesión");
+    const courier = await ctx.db.get(userId);
+    if (courier?.role !== "courier") {
+      throw new Error("Sólo las cuentas de repartidor pueden tomar pedidos");
+    }
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Ese pedido no existe");
     if (order.status !== "ready") throw new Error("El pedido todavía no está listo");
     if (order.courierId) throw new Error("Otro repartidor ya tomó este pedido");
+
+    // Primero se termina la entrega en curso: nadie atiende dos a la vez.
+    const mine = await ctx.db
+      .query("orders")
+      .withIndex("by_courier", (q) => q.eq("courierId", userId))
+      .collect();
+    const busy = mine.find(
+      (item) => item.status === "ready" || item.status === "picked_up",
+    );
+    if (busy) {
+      throw new Error(
+        `Terminá la entrega ${busy.code} antes de tomar otro pedido`,
+      );
+    }
+
     await ctx.db.patch(args.orderId, { courierId: userId });
     return { accepted: true };
   },
