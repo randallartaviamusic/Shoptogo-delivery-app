@@ -282,24 +282,27 @@ export default function SwipePage() {
       )}
 
       <PageHeader
-        eyebrow={<ModeSwitch mode="antojo" suffix={department.label} />}
+        eyebrow={
+          <div className="flex flex-wrap items-center gap-2">
+            <ModeSwitch mode="antojo" suffix={department.label} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFiltersOpen(true)}
+              className="h-7 gap-1.5 rounded-full border-border/80 px-2.5 text-[10px] font-semibold normal-case tracking-normal text-foreground hover:border-accent/40 hover:text-accent"
+            >
+              <SlidersHorizontal className="size-3.5 text-accent" />
+              Filtros
+              {selectedCount > 0 && (
+                <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-accent-foreground">
+                  {selectedCount}
+                </span>
+              )}
+            </Button>
+          </div>
+        }
         title={department.headline}
         description={department.blurb}
-        action={
-          <Button
-            variant="outline"
-            onClick={() => setFiltersOpen(true)}
-            className="gap-2 border-border/80"
-          >
-            <SlidersHorizontal className="size-4 text-accent" />
-            Filtros
-            {selectedCount > 0 && (
-              <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-accent-foreground">
-                {selectedCount}
-              </span>
-            )}
-          </Button>
-        }
       />
 
       <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
