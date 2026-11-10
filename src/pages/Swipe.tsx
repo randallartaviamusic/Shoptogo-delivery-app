@@ -69,9 +69,11 @@ export default function SwipePage() {
   const [departmentSlug, setDepartmentSlug] = useState(DEFAULT_DEPARTMENT);
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // Historial en orden de los swipe de esta sesión: el último es el que se
-  // puede volver a mirar sin deshacer nada en el servidor.
-  const [decided, setDecided] = useState<string[]>([]);
+  // Tarjetas deslizadas en esta sesión, en orden. Guardamos la tarjeta entera
+  // porque el servidor deja de devolverla y así podemos traerla de vuelta.
+  const [history, setHistory] = useState<Dish[]>([]);
+  // Tarjetas que volvieron con la flecha de anterior, al frente del mazo.
+  const [reinserted, setReinserted] = useState<Dish[]>([]);
   const topCard = useRef<SwipeCardHandle>(null);
 
   const department = getDepartment(departmentSlug);
@@ -84,13 +86,17 @@ export default function SwipePage() {
   const swipe = useMutation(api.catalog.swipe);
   const resetDeck = useMutation(api.catalog.resetDeck);
 
-  const cards = useMemo(
-    () =>
-      ((deck?.cards ?? []) as unknown as Dish[]).filter(
-        (card) => !decided.includes(card._id),
+  const cards = useMemo(() => {
+    const available = (deck?.cards ?? []) as unknown as Dish[];
+    const hidden = new Set(history.map((item) => item._id));
+    const back = new Set(reinserted.map((item) => item._id));
+    return [
+      ...reinserted,
+      ...available.filter(
+        (card) => !hidden.has(card._id) && !back.has(card._id),
       ),
-    [deck?.cards, decided],
-  );
+    ];
+  }, [deck?.cards, history, reinserted]);
 
   const departmentCounts = useMemo(
     () =>
@@ -137,7 +143,8 @@ export default function SwipePage() {
     if (slug === departmentSlug) return;
     setDepartmentSlug(slug);
     setFilters({});
-    setDecided([]);
+    setHistory([]);
+    setReinserted([]);
   };
 
   // Mirar el mazo no pide cuenta; deslizar (o guardar, o recargar) sí.
@@ -154,7 +161,8 @@ export default function SwipePage() {
       return;
     }
     const dish = cards.find((card) => card._id === id);
-    setDecided((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    if (dish) setHistory((prev) => [...prev, dish]);
+    setReinserted((prev) => prev.filter((item) => item._id !== id));
     swipe({ productId: id as Id<"products">, direction })
       .then(() => {
         if (direction === "like") {
@@ -169,7 +177,7 @@ export default function SwipePage() {
         }
       })
       .catch((error: Error) => {
-        setDecided((prev) => prev.filter((item) => item !== id));
+        setHistory((prev) => prev.filter((item) => item._id !== id));
         toast.error(error.message || "No pudimos registrar tu swipe");
       });
   };
@@ -177,16 +185,17 @@ export default function SwipePage() {
   // Volver atrás es solo visual: la tarjeta anterior reaparece en el mazo con
   // el swipe ya registrado (carrito y guardados quedan como están).
   const handleUndo = () => {
-    const previousId = decided[decided.length - 1];
-    if (!previousId) {
+    const previous = history[history.length - 1];
+    if (!previous) {
       toast("No hay nada para volver atrás todavía");
       return;
     }
-    const dish = ((deck?.cards ?? []) as unknown as Dish[]).find(
-      (card) => card._id === previousId,
-    );
-    setDecided((prev) => prev.slice(0, -1));
-    toast(`Volvió ${dish?.name ?? "la tarjeta anterior"}`, {
+    setHistory((prev) => prev.slice(0, -1));
+    setReinserted((prev) => [
+      previous,
+      ...prev.filter((item) => item._id !== previous._id),
+    ]);
+    toast(`Volvió ${previous.name}`, {
       description: "Tu swipe sigue registrado; podés decidir de nuevo.",
     });
   };
@@ -198,7 +207,8 @@ export default function SwipePage() {
     }
     try {
       const result = await resetDeck();
-      setDecided([]);
+      setHistory([]);
+      setReinserted([]);
       toast.success("Mazo recargado", {
         description:
           result.restored > 0
@@ -237,9 +247,9 @@ export default function SwipePage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // `user` cambia cuando la persona entra: el atajo se reengancha con el
-    // handleUndo de esa sesión.
-  }, [user]);
+    // Se reengancha cuando cambia la persona o el historial: volver atrás
+    // necesita saber cuál fue la última tarjeta.
+  }, [user, history]);
 
   const visible = cards.slice(0, 3);
   const isLoading = deck === undefined;
@@ -451,7 +461,7 @@ export default function SwipePage() {
 
           <DeckActions
             disabled={visible.length === 0}
-            canUndo={decided.length > 0}
+            canUndo={history.length > 0}
             onUndo={handleUndo}
             onPass={() => void topCard.current?.decide("pass")}
             onSave={() => void topCard.current?.decide("save")}
