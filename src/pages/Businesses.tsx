@@ -1,6 +1,7 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
+import { LoopRow } from "@/components/LoopRow";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -286,11 +287,11 @@ function Directory() {
                   {group.businesses.length === 1 ? "local" : "locales"}
                 </span>
               </div>
-              <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
+              <LoopRow className="-mx-4 snap-x px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
                 {group.businesses.map((business) => (
                   <BusinessCard key={business._id} business={business} />
                 ))}
-              </div>
+              </LoopRow>
             </section>
           ))}
         </div>
