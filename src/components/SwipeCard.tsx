@@ -126,8 +126,9 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
 ) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-320, 0, 320], [-16, 0, 16]);
-  const likeOpacity = useTransform(x, [30, 150], [0, 1]);
-  const passOpacity = useTransform(x, [-150, -30], [1, 0]);
+  const likeOpacity = useTransform(x, [14, 80], [0, 1]);
+  const passOpacity = useTransform(x, [-80, -14], [1, 0]);
+  const stampScale = useTransform(x, [-110, 0, 110], [1, 0.8, 1]);
   const controls = useAnimationControls();
   const busy = useRef(false);
   const [label, setLabel] = useState<string | null>(null);
@@ -191,14 +192,14 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
       <CardBody dish={dish} />
 
       <motion.div
-        style={{ opacity: likeOpacity }}
-        className="pointer-events-none absolute left-5 top-24 -rotate-12 rounded-xl border-[3px] border-accent px-3 py-1.5 font-display text-2xl font-extrabold tracking-wider text-accent"
+        style={{ opacity: likeOpacity, scale: stampScale }}
+        className="pointer-events-none absolute left-4 top-20 -rotate-12 rounded-xl border-[3px] border-accent bg-black/65 px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] text-accent shadow-[0_10px_30px_-8px_rgba(0,0,0,0.9)] backdrop-blur-sm sm:text-4xl"
       >
         LO QUIERO
       </motion.div>
       <motion.div
-        style={{ opacity: passOpacity }}
-        className="pointer-events-none absolute right-5 top-24 rotate-12 rounded-xl border-[3px] border-primary px-3 py-1.5 font-display text-2xl font-extrabold tracking-wider text-primary"
+        style={{ opacity: passOpacity, scale: stampScale }}
+        className="pointer-events-none absolute right-4 top-20 rotate-12 rounded-xl border-[3px] border-primary bg-black/65 px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] text-primary shadow-[0_10px_30px_-8px_rgba(0,0,0,0.9)] backdrop-blur-sm sm:text-4xl"
       >
         PASO
       </motion.div>
