@@ -22,6 +22,7 @@ import {
   Plus,
   Search,
   ShoppingBag,
+  ShoppingCart,
   Star,
   Store,
   Truck,
@@ -537,7 +538,7 @@ function Storefront({ slug }: { slug: string }) {
             {cartCount > 0 && (
               <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
                 <Link to="/cart">
-                  <ShoppingBag className="size-3.5" />
+                  <ShoppingCart className="size-3.5" />
                   Carrito · {money(cartTotal)}
                 </Link>
               </Button>
@@ -626,7 +627,7 @@ function Storefront({ slug }: { slug: string }) {
             className="flex items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.08] px-4 py-3 backdrop-blur-xl transition-colors hover:bg-accent/[0.14]"
           >
             <span className="flex items-center gap-2 text-sm font-semibold text-accent">
-              <ShoppingBag className="size-4" />
+              <ShoppingCart className="size-4" />
               {cartCount} {cartCount === 1 ? "producto" : "productos"} en el carrito
             </span>
             <span className="flex items-center gap-1.5 text-sm font-bold">

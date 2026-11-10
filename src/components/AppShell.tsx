@@ -21,6 +21,7 @@ import {
   Package,
   ReceiptText,
   ShoppingBag,
+  ShoppingCart,
   Store,
   UserRound,
 } from "lucide-react";
@@ -302,7 +303,7 @@ export function AppShell() {
           {role === "buyer" && (
             <Link to="/cart" className="relative">
               <Button variant="ghost" size="icon" aria-label="Carrito">
-                <ShoppingBag className="size-5" />
+                <ShoppingCart className="size-5" />
               </Button>
               {cartCount > 0 && (
                 <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">

@@ -34,7 +34,7 @@ import {
   Heart,
   Loader2,
   RotateCcw,
-  ShoppingBag,
+  ShoppingCart,
   SlidersHorizontal,
   Sparkles,
   Star,
@@ -468,7 +468,7 @@ export default function SwipePage() {
           >
             <span className="flex items-center gap-2.5 text-sm">
               <span className="relative flex size-9 items-center justify-center rounded-xl bg-accent/12 text-accent">
-                <ShoppingBag className="size-4" />
+                <ShoppingCart className="size-4" />
               </span>
               <span>
                 <span className="block font-semibold">

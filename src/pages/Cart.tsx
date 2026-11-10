@@ -16,7 +16,7 @@ import {
   Loader2,
   Minus,
   Plus,
-  ShoppingBag,
+  ShoppingCart,
   Star,
   Store,
   Trash2,
@@ -141,7 +141,7 @@ export default function CartPage() {
 
       {count === 0 ? (
         <EmptyState
-          icon={ShoppingBag}
+          icon={ShoppingCart}
           title="Todavía no hay antojos"
           description="Volvé al mazo y deslizá a la derecha los productos que quieras pedir."
           action={
