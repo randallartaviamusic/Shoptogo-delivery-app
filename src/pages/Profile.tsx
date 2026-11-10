@@ -1,6 +1,16 @@
 import defaultLogo from "@/assets/logo.svg";
 import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,10 +38,13 @@ import {
   LogOut,
   RotateCcw,
   Save,
+  Search,
+  ShieldAlert,
   ShieldCheck,
   ShoppingBag,
   Star,
   Store,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -43,6 +56,29 @@ const LOGO_MAX = 88;
 
 const TITLE_MIN = 12;
 const TITLE_MAX = 30;
+
+type AccountRow = {
+  _id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  role: "buyer" | "business" | "courier" | null;
+  city: string | null;
+  createdAt: number;
+  isAnonymous: boolean;
+  isMe: boolean;
+  isAdmin: boolean;
+  sameEmail: number;
+  businessName: string | null;
+  orders: number;
+  swipes: number;
+};
+
+const ACCOUNT_ROLE_LABEL: Record<string, string> = {
+  buyer: "Comprador",
+  business: "Negocio",
+  courier: "Repartidor",
+};
 
 const ROLES = [
   {
@@ -84,6 +120,43 @@ export default function ProfilePage() {
   const headline = useQuery(api.branding.brandHeadline);
   const setBrandHeadline = useMutation(api.branding.setBrandHeadline);
   const resetBrandHeadline = useMutation(api.branding.resetBrandHeadline);
+
+  // Gestión de cuentas (sólo para el perfil administrador).
+  const [userSearch, setUserSearch] = useState("");
+  const [deletingUser, setDeletingUser] = useState<AccountRow | null>(null);
+  const [removingUser, setRemovingUser] = useState(false);
+  const accounts = useQuery(
+    api.admin.users,
+    isAdmin ? { search: userSearch } : "skip",
+  );
+  const removeUser = useMutation(api.admin.deleteUser);
+
+  const handleDeleteAccount = async () => {
+    if (!deletingUser) return;
+    setRemovingUser(true);
+    try {
+      const cleared = await removeUser({
+        userId: deletingUser._id as Id<"users">,
+      });
+      const details = [
+        cleared.cartItems ? `${cleared.cartItems} en carrito` : null,
+        cleared.swipes ? `${cleared.swipes} swipes` : null,
+        cleared.orders ? `${cleared.orders} pedidos abiertos` : null,
+        cleared.products ? `${cleared.products} productos` : null,
+        cleared.businesses ? `${cleared.businesses} local` : null,
+      ].filter(Boolean);
+      toast.success("Cuenta eliminada", {
+        description: `${deletingUser.email ?? deletingUser.name ?? "La cuenta"}${details.length > 0 ? ` · ${details.join(", ")}` : ""}`,
+      });
+      setDeletingUser(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos eliminar la cuenta",
+      );
+    } finally {
+      setRemovingUser(false);
+    }
+  };
 
   const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -659,6 +732,151 @@ export default function ProfilePage() {
           </div>
         </section>
       )}
+
+      {isAdmin && (
+        <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                <ShieldAlert className="size-3.5" />
+                Moderación
+              </p>
+              <h2 className="font-display text-lg font-bold">
+                Cuentas de la plataforma
+              </h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Revisá y borrá cuentas falsas, duplicadas, de spam o de usuarios
+                problemáticos.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+              <span className="rounded-full border border-border/70 px-2.5 py-1">
+                {accounts?.total ?? 0} cuentas
+              </span>
+              <span className="rounded-full border border-border/70 px-2.5 py-1">
+                {accounts?.anonymous ?? 0} invitados
+              </span>
+              {(accounts?.duplicates ?? 0) > 0 && (
+                <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-accent">
+                  {accounts?.duplicates} correos repetidos
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="relative mt-4">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={userSearch}
+              onChange={(event) => setUserSearch(event.target.value)}
+              placeholder="Buscar por nombre, correo o teléfono"
+              className="pl-9"
+            />
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {accounts === undefined ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="size-5 animate-spin text-primary" />
+              </div>
+            ) : accounts.users.length === 0 ? (
+              <p className="rounded-xl border border-border/70 px-3 py-4 text-center text-xs text-muted-foreground">
+                No hay cuentas con esa búsqueda.
+              </p>
+            ) : (
+              accounts.users.map((account) => {
+                const blocked = account.isMe || account.isAdmin;
+                return (
+                  <div
+                    key={account._id}
+                    className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/70 bg-black/20 p-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                        <span className="truncate">
+                          {account.name ?? "Sin nombre"}
+                        </span>
+                        {account.isAdmin && (
+                          <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-accent">
+                            Admin
+                          </span>
+                        )}
+                        {account.isAnonymous && (
+                          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                            Invitado
+                          </span>
+                        )}
+                        {account.sameEmail > 1 && (
+                          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                            Correo repetido ×{account.sameEmail}
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                        {account.email ?? "sin correo"}
+                        {account.phone ? ` · ${account.phone}` : ""}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {ACCOUNT_ROLE_LABEL[account.role ?? ""] ?? "Sin rol"}
+                        {account.businessName ? ` · ${account.businessName}` : ""} ·{" "}
+                        {account.orders} pedidos · {account.swipes} swipes
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Eliminar ${account.email ?? account.name ?? "cuenta"}`}
+                      title={
+                        blocked
+                          ? "Esta cuenta no se puede eliminar"
+                          : "Eliminar cuenta"
+                      }
+                      disabled={blocked}
+                      onClick={() => setDeletingUser(account)}
+                      className="size-8 shrink-0 text-muted-foreground hover:text-primary disabled:opacity-30"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
+            Al borrar una cuenta se eliminan su carrito y sus swipes, su local con
+            productos y sus pedidos abiertos. Los pedidos ya entregados se
+            mantienen como historial, y los que tuviera como repartidor vuelven a
+            la lista.
+          </p>
+        </section>
+      )}
+
+      <AlertDialog
+        open={deletingUser !== null}
+        onOpenChange={(open) => !open && setDeletingUser(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar esta cuenta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se borra {deletingUser?.email ?? deletingUser?.name ?? "la cuenta"}{" "}
+              con su carrito, sus swipes, sus pedidos abiertos y, si tiene local,
+              su catálogo. No se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingUser}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={removingUser}
+              onClick={() => void handleDeleteAccount()}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {removingUser ? "Eliminando..." : "Eliminar cuenta"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
         <h2 className="font-display text-lg font-bold">Datos de entrega</h2>

@@ -6,7 +6,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
  * Perfil administrador de la plataforma. Con este correo se puede cambiar el
  * logo de Capricho Express y su tamaño.
  */
-const ADMIN_EMAILS = ["rartavia42@gmail.com"];
+export const ADMIN_EMAILS = ["rartavia42@gmail.com"];
 
 const BRAND_KEY = "brand";
 export const DEFAULT_LOGO_SIZE = 40;
@@ -29,7 +29,7 @@ async function brandDoc(ctx: QueryCtx | MutationCtx) {
     .unique();
 }
 
-function isAdminEmail(email?: string | null) {
+export function isAdminEmail(email?: string | null) {
   return ADMIN_EMAILS.includes((email ?? "").trim().toLowerCase());
 }
 
