@@ -1,6 +1,7 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
+import { PromoBadge } from "@/components/PromoBadge";
 import { LoopRow } from "@/components/LoopRow";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { Button } from "@/components/ui/button";
@@ -583,11 +584,18 @@ function Storefront({ slug }: { slug: string }) {
                     key={product._id}
                     className="surface-raised flex gap-3 rounded-2xl p-3"
                   >
-                    <DishImage
-                      src={product.image}
-                      alt={product.name}
-                      className="size-20 shrink-0 rounded-xl"
-                    />
+                    <div className="relative shrink-0">
+                      <DishImage
+                        src={product.image}
+                        alt={product.name}
+                        className="size-20 rounded-xl"
+                      />
+                      <PromoBadge
+                        promo={product.promo}
+                        withIcon={false}
+                        className="absolute inset-x-1 bottom-1 justify-center px-1 py-0.5 text-[9px]"
+                      />
+                    </div>
                     <div className="flex min-w-0 flex-1 flex-col">
                       <p className="truncate text-sm font-semibold">{product.name}</p>
                       <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">

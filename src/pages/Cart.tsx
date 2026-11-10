@@ -184,7 +184,9 @@ export default function CartPage() {
                         ? group.deliveryAvailable
                           ? "Envío al elegir tu punto"
                           : "Fuera de cobertura"
-                        : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
+                        : group.promo
+                          ? `${group.promo.label} · ${group.deliveryFee === 0 ? "gratis" : money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`
+                          : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
                     </p>
                   </div>
                   {!group.isOpen && (
@@ -266,7 +268,14 @@ export default function CartPage() {
                 </ul>
 
                 <div className="flex items-center justify-between bg-black/25 px-4 py-2.5 text-xs text-muted-foreground">
-                  <span>Subtotal del local</span>
+                  <span>
+                    Subtotal del local
+                    {group.deliveryDiscount > 0 && (
+                      <span className="ml-2 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                        El local cubre {money(group.deliveryDiscount)} de envío
+                      </span>
+                    )}
+                  </span>
                   <span className="font-semibold text-foreground">
                     {money(group.subtotal + (group.deliveryFee ?? 0))}
                   </span>
@@ -323,7 +332,14 @@ export default function CartPage() {
               </div>
               <div className="flex justify-between text-muted-foreground">
                 <span>Envíos ({groups.length})</span>
-                <span>{money(cart?.deliveryTotal ?? 0)}</span>
+                <span className="flex items-center gap-2">
+                  {(cart?.deliverySaved ?? 0) > 0 && (
+                    <span className="text-[11px] text-accent">
+                      promo −{money(cart?.deliverySaved ?? 0)}
+                    </span>
+                  )}
+                  {money(cart?.deliveryTotal ?? 0)}
+                </span>
               </div>
               <div className="flex items-end justify-between pt-2">
                 <span className="font-semibold">Total</span>

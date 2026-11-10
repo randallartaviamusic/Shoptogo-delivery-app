@@ -1,5 +1,6 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DishImage } from "@/components/DishImage";
+import { PromoBadge } from "@/components/PromoBadge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -87,9 +88,16 @@ export default function FavoritesPage() {
                 >
                   <X className="size-3.5" />
                 </button>
-                <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-accent backdrop-blur">
-                  {money(item.price)}
-                </span>
+                <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+                  <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-accent backdrop-blur">
+                    {money(item.price)}
+                  </span>
+                  <PromoBadge
+                    promo={item.promo}
+                    withIcon={false}
+                    className="px-2 py-0.5 text-[9px]"
+                  />
+                </div>
                 <div className="absolute inset-x-2 bottom-2">
                   <p className="line-clamp-1 font-display text-sm font-bold text-white">
                     {item.name}

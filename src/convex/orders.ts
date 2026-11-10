@@ -33,6 +33,7 @@ async function decorateOrder(
     items: order.items,
     subtotal: order.subtotal,
     deliveryFee: order.deliveryFee,
+    deliveryDiscount: order.deliveryDiscount ?? 0,
     total: order.total,
     address: order.address,
     distanceKm: order.distanceKm ?? null,
@@ -120,7 +121,12 @@ export const businessBoard = query({
       },
       orders: decorated,
       stats: {
-        revenueToday: deliveredToday.reduce((acc, o) => acc + o.subtotal, 0),
+        // Lo que el local cubrió de envío por promociones se descuenta de su liquidación.
+        revenueToday:
+          deliveredToday.reduce(
+            (acc, o) => acc + o.subtotal - (o.deliveryDiscount ?? 0),
+            0,
+          ),
         deliveredToday: deliveredToday.length,
         active: active.length,
         waiting: sorted.filter((o) => o.status === "pending").length,

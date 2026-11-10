@@ -2,6 +2,12 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { DELIVERY_RULES, deliveryQuote, isValidPoint } from "../lib/delivery";
+import { isPromoActive } from "../lib/promo";
+import type { ProductPromo } from "../lib/promo";
+
+function isActivePromo(promo: ProductPromo | undefined): promo is ProductPromo {
+  return isPromoActive(promo);
+}
 import type { GeoPoint } from "../lib/delivery";
 
 /** Stable per-user shuffle so the deck feels random but doesn't jump around. */
@@ -104,6 +110,7 @@ export const deck = query({
           department: departmentOf(product),
           attributes: product.attributes ?? [],
           tags: product.tags,
+          promo: isActivePromo(product.promo) ? product.promo : null,
           businessId: business._id,
           businessName: business.name,
           businessCategory: business.category,
@@ -313,6 +320,7 @@ export const saved = query({
         image: product.image,
         category: product.category,
         tags: product.tags,
+        promo: isActivePromo(product.promo) ? product.promo : null,
         businessId: business._id,
         businessName: business.name,
         businessImage: business.image,

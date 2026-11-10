@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { geoPointValidator } from "./schema";
+import { geoPointValidator, promoKindValidator } from "./schema";
 import {
   DELIVERY_RULES,
   deliveryQuote,
@@ -244,6 +244,7 @@ export const storefront = query({
           image: product.image,
           category: product.category,
           tags: product.tags,
+          promo: product.promo ?? null,
         })),
     };
   },
@@ -489,6 +490,34 @@ export const updateProduct = mutation({
 
     await ctx.db.patch(args.productId, patch);
     return null;
+  },
+});
+
+export const setProductPromo = mutation({
+  args: {
+    productId: v.id("products"),
+    // null = finalizar la promoción
+    kind: v.union(promoKindValidator, v.null()),
+    days: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const business = await ownedBusiness(ctx, userId);
+    if (!business) throw new Error("No tenés un negocio asociado");
+    const product = await ctx.db.get(args.productId);
+    if (!product || product.businessId !== business._id) {
+      throw new Error("Ese producto no pertenece a tu negocio");
+    }
+
+    if (args.kind === null) {
+      await ctx.db.patch(args.productId, { promo: undefined });
+      return { endsAt: null };
+    }
+
+    const days = Math.min(14, Math.max(1, Math.round(args.days ?? 1)));
+    const endsAt = Date.now() + days * 24 * 60 * 60 * 1000;
+    await ctx.db.patch(args.productId, { promo: { kind: args.kind, endsAt } });
+    return { endsAt };
   },
 });
 

@@ -10,6 +10,8 @@ import {
   isValidPoint,
   normalizePoint,
 } from "../lib/delivery";
+import { bestPromoKind, promoBadge, promoDiscount } from "../lib/promo";
+import type { PromoKind } from "../lib/promo";
 
 type DbCtx = QueryCtx | MutationCtx;
 
@@ -23,8 +25,13 @@ export type CartGroup = {
   businessId: Id<"businesses">;
   businessName: string;
   businessImage: string;
-  /** Envío calculado por la app; null si todavía no hay punto de entrega. */
+  /** Envío que paga el cliente; null si todavía no hay punto de entrega. */
   deliveryFee: number | null;
+  /** Envío sin promo, para mostrar el precio original. */
+  deliveryFullFee: number | null;
+  /** Parte del envío que absorbe el local por la promoción. */
+  deliveryDiscount: number;
+  promo: { kind: PromoKind; label: string } | null;
   feeFrom: number;
   distanceKm: number | null;
   deliveryMinutes: number | null;
@@ -53,12 +60,17 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
 
   const byBusiness = new Map<string, CartGroup>();
   const groups: CartGroup[] = [];
+  const promosByBusiness = new Map<string, PromoKind[]>();
 
   for (const item of cartItems) {
     const product = await ctx.db.get(item.productId);
     if (!product) continue;
     const business = await ctx.db.get(item.businessId);
     if (!business) continue;
+    const promoKind: PromoKind | null =
+      product.promo && product.promo.endsAt > Date.now()
+        ? product.promo.kind
+        : null;
 
     let group = byBusiness.get(item.businessId);
     if (!group) {
@@ -68,6 +80,9 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
         businessName: business.name,
         businessImage: business.image,
         deliveryFee: quote?.fee ?? null,
+        deliveryFullFee: quote?.fee ?? null,
+        deliveryDiscount: 0,
+        promo: null,
         feeFrom: DELIVERY_RULES.baseFee,
         distanceKm: quote?.distanceKm ?? null,
         deliveryMinutes: quote?.minutes ?? null,
@@ -90,6 +105,23 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
       image: product.image,
     });
     group.subtotal += product.price * item.quantity;
+
+    if (promoKind) {
+      const list = promosByBusiness.get(item.businessId) ?? [];
+      list.push(promoKind);
+      promosByBusiness.set(item.businessId, list);
+    }
+  }
+
+  // La promo se aplica una vez por local: si algún producto tiene envío gratis,
+  // ese pedido no paga envío; si el mejor es 50%, paga la mitad.
+  for (const group of groups) {
+    const kind = bestPromoKind(promosByBusiness.get(group.businessId) ?? []);
+    if (!kind || group.deliveryFullFee === null) continue;
+    const discount = promoDiscount(group.deliveryFullFee, kind);
+    group.deliveryDiscount = discount;
+    group.deliveryFee = group.deliveryFullFee - discount;
+    group.promo = { kind, label: promoBadge(kind) };
   }
 
   const subtotal = groups.reduce((acc, g) => acc + g.subtotal, 0);
@@ -104,6 +136,7 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
     count,
     subtotal,
     deliveryTotal,
+    deliverySaved: groups.reduce((acc, g) => acc + g.deliveryDiscount, 0),
     total: subtotal + deliveryTotal,
   };
 }
@@ -118,6 +151,7 @@ export const myCart = query({
         count: 0,
         subtotal: 0,
         deliveryTotal: 0,
+        deliverySaved: 0,
         total: 0,
       };
     }
@@ -249,6 +283,7 @@ export const checkout = mutation({
         price: number;
         quantity: number;
         image: string;
+        promoKind: PromoKind | null;
       }>
     >();
     const businessIds: Id<"businesses">[] = [];
@@ -273,6 +308,10 @@ export const checkout = mutation({
         price: product.price,
         quantity: item.quantity,
         image: product.image,
+        promoKind:
+          product.promo && product.promo.endsAt > Date.now()
+            ? product.promo.kind
+            : null,
       });
     }
 
@@ -296,15 +335,30 @@ export const checkout = mutation({
         );
       }
       const subtotal = items.reduce((acc, i) => acc + i.price * i.quantity, 0);
-      const orderTotal = subtotal + quote.fee;
+      const promoKind = bestPromoKind(
+        items
+          .map((item) => item.promoKind)
+          .filter((kind): kind is PromoKind => kind !== null),
+      );
+      const deliveryDiscount = promoKind
+        ? Math.min(quote.fee, promoDiscount(quote.fee, promoKind))
+        : 0;
+      const orderTotal = subtotal + quote.fee - deliveryDiscount;
       total += orderTotal;
       await ctx.db.insert("orders", {
         code: `CE-${Math.floor(1000 + Math.random() * 9000)}`,
         buyerId: userId,
         businessId,
-        items,
+        items: items.map((item) => ({
+          productId: item.productId,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image,
+        })),
         subtotal,
         deliveryFee: quote.fee,
+        deliveryDiscount: deliveryDiscount || undefined,
         total: orderTotal,
         status: "pending",
         address,

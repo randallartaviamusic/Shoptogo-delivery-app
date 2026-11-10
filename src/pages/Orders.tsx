@@ -47,6 +47,7 @@ export type OrderView = {
   items: OrderItem[];
   subtotal: number;
   deliveryFee: number;
+  deliveryDiscount?: number;
   total: number;
   address: string;
   distanceKm: number | null;
@@ -231,6 +232,12 @@ function OrderDetailDialog({
               <span>Envío</span>
               <span>{money(order.deliveryFee)}</span>
             </div>
+            {(order.deliveryDiscount ?? 0) > 0 && (
+              <div className="flex justify-between text-accent">
+                <span>Promo de envío (la cubre el local)</span>
+                <span>−{money(order.deliveryDiscount ?? 0)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-border/60 pt-1.5 font-bold">
               <span>Total</span>
               <span>{money(order.total)}</span>

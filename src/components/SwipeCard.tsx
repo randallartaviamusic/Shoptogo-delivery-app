@@ -1,7 +1,10 @@
 import { DishImage } from "@/components/DishImage";
+import { PromoBadge } from "@/components/PromoBadge";
 import { Button } from "@/components/ui/button";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
+import { promoDiscount } from "@/lib/promo";
+import type { ProductPromo } from "@/lib/promo";
 import { cn } from "@/lib/utils";
 import {
   animate,
@@ -23,6 +26,7 @@ export type Dish = {
   department?: string;
   attributes?: { key: string; value: string }[];
   tags: string[];
+  promo?: ProductPromo | null;
   businessId: string;
   businessName: string;
   businessCategory: string;
@@ -40,6 +44,21 @@ export type Dish = {
 };
 
 export type SwipeDirection = "like" | "pass" | "save";
+
+/** Texto del envío, con la promo del local aplicada si sigue vigente. */
+function deliveryText(
+  delivery: Dish["delivery"],
+  promo?: ProductPromo | null,
+) {
+  if (!delivery.available) return "Fuera de cobertura";
+  if (delivery.fee === null) return `Envío desde ${money(delivery.feeFrom)}`;
+  const distance = formatKm(delivery.distanceKm ?? 0);
+  const active = promo && promo.endsAt > Date.now() ? promo : null;
+  if (!active) return `Envío ${money(delivery.fee)} · ${distance}`;
+  if (active.kind === "free_delivery") return `Envío gratis · ${distance}`;
+  const clientFee = delivery.fee - promoDiscount(delivery.fee, active.kind);
+  return `Envío al 50% · ${money(clientFee)} · ${distance}`;
+}
 
 function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
   return (
@@ -69,9 +88,15 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
             </p>
           </div>
         </div>
-        <span className="rounded-full bg-accent px-3 py-1.5 font-display text-sm font-bold text-accent-foreground">
-          {money(dish.price)}
-        </span>
+        <div className="flex flex-col items-end gap-1.5">
+          <span className="rounded-full bg-accent px-3 py-1.5 font-display text-sm font-bold text-accent-foreground">
+            {money(dish.price)}
+          </span>
+          <PromoBadge
+            promo={dish.promo}
+            className="px-2.5 py-1 text-[11px] normal-case tracking-normal"
+          />
+        </div>
       </div>
 
       <div className="absolute inset-x-0 bottom-0 p-5">
@@ -98,11 +123,7 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
           </span>
           <span className="flex items-center gap-1.5">
             <Clock className="size-3.5 text-accent" />
-            {!dish.delivery.available
-              ? "Fuera de cobertura"
-              : dish.delivery.fee === null
-                ? `Envío desde ${money(dish.delivery.feeFrom)}`
-                : `Envío ${money(dish.delivery.fee)} · ${formatKm(dish.delivery.distanceKm ?? 0)}`}
+            {deliveryText(dish.delivery, dish.promo)}
           </span>
         </div>
       </div>

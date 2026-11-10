@@ -23,6 +23,12 @@ export const swipeDirectionValidator = v.union(
 );
 export type SwipeDirection = Infer<typeof swipeDirectionValidator>;
 
+export const promoKindValidator = v.union(
+  v.literal("free_delivery"),
+  v.literal("half_delivery"),
+);
+export type PromoKind = Infer<typeof promoKindValidator>;
+
 export const orderStatusValidator = v.union(
   v.literal("pending"),
   v.literal("accepted"),
@@ -110,6 +116,13 @@ const schema = defineSchema(
       attributes: v.array(v.object({ key: v.string(), value: v.string() })),
       tags: v.array(v.string()),
       isAvailable: v.boolean(),
+      // Promo de envío que financia el local mientras no venza.
+      promo: v.optional(
+        v.object({
+          kind: promoKindValidator,
+          endsAt: v.number(),
+        }),
+      ),
       isDemo: v.optional(v.boolean()),
     })
       .index("by_business", ["businessId"])
@@ -142,6 +155,8 @@ const schema = defineSchema(
       items: v.array(orderItemValidator),
       subtotal: v.number(),
       deliveryFee: v.number(),
+      // Parte del envío que cubrió el local por una promoción.
+      deliveryDiscount: v.optional(v.number()),
       total: v.number(),
       status: orderStatusValidator,
       address: v.string(),
