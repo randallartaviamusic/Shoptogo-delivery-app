@@ -277,16 +277,16 @@ function Directory() {
           {groups.map((group) => (
             <section key={group.key}>
               <div className="mb-3 flex items-center gap-2">
-                <span className="flex size-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <DepartmentIcon name={group.icon} className="size-4" />
+                <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <DepartmentIcon name={group.icon} className="size-3.5" />
                 </span>
-                <h2 className="font-display text-lg font-bold">{group.title}</h2>
+                <h2 className="font-display text-base font-bold">{group.title}</h2>
                 <span className="text-[11px] text-muted-foreground">
                   {group.businesses.length}{" "}
                   {group.businesses.length === 1 ? "local" : "locales"}
                 </span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
                 {group.businesses.map((business) => (
                   <BusinessCard key={business._id} business={business} />
                 ))}
@@ -333,9 +333,9 @@ function BusinessCard({
   return (
     <Link
       to={`/negocios/${business.slug}`}
-      className="surface-raised group flex flex-col overflow-hidden rounded-3xl transition-colors hover:border-accent/35"
+      className="surface-raised group flex w-[15rem] shrink-0 snap-start flex-col overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]"
     >
-      <div className="relative h-36 w-full overflow-hidden">
+      <div className="relative h-28 w-full overflow-hidden">
         <DishImage
           src={business.image}
           alt={business.name}
@@ -361,16 +361,16 @@ function BusinessCard({
           <p className="text-[10px] font-semibold uppercase tracking-wider text-accent">
             {business.category}
           </p>
-          <p className="truncate font-display text-base font-extrabold text-white">
+          <p className="truncate font-display text-sm font-extrabold text-white">
             {business.name}
           </p>
         </div>
       </div>
-      <div className="flex flex-1 flex-col p-4">
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+      <div className="flex flex-1 flex-col p-3.5">
+        <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
           {business.tagline}
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">
             <Clock className="size-3 text-accent" />
             {business.etaMinutes} min
@@ -385,7 +385,7 @@ function BusinessCard({
             {business.productCount === 1 ? "producto" : "productos"}
           </span>
         </div>
-        <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+        <div className="mt-auto flex items-center justify-between border-t border-border/60 pt-2.5">
           <p className="text-[11px] text-muted-foreground">
             {business.minPrice !== null ? (
               <>
