@@ -287,10 +287,8 @@ export function AppShell() {
 
       <header
         className={cn(
-          "sticky top-0 z-30 flex items-center justify-between border-b bg-background/85 bg-[linear-gradient(to_bottom,#fff_0%,rgba(255,255,255,0.82)_14%,rgba(255,255,255,0.3)_44%,rgba(255,255,255,0.08)_74%,rgba(255,255,255,0)_100%)] px-4 py-3 backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out lg:hidden",
-          headerHidden
-            ? "-translate-y-full border-transparent"
-            : "translate-y-0 border-border/60",
+          "sticky top-0 z-30 flex items-center justify-between bg-background/85 bg-[linear-gradient(to_bottom,#fff_0%,rgba(255,255,255,0.82)_14%,rgba(255,255,255,0.3)_44%,rgba(255,255,255,0.08)_74%,rgba(255,255,255,0)_100%)] px-4 py-3 backdrop-blur-xl transition-transform duration-300 ease-out lg:hidden",
+          headerHidden ? "-translate-y-full" : "translate-y-0",
         )}
       >
         <Link
@@ -359,7 +357,7 @@ export function AppShell() {
         </AnimatePresence>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 bg-[linear-gradient(to_top,#fff_0%,rgba(255,255,255,0.7)_10%,rgba(255,255,255,0.24)_22%,rgba(255,255,255,0.06)_40%,rgba(255,255,255,0)_62%)] px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 bg-background/90 bg-[linear-gradient(to_top,#fff_0%,rgba(255,255,255,0.7)_10%,rgba(255,255,255,0.24)_22%,rgba(255,255,255,0.06)_40%,rgba(255,255,255,0)_62%)] px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-stretch justify-between">
           {nav.map((item) => {
             const active =
