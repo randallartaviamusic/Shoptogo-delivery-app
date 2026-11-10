@@ -244,8 +244,8 @@ export default function CourierPage() {
           {available.length === 0 ? (
             <EmptyState
               icon={Bike}
-              title="No hay pedidos listos ahora"
-              description="Cuando un local marque un pedido como listo, va a aparecer acá para que lo tomes. Se actualiza solo."
+              title="No hay pedidos ahora"
+              description="Apenas un cliente hace un pedido aparece acá para que lo tomes, y te avisamos en pantalla. Se actualiza solo."
               action={
                 <Button asChild variant="outline" className="gap-2 border-border/80">
                   <Link to="/courier?tab=active">Ver mis entregas</Link>
@@ -268,6 +268,16 @@ export default function CourierPage() {
                         {order.code}
                       </span>
                     </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                      <StatusPill status={order.status} />
+                      <span className="text-[10px] text-muted-foreground">
+                        {order.status === "ready"
+                          ? "Listo para retirar"
+                          : order.status === "pending"
+                            ? "Esperando que el local confirme"
+                            : "El local lo está preparando"}
+                      </span>
+                    </div>
                     <p className="text-[11px] text-muted-foreground">
                       {relativeTime(order.createdAt)} ·{" "}
                       {order.items.reduce((acc, item) => acc + item.quantity, 0)}{" "}
@@ -413,9 +423,20 @@ export default function CourierPage() {
 
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">
                   <p className="text-[11px] text-muted-foreground">
-                    Recogido {order.pickedUpAt ? clockTime(order.pickedUpAt) : "—"}
+                    {order.pickedUpAt
+                      ? `Recogido ${clockTime(order.pickedUpAt)}`
+                      : "Aún no retirado"}
                   </p>
-                  {order.status === "ready" ? (
+                  {order.status === "picked_up" ? (
+                    <Button
+                      className="gap-2 bg-ember-gradient text-black"
+                      disabled={busy === order._id}
+                      onClick={() => handleAdvance(order, "delivered")}
+                    >
+                      <CheckCircle2 className="size-4" />
+                      Marcar entregado
+                    </Button>
+                  ) : order.status === "ready" ? (
                     <Button
                       className="gap-2 bg-ember-gradient text-black"
                       disabled={busy === order._id}
@@ -425,14 +446,10 @@ export default function CourierPage() {
                       Marcar recogido
                     </Button>
                   ) : (
-                    <Button
-                      className="gap-2 bg-ember-gradient text-black"
-                      disabled={busy === order._id}
-                      onClick={() => handleAdvance(order, "delivered")}
-                    >
-                      <CheckCircle2 className="size-4" />
-                      Marcar entregado
-                    </Button>
+                    <p className="max-w-[15rem] text-right text-[11px] leading-relaxed text-muted-foreground">
+                      Esperá el aviso del local: cuando marque el pedido como
+                      listo vas a poder retirarlo.
+                    </p>
                   )}
                 </div>
               </div>

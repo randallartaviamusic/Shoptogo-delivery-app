@@ -8,6 +8,7 @@ import { toast } from "sonner";
 type AvailableOrder = {
   _id: string;
   code: string;
+  status: string;
   businessName: string;
   deliveryFee: number;
 };
@@ -49,8 +50,8 @@ export function CourierAlerts({ enabled }: { enabled: boolean }) {
   const primed = useRef(false);
 
   useEffect(() => {
-    if (!enabled || board === undefined) return;
-    const available = board?.available as unknown as AvailableOrder[];
+    if (!enabled || !board) return;
+    const available = (board.available ?? []) as unknown as AvailableOrder[];
     const ids = available.map((order) => order._id);
 
     // La primera carga no avisa: son los pedidos que ya estaban publicados.
@@ -68,16 +69,21 @@ export function CourierAlerts({ enabled }: { enabled: boolean }) {
 
     const first = fresh[0];
     playChime();
-    toast("Pedido listo para entregar", {
-      description: `${first.businessName} · ${money(first.deliveryFee)}${
-        fresh.length > 1 ? ` · y ${fresh.length - 1} más` : ""
-      }`,
-      action: {
-        label: "Ver pedidos",
-        onClick: () => navigate("/courier"),
+    toast(
+      first.status === "ready"
+        ? "Pedido listo para retirar"
+        : "Nuevo pedido para entregar",
+      {
+        description: `${first.businessName} · ${money(first.deliveryFee)}${
+          fresh.length > 1 ? ` · y ${fresh.length - 1} más` : ""
+        }`,
+        action: {
+          label: "Ver pedidos",
+          onClick: () => navigate("/courier"),
+        },
+        duration: 12000,
       },
-      duration: 8000,
-    });
+    );
   }, [board, enabled, navigate]);
 
   return null;
