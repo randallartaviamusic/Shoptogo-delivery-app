@@ -362,7 +362,7 @@ export default function SwipePage() {
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:gap-12">
         <div className="mx-auto w-full max-w-[420px]">
-          <div className="relative h-[calc(100svh-380px)] min-h-[380px] max-h-[560px]">
+          <div className="relative aspect-[4/3] w-full">
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center rounded-[30px] border border-border/70 bg-card">
                 <Loader2 className="size-6 animate-spin text-primary" />
@@ -397,25 +397,25 @@ export default function SwipePage() {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="surface-raised absolute inset-0 flex flex-col items-center justify-center rounded-[30px] px-6 text-center"
+                  className="surface-raised absolute inset-0 flex flex-col items-center justify-center overflow-y-auto rounded-[30px] px-5 py-4 text-center"
                 >
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/12 text-primary">
                     {selectedCount > 0 ? (
-                      <SlidersHorizontal className="size-7" />
+                      <SlidersHorizontal className="size-6" />
                     ) : emptyDepartment ? (
-                      <UtensilsCrossed className="size-7" />
+                      <UtensilsCrossed className="size-6" />
                     ) : (
-                      <Sparkles className="size-7" />
+                      <Sparkles className="size-6" />
                     )}
                   </div>
-                  <h3 className="mt-5 font-display text-xl font-bold">
+                  <h3 className="mt-3 font-display text-lg font-bold">
                     {selectedCount > 0
                       ? "Nada con esos filtros"
                       : emptyDepartment
                         ? "Este rubro está vacío"
                         : "Viste todos los productos"}
                   </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
+                  <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
                     {selectedCount > 0
                       ? "Probá quitar alguno de los filtros para ver más opciones."
                       : emptyDepartment
@@ -423,7 +423,8 @@ export default function SwipePage() {
                         : "Recargá el mazo para volver a ver lo que pasaste."}
                   </p>
                   <Button
-                    className="mt-6 gap-2 bg-ember-gradient text-black"
+                    size="sm"
+                    className="mt-4 gap-2 bg-ember-gradient text-black"
                     onClick={() => {
                       if (selectedCount > 0) clearFilters();
                       else if (emptyDepartment)
