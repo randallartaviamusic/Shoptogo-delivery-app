@@ -193,13 +193,13 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
 
       <motion.div
         style={{ opacity: likeOpacity, scale: stampScale }}
-        className="pointer-events-none absolute left-4 top-20 -rotate-12 rounded-xl border-[3px] border-accent bg-black/65 px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] text-accent shadow-[0_10px_30px_-8px_rgba(0,0,0,0.9)] backdrop-blur-sm sm:text-4xl"
+        className="pointer-events-none absolute left-4 top-20 -rotate-12 rounded-xl border-[3px] border-primary px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] text-primary sm:text-4xl"
       >
         LO QUIERO
       </motion.div>
       <motion.div
         style={{ opacity: passOpacity, scale: stampScale }}
-        className="pointer-events-none absolute right-4 top-20 rotate-12 rounded-xl border-[3px] border-primary bg-black/65 px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] text-primary shadow-[0_10px_30px_-8px_rgba(0,0,0,0.9)] backdrop-blur-sm sm:text-4xl"
+        className="pointer-events-none absolute right-4 top-20 rotate-12 rounded-xl border-[3px] border-primary px-4 py-2 font-display text-3xl font-extrabold uppercase leading-none tracking-[0.12em] text-primary sm:text-4xl"
       >
         PASO
       </motion.div>
