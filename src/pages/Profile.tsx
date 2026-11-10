@@ -1,9 +1,17 @@
 import defaultLogo from "@/assets/logo.svg";
+import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,6 +40,9 @@ import { toast } from "sonner";
 
 const LOGO_MIN = 20;
 const LOGO_MAX = 88;
+
+const TITLE_MIN = 12;
+const TITLE_MAX = 30;
 
 const ROLES = [
   {
@@ -70,6 +81,9 @@ export default function ProfilePage() {
   const setLogo = useMutation(api.branding.setLogo);
   const setLogoSize = useMutation(api.branding.setLogoSize);
   const resetLogo = useMutation(api.branding.resetLogo);
+  const headline = useQuery(api.branding.brandHeadline);
+  const setBrandHeadline = useMutation(api.branding.setBrandHeadline);
+  const resetBrandHeadline = useMutation(api.branding.resetBrandHeadline);
 
   const [uploading, setUploading] = useState<"avatar" | "cover" | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +93,12 @@ export default function ProfilePage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [savingLogoSize, setSavingLogoSize] = useState(false);
   const [logoSizeDraft, setLogoSizeDraft] = useState(40);
+
+  const [titleDraft, setTitleDraft] = useState("Capricho Express");
+  const [titleColorDraft, setTitleColorDraft] = useState("#f7f5f0");
+  const [titleFontDraft, setTitleFontDraft] = useState("sora");
+  const [titleSizeDraft, setTitleSizeDraft] = useState(18);
+  const [savingHeadline, setSavingHeadline] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -102,6 +122,14 @@ export default function ProfilePage() {
   useEffect(() => {
     if (brand?.logoSize) setLogoSizeDraft(brand.logoSize);
   }, [brand?.logoSize]);
+
+  useEffect(() => {
+    if (!headline) return;
+    setTitleDraft(headline.title);
+    setTitleColorDraft(headline.color);
+    setTitleFontDraft(headline.font);
+    setTitleSizeDraft(headline.size);
+  }, [headline?.title, headline?.color, headline?.font, headline?.size]);
 
   if (!user) {
     return (
@@ -201,6 +229,35 @@ export default function ProfilePage() {
       toast.error(error instanceof Error ? error.message : "No pudimos guardar");
     } finally {
       setSavingLogoSize(false);
+    }
+  };
+
+  const handleHeadlineSave = async () => {
+    setSavingHeadline(true);
+    try {
+      await setBrandHeadline({
+        title: titleDraft,
+        color: titleColorDraft,
+        font: titleFontDraft,
+        size: titleSizeDraft,
+      });
+      toast.success("Título de la barra actualizado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSavingHeadline(false);
+    }
+  };
+
+  const handleHeadlineReset = async () => {
+    setSavingHeadline(true);
+    try {
+      await resetBrandHeadline();
+      toast.success("Volvimos al título original");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos cambiarlo");
+    } finally {
+      setSavingHeadline(false);
     }
   };
 
@@ -472,6 +529,134 @@ export default function ProfilePage() {
             PNG, JPG, WebP o SVG hasta 4 MB. Si subís un logo horizontal se
             respeta su proporción.
           </p>
+        </section>
+      )}
+
+      {isAdmin && (
+        <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+          <div>
+            <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+              <ShieldCheck className="size-3.5" />
+              Perfil administrador
+            </p>
+            <h2 className="font-display text-lg font-bold">
+              Título de la barra superior
+            </h2>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Es el texto que aparece al lado del logo. Elegí el color, la
+              tipografía y el tamaño.
+            </p>
+          </div>
+
+          <div className="mt-4 flex min-h-[92px] items-center justify-center gap-2.5 overflow-hidden rounded-2xl border border-border/70 bg-black/30 px-4 py-5">
+            <img
+              src={brand?.logoUrl ?? defaultLogo}
+              alt="Logo de Capricho Express"
+              style={{ height: 34, maxWidth: 34 * 2.6, width: "auto" }}
+              className="shrink-0 rounded-2xl object-contain"
+            />
+            <span
+              className="min-w-0 truncate font-extrabold leading-none tracking-tight"
+              style={{
+                color: titleColorDraft,
+                fontFamily: fontStack(titleFontDraft),
+                fontSize: titleSizeDraft,
+              }}
+            >
+              {titleDraft.trim() || "Capricho Express"}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="brand-title">Texto del título</Label>
+              <Input
+                id="brand-title"
+                value={titleDraft}
+                maxLength={40}
+                placeholder="Capricho Express"
+                onChange={(event) => setTitleDraft(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="brand-title-font">Tipo de letra</Label>
+              <Select value={titleFontDraft} onValueChange={setTitleFontDraft}>
+                <SelectTrigger id="brand-title-font" className="w-full bg-background/40">
+                  <SelectValue placeholder="Elegí una tipografía" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BRAND_FONT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <span style={{ fontFamily: option.stack }}>{option.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="brand-title-color">Color del título</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="brand-title-color"
+                  type="color"
+                  value={titleColorDraft}
+                  onChange={(event) => setTitleColorDraft(event.target.value)}
+                  className="size-10 shrink-0 cursor-pointer rounded-xl border border-border/70 bg-transparent p-1"
+                />
+                <Input
+                  value={titleColorDraft}
+                  maxLength={7}
+                  spellCheck={false}
+                  onChange={(event) => setTitleColorDraft(event.target.value)}
+                  className="font-mono text-xs uppercase"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="brand-title-size">Tamaño del título</Label>
+                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">
+                  {titleSizeDraft}px
+                </span>
+              </div>
+              <Slider
+                id="brand-title-size"
+                className="py-2"
+                min={TITLE_MIN}
+                max={TITLE_MAX}
+                step={1}
+                value={[titleSizeDraft]}
+                onValueChange={([value]) => setTitleSizeDraft(value ?? TITLE_MIN)}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              className="gap-2"
+              disabled={savingHeadline}
+              onClick={handleHeadlineSave}
+            >
+              {savingHeadline ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              Guardar título
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2 border-border/80"
+              disabled={savingHeadline}
+              onClick={handleHeadlineReset}
+            >
+              <RotateCcw className="size-4" />
+              Restablecer
+            </Button>
+          </div>
         </section>
       )}
 

@@ -13,6 +13,15 @@ export const DEFAULT_LOGO_SIZE = 40;
 export const MIN_LOGO_SIZE = 20;
 export const MAX_LOGO_SIZE = 88;
 
+export const DEFAULT_BRAND_TITLE = "Capricho Express";
+export const DEFAULT_BRAND_TITLE_COLOR = "#f7f5f0";
+export const DEFAULT_BRAND_TITLE_FONT = "sora";
+export const DEFAULT_BRAND_TITLE_SIZE = 18;
+export const MIN_BRAND_TITLE_SIZE = 12;
+export const MAX_BRAND_TITLE_SIZE = 30;
+const BRAND_TITLE_FONTS = ["sora", "manrope", "serif", "mono"];
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
 async function brandDoc(ctx: QueryCtx | MutationCtx) {
   return await ctx.db
     .query("settings")
@@ -44,6 +53,25 @@ export const brand = query({
       logoUrl: doc?.logoUrl ?? null,
       logoSize: Math.min(MAX_LOGO_SIZE, Math.max(MIN_LOGO_SIZE, size)),
       updatedAt: doc?.updatedAt ?? null,
+    };
+  },
+});
+
+/** Título que acompaña al logo y su estilo. Público, igual que el logo. */
+export const brandHeadline = query({
+  args: {},
+  handler: async (ctx) => {
+    const doc = await brandDoc(ctx);
+    const size = doc?.brandTitleSize ?? DEFAULT_BRAND_TITLE_SIZE;
+    const font = doc?.brandTitleFont ?? DEFAULT_BRAND_TITLE_FONT;
+    return {
+      title: doc?.brandTitle ?? DEFAULT_BRAND_TITLE,
+      color: doc?.brandTitleColor ?? DEFAULT_BRAND_TITLE_COLOR,
+      font: BRAND_TITLE_FONTS.includes(font) ? font : DEFAULT_BRAND_TITLE_FONT,
+      size: Math.min(
+        MAX_BRAND_TITLE_SIZE,
+        Math.max(MIN_BRAND_TITLE_SIZE, Math.round(size)),
+      ),
     };
   },
 });
@@ -106,6 +134,83 @@ export const setLogoSize = mutation({
       });
     }
     return next;
+  },
+});
+
+/**Texto, color, tipografía y tamaño del título que va al lado del logo. */
+export const setBrandHeadline = mutation({
+  args: {
+    title: v.optional(v.string()),
+    color: v.optional(v.string()),
+    font: v.optional(v.string()),
+    size: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const patch: {
+      updatedAt: number;
+      brandTitle?: string;
+      brandTitleColor?: string;
+      brandTitleFont?: string;
+      brandTitleSize?: number;
+    } = { updatedAt: Date.now() };
+
+    if (args.title !== undefined) {
+      const title = args.title.trim().slice(0, 40);
+      if (!title) throw new Error("El título no puede quedar vacío");
+      patch.brandTitle = title;
+    }
+    if (args.color !== undefined) {
+      if (!HEX_COLOR.test(args.color)) throw new Error("Usá un color hexadecimal");
+      patch.brandTitleColor = args.color.toLowerCase();
+    }
+    if (args.font !== undefined) {
+      if (!BRAND_TITLE_FONTS.includes(args.font)) {
+        throw new Error("Esa tipografía no está disponible");
+      }
+      patch.brandTitleFont = args.font;
+    }
+    if (args.size !== undefined) {
+      patch.brandTitleSize = Math.min(
+        MAX_BRAND_TITLE_SIZE,
+        Math.max(MIN_BRAND_TITLE_SIZE, Math.round(args.size)),
+      );
+    }
+
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, patch);
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        brandTitle: DEFAULT_BRAND_TITLE,
+        brandTitleColor: DEFAULT_BRAND_TITLE_COLOR,
+        brandTitleFont: DEFAULT_BRAND_TITLE_FONT,
+        brandTitleSize: DEFAULT_BRAND_TITLE_SIZE,
+        ...patch,
+      });
+    }
+    return null;
+  },
+});
+
+/** Devuelve el título a su texto y estilo originales. */
+export const resetBrandHeadline = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, {
+        brandTitle: undefined,
+        brandTitleColor: undefined,
+        brandTitleFont: undefined,
+        brandTitleSize: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+    return null;
   },
 });
 

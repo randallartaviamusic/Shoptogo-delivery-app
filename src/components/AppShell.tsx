@@ -288,8 +288,12 @@ export function AppShell() {
             : "translate-y-0 border-border/60",
         )}
       >
-        <Link to={home} aria-label="Capricho Express">
-          <BrandMark size={30} />
+        <Link
+          to={home}
+          aria-label="Capricho Express"
+          className="flex min-w-0 max-w-[58%] items-center"
+        >
+          <Wordmark markSize={30} />
         </Link>
         <div className="flex items-center gap-1">
           {role === "buyer" && (
@@ -319,10 +323,18 @@ export function AppShell() {
               Entrar
             </Link>
           ) : (
-            <Link to="/profile" aria-label="Perfil">
-              <div className="ml-1 flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
-                {initials(user?.name)}
-              </div>
+            <Link to="/profile" aria-label="Perfil" className="ml-1">
+              {user?.image ? (
+                <img
+                  src={user.image}
+                  alt={user.name ?? "Tu perfil"}
+                  className="size-9 rounded-xl object-cover ring-1 ring-border/80"
+                />
+              ) : (
+                <div className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
+                  {initials(user?.name)}
+                </div>
+              )}
             </Link>
           )}
         </div>

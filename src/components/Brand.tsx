@@ -3,6 +3,21 @@ import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { useQuery } from "convex/react";
 
+/** Tipografías disponibles para el título de la barra superior. */
+export const BRAND_FONT_OPTIONS = [
+  { value: "sora", label: "Sora", stack: '"Sora", "Manrope", sans-serif' },
+  { value: "manrope", label: "Manrope", stack: '"Manrope", sans-serif' },
+  { value: "serif", label: "Georgia", stack: 'Georgia, "Times New Roman", serif' },
+  { value: "mono", label: "Monoespaciada", stack: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+] as const;
+
+export function fontStack(token: string) {
+  return (
+    BRAND_FONT_OPTIONS.find((option) => option.value === token)?.stack ??
+    BRAND_FONT_OPTIONS[0].stack
+  );
+}
+
 /**
  * Logo de la plataforma. Si el perfil administrador subió uno propio, todas las
  * instancias lo usan con el tamaño que eligió; si no, va el logo original.
@@ -28,6 +43,27 @@ export function BrandMark({
   );
 }
 
+/**
+ * Título que va al lado del logo. El perfil administrador decide el texto, el
+ * color, la tipografía y el tamaño desde su perfil.
+ */
+export function BrandHeadline({ className }: { className?: string }) {
+  const headline = useQuery(api.branding.brandHeadline);
+
+  return (
+    <span
+      className={cn("min-w-0 truncate font-extrabold leading-none tracking-tight", className)}
+      style={{
+        color: headline?.color ?? "#f7f5f0",
+        fontFamily: fontStack(headline?.font ?? "sora"),
+        fontSize: headline?.size ?? 18,
+      }}
+    >
+      {headline?.title ?? "Capricho Express"}
+    </span>
+  );
+}
+
 export function Wordmark({
   className,
   markSize = 36,
@@ -36,11 +72,9 @@ export function Wordmark({
   markSize?: number;
 }) {
   return (
-    <span className={cn("flex items-center gap-2.5", className)}>
+    <span className={cn("flex min-w-0 items-center gap-2.5", className)}>
       <BrandMark size={markSize} />
-      <span className="whitespace-nowrap font-display text-[19px] font-extrabold tracking-tight text-foreground">
-        Capricho <span className="text-accent">Express</span>
-      </span>
+      <BrandHeadline />
     </span>
   );
 }
