@@ -39,7 +39,7 @@ const HERO_DISH = {
 const STEPS = [
   {
     title: "Elegí el rubro",
-    text: "Comida, ropa, tecnología, farmacia y más: trece departamentos con sus propios filtros.",
+    text: `Comida, súper, ropa, tecnología y más: ${DEPARTMENTS.length} departamentos con sus propios filtros.`,
     icon: Flame,
   },
   {
@@ -60,7 +60,7 @@ const ROLES = [
     description:
       "Descubrí productos que no sabías que querías, de comida a tecnología. Un swipe y están en camino.",
     icon: ShoppingBag,
-    points: ["13 rubros", "Filtros por rubro", "Seguimiento en vivo"],
+    points: [`${DEPARTMENTS.length} rubros`, "Filtros por rubro", "Seguimiento en vivo"],
     href: "/auth?role=buyer&returnTo=%2Fswipe",
     cta: "Crear mi cuenta",
   },
@@ -328,7 +328,7 @@ export default function Landing() {
               {[
                 { value: "30+", label: "locales aliados" },
                 { value: "100+", label: "productos en el mazo" },
-                { value: "13", label: "rubros para explorar" },
+                { value: String(DEPARTMENTS.length), label: "rubros para explorar" },
               ].map((stat) => (
                 <div key={stat.label}>
                   <p className="font-display text-2xl font-extrabold">{stat.value}</p>
@@ -409,7 +409,7 @@ export default function Landing() {
           >
             <div className="max-w-2xl">
               <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
-                Un mazo, trece rubros
+                Un mazo, {DEPARTMENTS.length} rubros
               </p>
               <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
                 De la hamburguesa al sillón, todo se desliza

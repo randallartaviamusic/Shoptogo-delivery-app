@@ -1,4 +1,5 @@
 import {
+  Boxes,
   Footprints,
   Guitar,
   Hammer,
@@ -29,6 +30,7 @@ const ICONS: Record<string, LucideIcon> = {
   guitar: Guitar,
   hammer: Hammer,
   basket: ShoppingBasket,
+  boxes: Boxes,
 };
 
 export function DepartmentIcon({
