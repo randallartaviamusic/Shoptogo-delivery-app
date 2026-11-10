@@ -17,6 +17,7 @@ const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const Onboarding = lazy(() => import("./pages/Onboarding.tsx"));
 const SwipePage = lazy(() => import("./pages/Swipe.tsx"));
+const BusinessesPage = lazy(() => import("./pages/Businesses.tsx"));
 const CartPage = lazy(() => import("./pages/Cart.tsx"));
 const OrdersPage = lazy(() => import("./pages/Orders.tsx"));
 const FavoritesPage = lazy(() => import("./pages/Favorites.tsx"));
@@ -174,6 +175,8 @@ createRoot(document.getElementById("root")!).render(
                   perfil) pide crear cuenta o iniciar sesión. */}
               <Route element={<AppShell />}>
                 <Route path="/swipe" element={<SwipePage />} />
+                <Route path="/negocios" element={<BusinessesPage />} />
+                <Route path="/negocios/:slug" element={<BusinessesPage />} />
                 <Route
                   path="/cart"
                   element={

@@ -100,6 +100,96 @@ export const mine = query({
   },
 });
 
+/**
+ * Modo negocios: todos los locales con su rubro y cuánto catálogo tienen.
+ * El filtrado por categoría, subcategoría y búsqueda por nombre se resuelve
+ * en el cliente para que la búsqueda responda al instante.
+ */
+export const directory = query({
+  args: {},
+  handler: async (ctx) => {
+    const businesses = await ctx.db.query("businesses").collect();
+    const products = await ctx.db.query("products").collect();
+
+    const stats = new Map<string, { count: number; minPrice: number }>();
+    for (const product of products) {
+      if (!product.isAvailable) continue;
+      const entry = stats.get(product.businessId) ?? {
+        count: 0,
+        minPrice: product.price,
+      };
+      entry.count += 1;
+      entry.minPrice = Math.min(entry.minPrice, product.price);
+      stats.set(product.businessId, entry);
+    }
+
+    return businesses
+      .map((business) => {
+        const entry = stats.get(business._id);
+        return {
+          _id: business._id,
+          name: business.name,
+          slug: business.slug,
+          tagline: business.tagline,
+          image: business.image,
+          department: business.department ?? DEFAULT_DEPARTMENT,
+          category: business.category,
+          rating: business.rating,
+          reviews: business.reviews,
+          isOpen: business.isOpen,
+          etaMinutes: business.etaMinutes,
+          deliveryFee: business.deliveryFee,
+          address: business.address,
+          productCount: entry?.count ?? 0,
+          minPrice: entry?.minPrice ?? null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          Number(b.isOpen) - Number(a.isOpen) ||
+          b.rating - a.rating ||
+          a.name.localeCompare(b.name),
+      );
+  },
+});
+
+/** Catálogo completo de venta de un local, agrupable por rubro. */
+export const storefront = query({
+  args: { slug: v.string() },
+  handler: async (ctx, args) => {
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .first();
+    if (!business) return null;
+
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .collect();
+
+    return {
+      business,
+      products: products
+        .filter((product) => product.isAvailable)
+        .sort(
+          (a, b) =>
+            a.category.localeCompare(b.category) ||
+            a.name.localeCompare(b.name),
+        )
+        .map((product) => ({
+          _id: product._id,
+          name: product.name,
+          description: product.description,
+          price: product.price,
+          image: product.image,
+          category: product.category,
+          tags: product.tags,
+        })),
+    };
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),

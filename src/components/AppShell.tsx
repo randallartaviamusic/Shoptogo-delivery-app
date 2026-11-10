@@ -41,6 +41,7 @@ type NavItem = {
 
 const BUYER_NAV: NavItem[] = [
   { to: "/swipe", label: "Antojo", icon: Flame },
+  { to: "/negocios", label: "Negocios", icon: Store },
   { to: "/orders", label: "Pedidos", icon: ReceiptText },
   { to: "/favorites", label: "Guardados", icon: Bookmark },
   { to: "/profile", label: "Perfil", icon: UserRound },
@@ -60,7 +61,7 @@ const COURIER_NAV: NavItem[] = [
   { to: "/profile", label: "Perfil", icon: UserRound },
 ];
 
-const BUYER_ROUTES = ["/swipe", "/cart", "/orders", "/favorites"];
+const BUYER_ROUTES = ["/swipe", "/negocios", "/cart", "/orders", "/favorites"];
 
 function navFor(role: string) {
   if (role === "business") return BUSINESS_NAV;
@@ -137,7 +138,10 @@ export function AppShell() {
 
   const home = ROLE_HOME[role] ?? "/swipe";
   if (user) {
-    const isBuyerRoute = BUYER_ROUTES.includes(location.pathname);
+    const isBuyerRoute = BUYER_ROUTES.some(
+      (route) =>
+        location.pathname === route || location.pathname.startsWith(`${route}/`),
+    );
     if (role !== "buyer" && isBuyerRoute) {
       return <Navigate to={home} replace />;
     }
@@ -169,7 +173,8 @@ export function AppShell() {
             {isGuest ? "Visitante" : isAdmin ? "Administrador" : ROLE_LABEL[role]}
           </p>
           {nav.map((item) => {
-            const active = current === item.to;
+            const active =
+              current === item.to || location.pathname.startsWith(`${item.to}/`);
             const Icon = item.icon;
             return (
               <Link
@@ -357,7 +362,8 @@ export function AppShell() {
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
         <div className="mx-auto flex max-w-md items-stretch justify-between">
           {nav.map((item) => {
-            const active = current === item.to;
+            const active =
+              current === item.to || location.pathname.startsWith(`${item.to}/`);
             const Icon = item.icon;
             return (
               <Link
@@ -402,7 +408,7 @@ export function PageHeader({
   description,
   action,
 }: {
-  eyebrow?: string;
+  eyebrow?: ReactNode;
   title: string;
   description?: string;
   action?: ReactNode;
@@ -411,10 +417,10 @@ export function PageHeader({
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         {eyebrow && (
-          <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+          <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
             <span className="inline-block size-1.5 rounded-full bg-accent" />
             {eyebrow}
-          </p>
+          </div>
         )}
         <h1 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
           {title}
