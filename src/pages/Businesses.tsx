@@ -287,7 +287,7 @@ function Directory() {
                   {group.businesses.length === 1 ? "local" : "locales"}
                 </span>
               </div>
-              <LoopRow className="-mx-4 snap-x px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
+              <LoopRow className="-mx-4 px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
                 {group.businesses.map((business) => (
                   <BusinessCard key={business._id} business={business} />
                 ))}
@@ -334,7 +334,7 @@ function BusinessCard({
   return (
     <Link
       to={`/negocios/${business.slug}`}
-      className="surface-raised group flex w-[15rem] shrink-0 snap-start flex-col overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]"
+      className="surface-raised group flex w-[15rem] shrink-0 flex-col overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]"
     >
       <div className="relative h-28 w-full overflow-hidden">
         <DishImage
