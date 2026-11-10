@@ -21,12 +21,15 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
+const CUSTOM_CATEGORY = "__custom__";
+
 export default function OnboardingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const createBusiness = useMutation(api.businesses.create);
 
   const [creating, setCreating] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
   const [form, setForm] = useState({
     name: "",
     department: "comida",
@@ -56,12 +59,20 @@ export default function OnboardingPage() {
       toast.error("Escribí la dirección del local");
       return;
     }
+    const category =
+      form.category === CUSTOM_CATEGORY
+        ? customCategory.trim()
+        : form.category;
+    if (!category) {
+      toast.error("Escribí el nombre de tu rubro");
+      return;
+    }
     setCreating(true);
     try {
       await createBusiness({
         name: form.name,
         department: form.department,
-        category: form.category,
+        category,
         tagline: form.tagline,
         address: form.address,
         location: form.location,
@@ -170,6 +181,7 @@ export default function OnboardingPage() {
                     value={form.department}
                     onValueChange={(value) => {
                       const next = getDepartment(value);
+                      setCustomCategory("");
                       setForm({
                         ...form,
                         department: value,
@@ -191,7 +203,7 @@ export default function OnboardingPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label>Rubro</Label>
+                  <Label htmlFor="business-category">Rubro</Label>
                   <Select
                     value={form.category}
                     onValueChange={(value) => setForm({ ...form, category: value })}
@@ -205,8 +217,24 @@ export default function OnboardingPage() {
                           {category}
                         </SelectItem>
                       ))}
+                      <SelectItem value={CUSTOM_CATEGORY}>
+                        Otro rubro (lo escribo yo)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
+                  {form.category === CUSTOM_CATEGORY && (
+                    <Input
+                      id="business-category"
+                      value={customCategory}
+                      onChange={(event) => setCustomCategory(event.target.value)}
+                      maxLength={40}
+                      placeholder="Ej: Comida vegana"
+                      aria-label="Escribí el nombre de tu rubro"
+                    />
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    ¿No aparece el tuyo? Elegí “Otro rubro” y escribilo.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
