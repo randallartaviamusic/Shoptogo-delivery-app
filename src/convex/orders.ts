@@ -13,15 +13,6 @@ async function myBusiness(ctx: DbCtx, userId: Id<"users">) {
     .first();
 }
 
-/** Pedidos que un repartidor puede tener en su poder o tomar. */
-const DELIVERABLE_STATUSES = [
-  "pending",
-  "accepted",
-  "preparing",
-  "ready",
-  "picked_up",
-] as const;
-
 function startOfToday() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -151,20 +142,12 @@ export const courierBoard = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
 
-    // Un repartidor puede tomar el pedido apenas el cliente lo hace; el local
-    // después lo confirma y lo prepara, y el retiro se habilita cuando está
-    // listo.
-    const openOrders: Doc<"orders">[] = [];
-    for (const status of DELIVERABLE_STATUSES) {
-      openOrders.push(
-        ...(await ctx.db
-          .query("orders")
-          .withIndex("by_status", (q) => q.eq("status", status))
-          .collect()),
-      );
-    }
+    const readyOrders = await ctx.db
+      .query("orders")
+      .withIndex("by_status", (q) => q.eq("status", "ready"))
+      .collect();
     const available = [];
-    for (const order of openOrders) {
+    for (const order of readyOrders) {
       if (order.courierId) continue;
       const business = await ctx.db.get(order.businessId);
       available.push(await decorateOrder(ctx, order, business));
@@ -181,7 +164,7 @@ export const courierBoard = query({
     for (const order of sortedMine) {
       const business = await ctx.db.get(order.businessId);
       const decorated = await decorateOrder(ctx, order, business);
-      if ((DELIVERABLE_STATUSES as readonly string[]).includes(order.status)) {
+      if (order.status === "picked_up" || order.status === "ready") {
         active.push(decorated);
       } else if (order.status === "delivered") {
         history.push(decorated);
@@ -274,9 +257,7 @@ export const courierAccept = mutation({
     }
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Ese pedido no existe");
-    if (!(DELIVERABLE_STATUSES as readonly string[]).includes(order.status)) {
-      throw new Error("Ese pedido ya no está disponible");
-    }
+    if (order.status !== "ready") throw new Error("El pedido todavía no está listo");
     if (order.courierId) throw new Error("Otro repartidor ya tomó este pedido");
 
     // Primero se termina la entrega en curso: nadie atiende dos a la vez.
@@ -284,8 +265,8 @@ export const courierAccept = mutation({
       .query("orders")
       .withIndex("by_courier", (q) => q.eq("courierId", userId))
       .collect();
-    const busy = mine.find((item) =>
-      (DELIVERABLE_STATUSES as readonly string[]).includes(item.status),
+    const busy = mine.find(
+      (item) => item.status === "ready" || item.status === "picked_up",
     );
     if (busy) {
       throw new Error(

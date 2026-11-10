@@ -8,7 +8,6 @@ import { toast } from "sonner";
 type AvailableOrder = {
   _id: string;
   code: string;
-  status: string;
   businessName: string;
   deliveryFee: number;
 };
@@ -69,21 +68,16 @@ export function CourierAlerts({ enabled }: { enabled: boolean }) {
 
     const first = fresh[0];
     playChime();
-    toast(
-      first.status === "ready"
-        ? "Pedido listo para retirar"
-        : "Nuevo pedido para entregar",
-      {
-        description: `${first.businessName} · ${money(first.deliveryFee)}${
-          fresh.length > 1 ? ` · y ${fresh.length - 1} más` : ""
-        }`,
-        action: {
-          label: "Ver pedidos",
-          onClick: () => navigate("/courier"),
-        },
-        duration: 12000,
+    toast("Pedido listo para entregar", {
+      description: `${first.businessName} · ${money(first.deliveryFee)}${
+        fresh.length > 1 ? ` · y ${fresh.length - 1} más` : ""
+      }`,
+      action: {
+        label: "Ver pedidos",
+        onClick: () => navigate("/courier"),
       },
-    );
+      duration: 12000,
+    });
   }, [board, enabled, navigate]);
 
   return null;
