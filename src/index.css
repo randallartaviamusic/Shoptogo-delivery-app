@@ -278,3 +278,19 @@
   background-size: 220% 100%;
   animation: shimmer 2.4s linear infinite;
 }
+
+/* Mapa de entregas (Leaflet): que combine con el tema oscuro. */
+.leaflet-container {
+  background: oklch(0.18 0.004 60);
+  font-family: inherit;
+}
+
+.leaflet-control-attribution {
+  background: oklch(1 0 0 / 70%);
+  font-size: 9px;
+}
+
+.capricho-pin {
+  background: transparent;
+  border: 0;
+}

@@ -34,6 +34,13 @@ export const orderStatusValidator = v.union(
 );
 export type OrderStatus = Infer<typeof orderStatusValidator>;
 
+/** Punto exacto en el mapa (latitud/longitud) dentro de la zona de reparto. */
+export const geoPointValidator = v.object({
+  lat: v.number(),
+  lng: v.number(),
+});
+export type GeoPoint = Infer<typeof geoPointValidator>;
+
 export const orderItemValidator = v.object({
   productId: v.id("products"),
   name: v.string(),
@@ -65,6 +72,8 @@ const schema = defineSchema(
       guestClaim: v.optional(v.string()),
       // Foto de portada del perfil (la de perfil va en `image`).
       coverImage: v.optional(v.string()),
+      // Punto exacto donde el usuario recibe sus pedidos.
+      location: v.optional(geoPointValidator),
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
     businesses: defineTable({
@@ -76,6 +85,10 @@ const schema = defineSchema(
       tagline: v.string(),
       image: v.string(),
       address: v.string(),
+      // Dirección exacta fijada en el mapa por el negocio. Obligatoria para
+      // los locales nuevos; los viejos se completan en la migración del seed.
+      location: v.optional(geoPointValidator),
+      // Campo heredado: el envío lo calcula la app según la distancia.
       deliveryFee: v.number(),
       etaMinutes: v.number(),
       rating: v.number(),
@@ -132,6 +145,9 @@ const schema = defineSchema(
       total: v.number(),
       status: orderStatusValidator,
       address: v.string(),
+      // Punto de entrega y distancia del repartidor que definieron la tarifa.
+      deliveryLocation: v.optional(geoPointValidator),
+      distanceKm: v.optional(v.number()),
       notes: v.optional(v.string()),
       createdAt: v.number(),
       acceptedAt: v.optional(v.number()),

@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { DEPARTMENTS, getDepartment } from "@/lib/departments";
+import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -298,6 +299,19 @@ function Directory() {
   );
 }
 
+type DeliveryInfo = {
+  feeFrom: number;
+  fee: number | null;
+  distanceKm: number | null;
+  available: boolean;
+};
+
+function deliveryLabel(delivery: DeliveryInfo) {
+  if (!delivery.available) return "Fuera de cobertura";
+  if (delivery.fee === null) return `Envío desde ${money(delivery.feeFrom)}`;
+  return `Envío ${money(delivery.fee)} · ${formatKm(delivery.distanceKm ?? 0)}`;
+}
+
 function BusinessCard({
   business,
 }: {
@@ -311,7 +325,7 @@ function BusinessCard({
     reviews: number;
     isOpen: boolean;
     etaMinutes: number;
-    deliveryFee: number;
+    delivery: DeliveryInfo;
     productCount: number;
     minPrice: number | null;
   };
@@ -363,7 +377,7 @@ function BusinessCard({
           </span>
           <span className="flex items-center gap-1">
             <Truck className="size-3 text-accent" />
-            {business.deliveryFee === 0 ? "Envío gratis" : money(business.deliveryFee)}
+            {deliveryLabel(business.delivery)}
           </span>
           <span className="flex items-center gap-1">
             <ShoppingBag className="size-3 text-accent" />
@@ -459,6 +473,7 @@ function Storefront({ slug }: { slug: string }) {
   }
 
   const business = data.business;
+  const delivery = data.delivery;
   const department = getDepartment(business.department);
   const cartCount = cart?.count ?? 0;
   const cartTotal = cart?.total ?? 0;
@@ -501,7 +516,7 @@ function Storefront({ slug }: { slug: string }) {
               </span>
               <span className="flex items-center gap-1">
                 <Truck className="size-3 text-accent" />
-                {business.deliveryFee === 0 ? "Envío gratis" : `Envío ${money(business.deliveryFee)}`}
+                {deliveryLabel(delivery)}
               </span>
               <span className="flex items-center gap-1">
                 <MapPin className="size-3 text-accent" />

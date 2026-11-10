@@ -1,4 +1,5 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
+import { LocationField } from "@/components/LocationField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,7 @@ export default function OnboardingPage() {
     category: "Hamburguesas",
     tagline: "",
     address: user?.address ?? "",
-    deliveryFee: "1900",
+    location: null as { lat: number; lng: number } | null,
     etaMinutes: "30",
     addStarterMenu: true,
   });
@@ -47,6 +48,14 @@ export default function OnboardingPage() {
 
   const handleCreateBusiness = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!form.location) {
+      toast.error("Marcá en el mapa la ubicación exacta de tu local");
+      return;
+    }
+    if (form.address.trim().length < 5) {
+      toast.error("Escribí la dirección del local");
+      return;
+    }
     setCreating(true);
     try {
       await createBusiness({
@@ -55,7 +64,7 @@ export default function OnboardingPage() {
         category: form.category,
         tagline: form.tagline,
         address: form.address,
-        deliveryFee: Number(form.deliveryFee) || 0,
+        location: form.location,
         etaMinutes: Number(form.etaMinutes) || 30,
         addStarterMenu: form.addStarterMenu,
       });
@@ -211,26 +220,13 @@ export default function OnboardingPage() {
                 </div>
 
                 <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="business-address">Dirección del local</Label>
-                  <Input
-                    id="business-address"
-                    required
-                    value={form.address}
-                    onChange={(event) => setForm({ ...form, address: event.target.value })}
-                    placeholder="Av. Corrientes 1520, CABA"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="business-fee">Costo de envío ($)</Label>
-                  <Input
-                    id="business-fee"
-                    type="number"
-                    min={0}
-                    value={form.deliveryFee}
-                    onChange={(event) =>
-                      setForm({ ...form, deliveryFee: event.target.value })
-                    }
+                  <LocationField
+                    value={form.location}
+                    address={form.address}
+                    onChange={(location) => setForm({ ...form, location })}
+                    onAddressChange={(address) => setForm({ ...form, address })}
+                    label="Dirección del local en el mapa"
+                    hint="Fijá el punto exacto del local: desde acá se calcula cada envío. Por ahora operamos solo en Tilarán y sus alrededores."
                   />
                 </div>
 

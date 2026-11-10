@@ -3,6 +3,13 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { geoPointValidator } from "./schema";
+import {
+  DELIVERY_RULES,
+  deliveryQuote,
+  isValidPoint,
+  normalizePoint,
+} from "../lib/delivery";
 
 type DbCtx = QueryCtx | MutationCtx;
 
@@ -16,7 +23,12 @@ export type CartGroup = {
   businessId: Id<"businesses">;
   businessName: string;
   businessImage: string;
-  deliveryFee: number;
+  /** Envío calculado por la app; null si todavía no hay punto de entrega. */
+  deliveryFee: number | null;
+  feeFrom: number;
+  distanceKm: number | null;
+  deliveryMinutes: number | null;
+  deliveryAvailable: boolean;
   etaMinutes: number;
   isOpen: boolean;
   rating: number;
@@ -32,6 +44,8 @@ export type CartGroup = {
 };
 
 async function buildCart(ctx: DbCtx, userId: Id<"users">) {
+  const buyer = await ctx.db.get(userId);
+  const dropoff = isValidPoint(buyer?.location) ? buyer.location : null;
   const cartItems = await ctx.db
     .query("cartItems")
     .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -48,11 +62,16 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
 
     let group = byBusiness.get(item.businessId);
     if (!group) {
+      const quote = deliveryQuote(business.location, dropoff);
       group = {
         businessId: item.businessId,
         businessName: business.name,
         businessImage: business.image,
-        deliveryFee: business.deliveryFee,
+        deliveryFee: quote?.fee ?? null,
+        feeFrom: DELIVERY_RULES.baseFee,
+        distanceKm: quote?.distanceKm ?? null,
+        deliveryMinutes: quote?.minutes ?? null,
+        deliveryAvailable: quote !== null || dropoff === null,
         etaMinutes: business.etaMinutes,
         isOpen: business.isOpen,
         rating: business.rating,
@@ -74,7 +93,7 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
   }
 
   const subtotal = groups.reduce((acc, g) => acc + g.subtotal, 0);
-  const deliveryTotal = groups.reduce((acc, g) => acc + g.deliveryFee, 0);
+  const deliveryTotal = groups.reduce((acc, g) => acc + (g.deliveryFee ?? 0), 0);
   const count = groups.reduce(
     (acc, g) => acc + g.items.reduce((a, i) => a + i.quantity, 0),
     0,
@@ -193,6 +212,7 @@ export const clear = mutation({
 export const checkout = mutation({
   args: {
     address: v.string(),
+    location: geoPointValidator,
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -210,6 +230,10 @@ export const checkout = mutation({
     if (address.length < 6) {
       throw new Error("Necesitamos una dirección de entrega válida");
     }
+    if (!isValidPoint(args.location)) {
+      throw new Error("Marcá en el mapa el punto donde querés recibir el pedido");
+    }
+    const dropoff = normalizePoint(args.location);
 
     const cartItems = await ctx.db
       .query("cartItems")
@@ -260,8 +284,19 @@ export const checkout = mutation({
       const items = byBusiness.get(businessId)!;
       const business = await ctx.db.get(businessId);
       if (!business) continue;
+      if (!business.location) {
+        throw new Error(
+          `${business.name} todavía no fijó su ubicación en el mapa. Probá más tarde.`,
+        );
+      }
+      const quote = deliveryQuote(business.location, dropoff);
+      if (!quote) {
+        throw new Error(
+          `Tu punto de entrega queda fuera del área de reparto de ${business.name}.`,
+        );
+      }
       const subtotal = items.reduce((acc, i) => acc + i.price * i.quantity, 0);
-      const orderTotal = subtotal + business.deliveryFee;
+      const orderTotal = subtotal + quote.fee;
       total += orderTotal;
       await ctx.db.insert("orders", {
         code: `CE-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -269,10 +304,12 @@ export const checkout = mutation({
         businessId,
         items,
         subtotal,
-        deliveryFee: business.deliveryFee,
+        deliveryFee: quote.fee,
         total: orderTotal,
         status: "pending",
         address,
+        deliveryLocation: dropoff,
+        distanceKm: quote.distanceKm,
         notes: args.notes?.trim() || undefined,
         createdAt: now,
       });
@@ -280,7 +317,7 @@ export const checkout = mutation({
     }
 
     for (const item of cartItems) await ctx.db.delete(item._id);
-    await ctx.db.patch(userId, { address });
+    await ctx.db.patch(userId, { address, location: dropoff });
 
     return { created, total };
   },

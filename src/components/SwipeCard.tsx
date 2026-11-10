@@ -1,5 +1,6 @@
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
+import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
@@ -29,7 +30,12 @@ export type Dish = {
   rating: number;
   reviews: number;
   etaMinutes: number;
-  deliveryFee: number;
+  delivery: {
+    feeFrom: number;
+    fee: number | null;
+    distanceKm: number | null;
+    available: boolean;
+  };
   address: string;
 };
 
@@ -92,7 +98,11 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
           </span>
           <span className="flex items-center gap-1.5">
             <Clock className="size-3.5 text-accent" />
-            Envío {money(dish.deliveryFee)}
+            {!dish.delivery.available
+              ? "Fuera de cobertura"
+              : dish.delivery.fee === null
+                ? `Envío desde ${money(dish.delivery.feeFrom)}`
+                : `Envío ${money(dish.delivery.fee)} · ${formatKm(dish.delivery.distanceKm ?? 0)}`}
           </span>
         </div>
       </div>

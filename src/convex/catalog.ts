@@ -1,6 +1,8 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { DELIVERY_RULES, deliveryQuote, isValidPoint } from "../lib/delivery";
+import type { GeoPoint } from "../lib/delivery";
 
 /** Stable per-user shuffle so the deck feels random but doesn't jump around. */
 function hash(input: string) {
@@ -33,6 +35,18 @@ export const deck = query({
 
     const swiped = new Set(swipes.map((s) => s.productId));
     const businessMap = new Map(businesses.map((b) => [b._id, b]));
+    const viewerDoc = userId ? await ctx.db.get(userId) : null;
+    const viewer = isValidPoint(viewerDoc?.location) ? viewerDoc.location : null;
+
+    const deliveryFor = (businessLocation: GeoPoint | undefined) => {
+      const quote = deliveryQuote(businessLocation, viewer);
+      return {
+        feeFrom: DELIVERY_RULES.baseFee,
+        fee: quote?.fee ?? null,
+        distanceKm: quote?.distanceKm ?? null,
+        available: quote !== null || viewer === null,
+      };
+    };
 
     const departmentOf = (product: (typeof products)[number]) =>
       product.department ??
@@ -97,7 +111,7 @@ export const deck = query({
           rating: business.rating,
           reviews: business.reviews,
           etaMinutes: business.etaMinutes,
-          deliveryFee: business.deliveryFee,
+          delivery: deliveryFor(business.location),
           address: business.address,
         };
       })
@@ -273,6 +287,18 @@ export const saved = query({
       .filter((s) => s.direction === "save")
       .sort((a, b) => b.createdAt - a.createdAt);
 
+    const viewerDoc = await ctx.db.get(userId);
+    const viewer = isValidPoint(viewerDoc?.location) ? viewerDoc.location : null;
+    const deliveryFor = (businessLocation: GeoPoint | undefined) => {
+      const quote = deliveryQuote(businessLocation, viewer);
+      return {
+        feeFrom: DELIVERY_RULES.baseFee,
+        fee: quote?.fee ?? null,
+        distanceKm: quote?.distanceKm ?? null,
+        available: quote !== null || viewer === null,
+      };
+    };
+
     const results = [];
     for (const swipeDoc of savedSwipes) {
       const product = await ctx.db.get(swipeDoc.productId);
@@ -292,7 +318,7 @@ export const saved = query({
         businessImage: business.image,
         rating: business.rating,
         etaMinutes: business.etaMinutes,
-        deliveryFee: business.deliveryFee,
+        delivery: deliveryFor(business.location),
         isOpen: business.isOpen,
         savedAt: swipeDoc.createdAt,
       });

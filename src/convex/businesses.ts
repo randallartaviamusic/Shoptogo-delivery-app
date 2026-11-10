@@ -3,6 +3,16 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { geoPointValidator } from "./schema";
+import {
+  DELIVERY_RULES,
+  deliveryQuote,
+  isValidPoint,
+  normalizePoint,
+  straightLineKm,
+  TILARAN_CENTER,
+} from "../lib/delivery";
+import type { GeoPoint } from "../lib/delivery";
 
 type DbCtx = QueryCtx | MutationCtx;
 
@@ -82,6 +92,50 @@ async function ownedBusiness(ctx: DbCtx, userId: Id<"users">) {
     .first();
 }
 
+/** Punto de entrega guardado por quien está mirando el catálogo. */
+async function viewerLocation(ctx: DbCtx): Promise<GeoPoint | null> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return null;
+  const user = await ctx.db.get(userId);
+  return isValidPoint(user?.location) ? user.location : null;
+}
+
+/**
+ * Envío que ve el comprador para un local: precio y distancia cuando ya fijó
+ * su punto de entrega, o el precio base como referencia.
+ */
+function describeDelivery(
+  businessLocation: GeoPoint | undefined,
+  viewer: GeoPoint | null,
+) {
+  const base = {
+    feeFrom: DELIVERY_RULES.baseFee,
+    fee: null as number | null,
+    distanceKm: null as number | null,
+    minutes: null as number | null,
+    available: true,
+  };
+  if (!viewer) return base;
+  const quote = deliveryQuote(businessLocation, viewer);
+  if (!quote) return { ...base, available: false };
+  return {
+    ...base,
+    fee: quote.fee,
+    distanceKm: quote.distanceKm,
+    minutes: quote.minutes,
+  };
+}
+
+/** Tilarán (y alrededores) mientras la app no se expanda a otros cantones. */
+function assertInsideBusinessArea(location: GeoPoint) {
+  const distance = straightLineKm(TILARAN_CENTER, location);
+  if (distance > DELIVERY_RULES.businessAreaKm) {
+    throw new Error(
+      "Por ahora solo aceptamos locales en Tilarán y sus alrededores",
+    );
+  }
+}
+
 export const mine = query({
   args: {},
   handler: async (ctx) => {
@@ -110,6 +164,7 @@ export const directory = query({
   handler: async (ctx) => {
     const businesses = await ctx.db.query("businesses").collect();
     const products = await ctx.db.query("products").collect();
+    const viewer = await viewerLocation(ctx);
 
     const stats = new Map<string, { count: number; minPrice: number }>();
     for (const product of products) {
@@ -138,8 +193,9 @@ export const directory = query({
           reviews: business.reviews,
           isOpen: business.isOpen,
           etaMinutes: business.etaMinutes,
-          deliveryFee: business.deliveryFee,
+          delivery: describeDelivery(business.location, viewer),
           address: business.address,
+          location: business.location ?? null,
           productCount: entry?.count ?? 0,
           minPrice: entry?.minPrice ?? null,
         };
@@ -168,8 +224,11 @@ export const storefront = query({
       .withIndex("by_business", (q) => q.eq("businessId", business._id))
       .collect();
 
+    const viewer = await viewerLocation(ctx);
+
     return {
       business,
+      delivery: describeDelivery(business.location, viewer),
       products: products
         .filter((product) => product.isAvailable)
         .sort(
@@ -197,7 +256,7 @@ export const create = mutation({
     category: v.string(),
     tagline: v.string(),
     address: v.string(),
-    deliveryFee: v.number(),
+    location: geoPointValidator,
     etaMinutes: v.number(),
     addStarterMenu: v.optional(v.boolean()),
   },
@@ -211,6 +270,11 @@ export const create = mutation({
     if (args.address.trim().length < 5) {
       throw new Error("Necesitamos una dirección del local");
     }
+    if (!isValidPoint(args.location)) {
+      throw new Error("Marcá la ubicación exacta del local en el mapa");
+    }
+    const location = normalizePoint(args.location);
+    assertInsideBusinessArea(location);
     const department = DEPARTMENT_SLUGS.includes(args.department)
       ? args.department
       : DEFAULT_DEPARTMENT;
@@ -225,7 +289,9 @@ export const create = mutation({
       tagline: args.tagline.trim() || "Productos elegidos con criterio",
       image: departmentImage(department),
       address: args.address.trim(),
-      deliveryFee: Math.max(0, Math.round(args.deliveryFee)),
+      location,
+      // Heredado: el envío se calcula por distancia, no lo define el local.
+      deliveryFee: 0,
       etaMinutes: Math.max(5, Math.round(args.etaMinutes)),
       rating: 5,
       reviews: 0,
@@ -315,7 +381,7 @@ export const update = mutation({
     name: v.optional(v.string()),
     tagline: v.optional(v.string()),
     address: v.optional(v.string()),
-    deliveryFee: v.optional(v.number()),
+    location: v.optional(geoPointValidator),
     etaMinutes: v.optional(v.number()),
     isOpen: v.optional(v.boolean()),
     image: v.optional(v.string()),
@@ -329,8 +395,14 @@ export const update = mutation({
     if (args.name !== undefined) patch.name = args.name.trim();
     if (args.tagline !== undefined) patch.tagline = args.tagline.trim();
     if (args.address !== undefined) patch.address = args.address.trim();
-    if (args.deliveryFee !== undefined)
-      patch.deliveryFee = Math.max(0, Math.round(args.deliveryFee));
+    if (args.location !== undefined) {
+      if (!isValidPoint(args.location)) {
+        throw new Error("Marcá la ubicación exacta del local en el mapa");
+      }
+      const location = normalizePoint(args.location);
+      assertInsideBusinessArea(location);
+      patch.location = location;
+    }
     if (args.etaMinutes !== undefined)
       patch.etaMinutes = Math.max(5, Math.round(args.etaMinutes));
     if (args.isOpen !== undefined) patch.isOpen = args.isOpen;

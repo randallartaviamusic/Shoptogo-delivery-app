@@ -11,6 +11,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { OrderStatus } from "@/convex/schema";
+import { formatKm } from "@/lib/delivery";
 import { ACTIVE_STATUSES, clockTime, money, ORDER_STATUS, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -48,6 +49,7 @@ export type OrderView = {
   deliveryFee: number;
   total: number;
   address: string;
+  distanceKm: number | null;
   notes: string | null;
   createdAt: number;
   acceptedAt: number | null;
@@ -238,7 +240,15 @@ function OrderDetailDialog({
           <div className="space-y-2 text-sm">
             <p className="flex items-start gap-2 text-muted-foreground">
               <MapPin className="mt-0.5 size-4 shrink-0 text-accent" />
-              {order.address}
+              <span>
+                {order.address}
+                {order.distanceKm !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    {" "}
+                    · {formatKm(order.distanceKm)} en moto
+                  </span>
+                )}
+              </span>
             </p>
             {order.notes && (
               <p className="rounded-xl bg-secondary/50 p-2.5 text-xs leading-relaxed text-muted-foreground">

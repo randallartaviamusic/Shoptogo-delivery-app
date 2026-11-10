@@ -35,6 +35,8 @@ async function decorateOrder(
     deliveryFee: order.deliveryFee,
     total: order.total,
     address: order.address,
+    distanceKm: order.distanceKm ?? null,
+    deliveryLocation: order.deliveryLocation ?? null,
     notes: order.notes ?? null,
     createdAt: order.createdAt,
     acceptedAt: order.acceptedAt ?? null,

@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/AppShell";
 import { DishImage } from "@/components/DishImage";
+import { LocationField } from "@/components/LocationField";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import {
   AlertDialog,
@@ -136,7 +137,7 @@ export default function BusinessPage() {
     name: "",
     tagline: "",
     address: "",
-    deliveryFee: "",
+    location: null as { lat: number; lng: number } | null,
     etaMinutes: "",
     image: "",
   });
@@ -280,7 +281,7 @@ export default function BusinessPage() {
       name: business.name,
       tagline: business.tagline,
       address: business.address,
-      deliveryFee: String(business.deliveryFee),
+      location: business.location ?? null,
       etaMinutes: String(business.etaMinutes),
       image: business.image,
     });
@@ -289,12 +290,20 @@ export default function BusinessPage() {
 
   const handleSettingsSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!settingsForm.location) {
+      toast.error("Marcá en el mapa la ubicación exacta de tu local");
+      return;
+    }
+    if (settingsForm.address.trim().length < 5) {
+      toast.error("Escribí la dirección del local");
+      return;
+    }
     try {
       await updateBusiness({
         name: settingsForm.name,
         tagline: settingsForm.tagline,
         address: settingsForm.address,
-        deliveryFee: Number(settingsForm.deliveryFee) || 0,
+        location: settingsForm.location ?? undefined,
         etaMinutes: Number(settingsForm.etaMinutes) || 20,
         image: settingsForm.image,
       });
@@ -376,6 +385,23 @@ export default function BusinessPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
+          {!business.location && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
+              <p className="text-xs leading-relaxed text-primary">
+                Tu local todavía no tiene un punto en el mapa, así que no podemos
+                calcular los envíos ni recibir pedidos.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-primary/40 text-primary"
+                onClick={openSettings}
+              >
+                Fijar ubicación
+              </Button>
+            </div>
+          )}
+
           <div className="relative overflow-hidden rounded-3xl border border-border/70">
             <DishImage
               src={business.image}
@@ -891,41 +917,32 @@ export default function BusinessPage() {
                 }
               />
             </div>
+            <LocationField
+              value={settingsForm.location}
+              address={settingsForm.address}
+              onChange={(location) => setSettingsForm({ ...settingsForm, location })}
+              onAddressChange={(address) =>
+                setSettingsForm({ ...settingsForm, address })
+              }
+              label="Ubicación del local en el mapa"
+              hint="El envío lo calcula Capricho Express con la distancia entre este punto y el cliente."
+              mapHeight="h-44"
+            />
             <div className="space-y-1.5">
-              <Label htmlFor="settings-address">Dirección</Label>
+              <Label htmlFor="settings-eta">Tiempo de preparación (min)</Label>
               <Input
-                id="settings-address"
-                value={settingsForm.address}
+                id="settings-eta"
+                type="number"
+                min={5}
+                value={settingsForm.etaMinutes}
                 onChange={(event) =>
-                  setSettingsForm({ ...settingsForm, address: event.target.value })
+                  setSettingsForm({ ...settingsForm, etaMinutes: event.target.value })
                 }
               />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="settings-fee">Envío ($)</Label>
-                <Input
-                  id="settings-fee"
-                  type="number"
-                  min={0}
-                  value={settingsForm.deliveryFee}
-                  onChange={(event) =>
-                    setSettingsForm({ ...settingsForm, deliveryFee: event.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="settings-eta">ETA (min)</Label>
-                <Input
-                  id="settings-eta"
-                  type="number"
-                  min={5}
-                  value={settingsForm.etaMinutes}
-                  onChange={(event) =>
-                    setSettingsForm({ ...settingsForm, etaMinutes: event.target.value })
-                  }
-                />
-              </div>
+              <p className="text-[10px] text-muted-foreground">
+                El costo de envío lo calcula Capricho Express según la distancia
+                entre tu local y el punto de entrega del cliente.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="settings-image">Portada (URL)</Label>

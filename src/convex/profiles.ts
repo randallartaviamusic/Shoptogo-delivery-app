@@ -29,6 +29,42 @@ export const updateProfile = mutation({
   },
 });
 
+/**
+ * Guarda el punto exacto de entrega del comprador (mapa o GPS). El envío se
+ * cotiza siempre contra este punto, así que se puede actualizar en cualquier
+ * momento.
+ */
+export const saveLocation = mutation({
+  args: {
+    lat: v.number(),
+    lng: v.number(),
+    address: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    if (
+      !Number.isFinite(args.lat) ||
+      !Number.isFinite(args.lng) ||
+      Math.abs(args.lat) > 90 ||
+      Math.abs(args.lng) > 180
+    ) {
+      throw new Error("Ese punto del mapa no es válido");
+    }
+
+    const patch: Partial<Doc<"users">> = {
+      location: {
+        lat: Math.round(args.lat * 1e5) / 1e5,
+        lng: Math.round(args.lng * 1e5) / 1e5,
+      },
+    };
+    if (args.address !== undefined) patch.address = args.address.trim();
+
+    await ctx.db.patch(userId, patch);
+    return null;
+  },
+});
+
 // URL firmada para subir la foto desde el teléfono o la computadora.
 export const generatePhotoUploadUrl = mutation({
   args: {},

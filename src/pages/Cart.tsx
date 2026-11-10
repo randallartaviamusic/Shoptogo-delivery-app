@@ -1,18 +1,19 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DishImage } from "@/components/DishImage";
+import { LocationField } from "@/components/LocationField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
+import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
   Loader2,
-  MapPin,
   Minus,
   Plus,
   ShoppingBag,
@@ -33,14 +34,38 @@ export default function CartPage() {
   const removeItem = useMutation(api.cart.remove);
   const clearCart = useMutation(api.cart.clear);
   const checkout = useMutation(api.cart.checkout);
+  const saveLocation = useMutation(api.profiles.saveLocation);
 
   const [address, setAddress] = useState(user?.address ?? "");
+  const [dropoff, setDropoff] = useState<{ lat: number; lng: number } | null>(
+    user?.location ?? null,
+  );
   const [notes, setNotes] = useState("");
   const [placing, setPlacing] = useState(false);
 
   const groups = cart?.groups ?? [];
   const count = cart?.count ?? 0;
   const hasClosed = groups.some((group) => !group.isOpen);
+  const allCovered = groups.every((group) => group.deliveryAvailable);
+  const canConfirm = Boolean(dropoff) && address.trim().length >= 6 && allCovered;
+
+  // Si el usuario ya tenía un punto guardado (o lo eligió en otra pestaña),
+  // lo usamos apenas llega la ficha.
+  useEffect(() => {
+    if (!dropoff && user?.location) setDropoff(user.location);
+  }, [dropoff, user?.location]);
+
+  useEffect(() => {
+    if (!address && user?.address) setAddress(user.address);
+  }, [address, user?.address]);
+
+  const handleDropoffChange = (point: { lat: number; lng: number }) => {
+    setDropoff(point);
+    if (!user || user.isAnonymous) return;
+    void saveLocation({ lat: point.lat, lng: point.lng }).catch(() => {
+      toast.error("No pudimos guardar tu punto de entrega");
+    });
+  };
 
   // Volvemos acá después de crear la cuenta o iniciar sesión: llevamos la vista
   // directo al bloque para confirmar el pedido.
@@ -66,9 +91,14 @@ export default function CartPage() {
       return;
     }
 
+    if (!dropoff) {
+      toast.error("Marcá en el mapa el punto donde querés recibir el pedido");
+      return;
+    }
+
     setPlacing(true);
     try {
-      const result = await checkout({ address, notes });
+      const result = await checkout({ address, location: dropoff, notes });
       toast.success(
         result.created === 1
           ? "Pedido confirmado"
@@ -148,9 +178,13 @@ export default function CartPage() {
                       <Star className="size-3 fill-accent text-accent" />
                       {group.rating.toFixed(1)}
                       <span>·</span>
-                      {group.etaMinutes} min
+                      {group.etaMinutes + (group.deliveryMinutes ?? 0)} min
                       <span>·</span>
-                      Envío {money(group.deliveryFee)}
+                      {group.deliveryFee === null
+                        ? group.deliveryAvailable
+                          ? "Envío al elegir tu punto"
+                          : "Fuera de cobertura"
+                        : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
                     </p>
                   </div>
                   {!group.isOpen && (
@@ -234,7 +268,7 @@ export default function CartPage() {
                 <div className="flex items-center justify-between bg-black/25 px-4 py-2.5 text-xs text-muted-foreground">
                   <span>Subtotal del local</span>
                   <span className="font-semibold text-foreground">
-                    {money(group.subtotal + group.deliveryFee)}
+                    {money(group.subtotal + (group.deliveryFee ?? 0))}
                   </span>
                 </div>
               </motion.section>
@@ -261,18 +295,19 @@ export default function CartPage() {
             </p>
 
             <div className="mt-5 space-y-3">
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Dirección de entrega
-              </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 size-4 text-muted-foreground" />
-                <Input
-                  value={address}
-                  onChange={(event) => setAddress(event.target.value)}
-                  placeholder="Calle, número, piso y barrio"
-                  className="pl-9"
-                />
-              </div>
+              <LocationField
+                value={dropoff}
+                address={address}
+                onChange={handleDropoffChange}
+                onAddressChange={setAddress}
+                label="Punto de entrega"
+                mapHeight="h-44"
+                hint={
+                  dropoff
+                    ? `El envío se calcula desde cada local hasta este punto (máx. 12 km).`
+                    : "Activá el permiso de ubicación o marcá tu punto en el mapa: sin eso no podemos calcular el envío."
+                }
+              />
               <Textarea
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
@@ -305,9 +340,16 @@ export default function CartPage() {
               </p>
             )}
 
+            {!allCovered && (
+              <p className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-[11px] leading-relaxed text-primary">
+                Hay un local que no reparte hasta tu punto. Probá marcar otro punto
+                más cercano o quitá sus productos.
+              </p>
+            )}
+
             <Button
               className="mt-5 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
-              disabled={placing || !address.trim() || hasClosed}
+              disabled={placing || !canConfirm || hasClosed}
               onClick={handleCheckout}
             >
               {placing ? (

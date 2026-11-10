@@ -2,11 +2,34 @@ import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { VERTICALS } from "./seedVerticals";
+import { TILARAN_CENTER } from "../lib/delivery";
 
 const img = (id: string, w = 900) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=80`;
 
 const DEFAULT_DEPARTMENT = "comida";
+
+/**
+ * Los locales demo se reparten alrededor del centro de Tilarán para que el
+ * cálculo de envío por distancia tenga datos reales.
+ */
+function demoLocation(seed: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const angle = (hash % 360) * (Math.PI / 180);
+  const radiusKm = 0.5 + ((hash >>> 9) % 260) / 100; // 0,5 a 3,1 km
+  const lat = TILARAN_CENTER.lat + (radiusKm / 111) * Math.cos(angle);
+  const lng =
+    TILARAN_CENTER.lng +
+    (radiusKm / (111 * Math.cos((lat * Math.PI) / 180))) * Math.sin(angle);
+  return {
+    lat: Math.round(lat * 1e5) / 1e5,
+    lng: Math.round(lng * 1e5) / 1e5,
+  };
+}
 
 const toAttributes = (record: Record<string, string>) =>
   Object.entries(record).map(([key, value]) => ({ key, value }));
@@ -625,6 +648,7 @@ async function insertCatalog(ctx: MutationCtx) {
       tagline: entry.tagline,
       image: entry.image,
       address: entry.address,
+      location: demoLocation(entry.slug),
       deliveryFee: entry.deliveryFee,
       etaMinutes: entry.etaMinutes,
       rating: entry.rating,
@@ -668,6 +692,7 @@ async function insertVerticals(ctx: MutationCtx) {
       tagline: entry.tagline,
       image: entry.image,
       address: entry.address,
+      location: demoLocation(entry.slug),
       deliveryFee: entry.deliveryFee,
       etaMinutes: entry.etaMinutes,
       rating: entry.rating,
@@ -756,6 +781,18 @@ async function upgradeFoodFacets(ctx: MutationCtx) {
   return updated;
 }
 
+/** One-time: ubica en el mapa a los locales demo que todavía no tienen punto. */
+async function backfillLocations(ctx: MutationCtx) {
+  const businesses = await ctx.db.query("businesses").collect();
+  let updated = 0;
+  for (const business of businesses) {
+    if (!business.isDemo || business.location) continue;
+    await ctx.db.patch(business._id, { location: demoLocation(business.slug) });
+    updated += 1;
+  }
+  return updated;
+}
+
 async function findMeta(ctx: MutationCtx, key: string) {
   return await ctx.db
     .query("meta")
@@ -777,6 +814,15 @@ export const ensure = mutation({
       products += await insertVerticals(ctx);
       await ctx.db.insert("meta", {
         key: "whimy_catalog_verticals",
+        value: "v1",
+      });
+    }
+
+    const locationsMarker = await findMeta(ctx, "whimy_catalog_locations");
+    if (!locationsMarker) {
+      await backfillLocations(ctx);
+      await ctx.db.insert("meta", {
+        key: "whimy_catalog_locations",
         value: "v1",
       });
     }
