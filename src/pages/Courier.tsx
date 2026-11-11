@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/AppShell";
+import { CourierLocationReporter, DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import { Button } from "@/components/ui/button";
@@ -178,6 +179,10 @@ export default function CourierPage() {
           </div>
         ))}
       </div>
+
+      <CourierLocationReporter
+        orderIds={active.map((order) => order._id)}
+      />
 
       {busyOrder && (
         <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] px-4 py-3">
@@ -412,6 +417,21 @@ export default function CourierPage() {
                   <p className="mt-3 rounded-xl bg-secondary/50 p-2.5 text-xs italic text-muted-foreground">
                     "{order.notes}"
                   </p>
+                )}
+
+                {order.courierAcceptedAt !== null && (
+                  <div className="mt-4">
+                    <DeliveryTrackingMap
+                      status={order.status}
+                      businessLocation={order.businessLocation}
+                      deliveryLocation={order.deliveryLocation}
+                      courierLocation={order.courierLocation}
+                      courierLocationAt={order.courierLocationAt}
+                      courierAcceptedAt={order.courierAcceptedAt}
+                      pickedUpAt={order.pickedUpAt}
+                      deliveredAt={order.deliveredAt}
+                    />
+                  </div>
                 )}
 
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">

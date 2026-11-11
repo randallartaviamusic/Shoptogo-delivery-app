@@ -41,6 +41,7 @@ async function decorateOrder(
     notes: order.notes ?? null,
     createdAt: order.createdAt,
     acceptedAt: order.acceptedAt ?? null,
+    courierAcceptedAt: order.courierAcceptedAt ?? null,
     readyAt: order.readyAt ?? null,
     pickedUpAt: order.pickedUpAt ?? null,
     deliveredAt: order.deliveredAt ?? null,
@@ -49,12 +50,21 @@ async function decorateOrder(
     businessName: business?.name ?? "Capricho Express",
     businessImage: business?.image ?? "",
     businessAddress: business?.address ?? "",
+    businessLocation: business?.location ?? null,
     etaMinutes: business?.etaMinutes ?? 25,
     buyerName: buyer?.name ?? "Cliente Capricho",
     buyerPhone: buyer?.phone ?? null,
     courierId: order.courierId ?? null,
     courierName: courier?.name ?? null,
     courierPhone: courier?.phone ?? null,
+    courierLocation:
+      order.status === "ready" || order.status === "picked_up"
+        ? (order.courierLocation ?? null)
+        : null,
+    courierLocationAt:
+      order.status === "ready" || order.status === "picked_up"
+        ? (order.courierLocationAt ?? null)
+        : null,
   };
 }
 
@@ -141,6 +151,8 @@ export const courierBoard = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
+    const user = await ctx.db.get(userId);
+    if (user?.role !== "courier") return null;
 
     const readyOrders = await ctx.db
       .query("orders")
@@ -274,8 +286,50 @@ export const courierAccept = mutation({
       );
     }
 
-    await ctx.db.patch(args.orderId, { courierId: userId });
+    await ctx.db.patch(args.orderId, {
+      courierId: userId,
+      courierAcceptedAt: Date.now(),
+    });
     return { accepted: true };
+  },
+});
+
+export const updateCourierLocation = mutation({
+  args: {
+    orderId: v.id("orders"),
+    location: v.object({ lat: v.number(), lng: v.number() }),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const courier = await ctx.db.get(userId);
+    if (courier?.role !== "courier") {
+      throw new Error("Sólo las cuentas de repartidor pueden compartir ubicación");
+    }
+    const { lat, lng } = args.location;
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      Math.abs(lat) > 90 ||
+      Math.abs(lng) > 180
+    ) {
+      throw new Error("La ubicación no es válida");
+    }
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.courierId !== userId) {
+      throw new Error("Este pedido no está asignado a vos");
+    }
+    if (order.status !== "ready" && order.status !== "picked_up") {
+      throw new Error("El seguimiento no está activo para este pedido");
+    }
+    await ctx.db.patch(args.orderId, {
+      courierLocation: {
+        lat: Math.round(lat * 1e5) / 1e5,
+        lng: Math.round(lng * 1e5) / 1e5,
+      },
+      courierLocationAt: Date.now(),
+    });
+    return { updated: true };
   },
 });
 
@@ -305,6 +359,8 @@ export const courierUpdateStatus = mutation({
       await ctx.db.patch(args.orderId, {
         status: "delivered",
         deliveredAt: Date.now(),
+        courierLocation: undefined,
+        courierLocationAt: undefined,
       });
     }
     return { status: args.status };

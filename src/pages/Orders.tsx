@@ -1,4 +1,5 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
+import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { OrderStatus } from "@/convex/schema";
+import type { GeoPoint } from "@/lib/delivery";
 import { formatKm } from "@/lib/delivery";
 import { ACTIVE_STATUSES, clockTime, money, ORDER_STATUS, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -54,6 +56,7 @@ export type OrderView = {
   notes: string | null;
   createdAt: number;
   acceptedAt: number | null;
+  courierAcceptedAt: number | null;
   readyAt: number | null;
   pickedUpAt: number | null;
   deliveredAt: number | null;
@@ -62,6 +65,10 @@ export type OrderView = {
   businessName: string;
   businessImage: string;
   businessAddress: string;
+  businessLocation: GeoPoint | null;
+  deliveryLocation: GeoPoint | null;
+  courierLocation: GeoPoint | null;
+  courierLocationAt: number | null;
   etaMinutes: number;
   buyerName: string;
   buyerPhone: string | null;
@@ -201,6 +208,19 @@ function OrderDetailDialog({
         <div className="space-y-4">
           <StatusPill status={order.status} />
           <OrderProgress status={order.status} />
+
+          {order.courierAcceptedAt !== null && order.status !== "cancelled" && (
+            <DeliveryTrackingMap
+              status={order.status}
+              businessLocation={order.businessLocation}
+              deliveryLocation={order.deliveryLocation}
+              courierLocation={order.courierLocation}
+              courierLocationAt={order.courierLocationAt}
+              courierAcceptedAt={order.courierAcceptedAt}
+              pickedUpAt={order.pickedUpAt}
+              deliveredAt={order.deliveredAt}
+            />
+          )}
 
           <ul className="space-y-2">
             {order.items.map((item) => (
@@ -459,7 +479,7 @@ export default function OrdersPage() {
       )}
 
       <OrderDetailDialog
-        order={selected}
+        order={typed.find((order) => order._id === selected?._id) ?? selected}
         open={selected !== null}
         onOpenChange={(open) => {
           if (!open) setSelected(null);

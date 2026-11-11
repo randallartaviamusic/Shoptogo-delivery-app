@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/AppShell";
+import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
 import { PromoBadge, PromoStatus } from "@/components/PromoBadge";
@@ -612,6 +613,21 @@ export default function BusinessPage() {
                   </div>
                   <StatusPill status={order.status} />
                 </div>
+
+                {order.courierAcceptedAt !== null && order.status !== "cancelled" && (
+                  <div className="mt-4">
+                    <DeliveryTrackingMap
+                      status={order.status}
+                      businessLocation={order.businessLocation}
+                      deliveryLocation={order.deliveryLocation}
+                      courierLocation={order.courierLocation}
+                      courierLocationAt={order.courierLocationAt}
+                      courierAcceptedAt={order.courierAcceptedAt}
+                      pickedUpAt={order.pickedUpAt}
+                      deliveredAt={order.deliveredAt}
+                    />
+                  </div>
+                )}
 
                 <ul className="mt-3 space-y-1.5">
                   {order.items.map((item) => (
