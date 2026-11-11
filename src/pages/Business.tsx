@@ -600,11 +600,16 @@ export default function BusinessPage() {
               <div key={order._id} className="surface-raised rounded-3xl p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="flex items-center gap-2 font-display text-sm font-bold">
+                    <p className="flex flex-wrap items-center gap-2 font-display text-sm font-bold">
                       {order.code}
                       <span className="text-[10px] font-normal text-muted-foreground">
                         {clockTime(order.createdAt)}
                       </span>
+                      {order.batchCount && order.batchCount > 1 && (
+                        <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                          Entrega {order.batchIndex} de {order.batchCount}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {order.buyerName}
@@ -665,7 +670,12 @@ export default function BusinessPage() {
                       {money(order.total)}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {order.locked && (
+                      <span className="rounded-full border border-border/80 bg-secondary/50 px-3 py-1.5 text-[11px] text-muted-foreground">
+                        Se habilita cuando salga la entrega anterior
+                      </span>
+                    )}
                     {(order.status === "pending" || order.status === "accepted") && (
                       <Button
                         variant="ghost"
@@ -682,7 +692,7 @@ export default function BusinessPage() {
                         key={action.status}
                         size="sm"
                         className="gap-1.5 bg-ember-gradient text-black"
-                        disabled={busyOrder === order._id}
+                        disabled={busyOrder === order._id || order.locked}
                         onClick={() => handleStatus(order._id, action.status)}
                       >
                         {busyOrder === order._id ? (

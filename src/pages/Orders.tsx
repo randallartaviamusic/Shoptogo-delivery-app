@@ -54,6 +54,12 @@ export type OrderView = {
   address: string;
   distanceKm: number | null;
   notes: string | null;
+  groupCode: string | null;
+  batchIndex: number | null;
+  batchCount: number | null;
+  sameCourier: boolean;
+  reservedCourierId: string | null;
+  locked: boolean;
   createdAt: number;
   acceptedAt: number | null;
   courierAcceptedAt: number | null;
@@ -202,12 +208,28 @@ function OrderDetailDialog({
           </DialogTitle>
           <DialogDescription>
             {order.businessName} · {relativeTime(order.createdAt)}
+            {order.batchCount && order.batchCount > 1 && (
+              <>
+                {" "}
+                · Entrega {order.batchIndex} de {order.batchCount}
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <StatusPill status={order.status} />
           <OrderProgress status={order.status} />
+
+          {order.batchCount && order.batchCount > 1 && (
+            <p className="rounded-xl border border-border/70 bg-black/20 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+              Parte {order.batchIndex} de {order.batchCount} de una compra grande:
+              cada entrega lleva hasta 3 productos y paga su propio envío.{" "}
+              {order.sameCourier
+                ? "Pediste que el mismo repartidor haga todas las entregas."
+                : "Las entregas las van tomando los repartidores de turno."}
+            </p>
+          )}
 
           {order.courierAcceptedAt !== null && order.status !== "cancelled" && (
             <DeliveryTrackingMap
@@ -429,6 +451,12 @@ export default function OrdersPage() {
                       {relativeTime(order.createdAt)} ·{" "}
                       {order.items.reduce((acc, item) => acc + item.quantity, 0)}{" "}
                       productos
+                      {order.batchCount && order.batchCount > 1 && (
+                        <>
+                          {" "}
+                          · Entrega {order.batchIndex} de {order.batchCount}
+                        </>
+                      )}
                     </p>
                   </div>
                   <StatusPill status={order.status} />

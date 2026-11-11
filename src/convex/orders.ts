@@ -13,6 +13,28 @@ async function myBusiness(ctx: DbCtx, userId: Id<"users">) {
     .first();
 }
 
+/**
+ * Las entregas de una compra grande se preparan una detrás de otra: la
+ * siguiente recién se habilita cuando la anterior ya salió del local.
+ */
+async function previousDeliveryOpen(ctx: DbCtx, order: Doc<"orders">) {
+  if (!order.groupCode || !order.batchIndex || order.batchIndex <= 1) {
+    return false;
+  }
+  const siblings = await ctx.db
+    .query("orders")
+    .withIndex("by_group", (q) => q.eq("groupCode", order.groupCode))
+    .collect();
+  return siblings.some(
+    (sibling) =>
+      sibling.businessId === order.businessId &&
+      (sibling.batchIndex ?? 0) < (order.batchIndex ?? 0) &&
+      sibling.status !== "picked_up" &&
+      sibling.status !== "delivered" &&
+      sibling.status !== "cancelled",
+  );
+}
+
 function startOfToday() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -39,6 +61,12 @@ async function decorateOrder(
     distanceKm: order.distanceKm ?? null,
     deliveryLocation: order.deliveryLocation ?? null,
     notes: order.notes ?? null,
+    groupCode: order.groupCode ?? null,
+    batchIndex: order.batchIndex ?? null,
+    batchCount: order.batchCount ?? null,
+    sameCourier: order.sameCourier ?? false,
+    reservedCourierId: order.reservedCourierId ?? null,
+    locked: await previousDeliveryOpen(ctx, order),
     createdAt: order.createdAt,
     acceptedAt: order.acceptedAt ?? null,
     courierAcceptedAt: order.courierAcceptedAt ?? null,
@@ -161,6 +189,9 @@ export const courierBoard = query({
     const available = [];
     for (const order of readyOrders) {
       if (order.courierId) continue;
+      // Si el cliente pidió el mismo repartidor, las siguientes entregas sólo
+      // las ve quien ya hizo la primera.
+      if (order.reservedCourierId && order.reservedCourierId !== userId) continue;
       const business = await ctx.db.get(order.businessId);
       available.push(await decorateOrder(ctx, order, business));
     }
@@ -249,6 +280,11 @@ export const businessUpdateStatus = mutation({
     if (!allowed.includes(args.status)) {
       throw new Error("Ese cambio de estado no es válido");
     }
+    if (args.status !== "cancelled" && (await previousDeliveryOpen(ctx, order))) {
+      throw new Error(
+        "Esta compra se prepara en orden: primero tiene que salir la entrega anterior",
+      );
+    }
 
     const patch: Partial<Doc<"orders">> = { status: args.status };
     const stamp = TIMESTAMP[args.status];
@@ -271,6 +307,16 @@ export const courierAccept = mutation({
     if (!order) throw new Error("Ese pedido no existe");
     if (order.status !== "ready") throw new Error("El pedido todavía no está listo");
     if (order.courierId) throw new Error("Otro repartidor ya tomó este pedido");
+    if (order.reservedCourierId && order.reservedCourierId !== userId) {
+      throw new Error(
+        "El cliente pidió que el mismo repartidor haga todas las entregas de esta compra",
+      );
+    }
+    if (await previousDeliveryOpen(ctx, order)) {
+      throw new Error(
+        "Esta compra va en orden: primero tiene que entregarse la anterior",
+      );
+    }
 
     // Primero se termina la entrega en curso: nadie atiende dos a la vez.
     const mine = await ctx.db
@@ -290,6 +336,27 @@ export const courierAccept = mutation({
       courierId: userId,
       courierAcceptedAt: Date.now(),
     });
+
+    // Con "mismo repartidor", las entregas que falten de la compra quedan
+    // reservadas para quien tomó la primera.
+    if (order.sameCourier && order.groupCode) {
+      const siblings = await ctx.db
+        .query("orders")
+        .withIndex("by_group", (q) => q.eq("groupCode", order.groupCode!))
+        .collect();
+      for (const sibling of siblings) {
+        if (
+          sibling._id === order._id ||
+          sibling.courierId ||
+          sibling.status === "delivered" ||
+          sibling.status === "cancelled"
+        ) {
+          continue;
+        }
+        await ctx.db.patch(sibling._id, { reservedCourierId: userId });
+      }
+    }
+
     return { accepted: true };
   },
 });

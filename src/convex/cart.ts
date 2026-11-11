@@ -8,12 +8,23 @@ import {
   DELIVERY_RULES,
   deliveryQuote,
   isValidPoint,
+  MAX_UNITS_PER_DELIVERY,
   normalizePoint,
+  splitIntoDeliveries,
 } from "../lib/delivery";
 import { bestPromoKind, promoBadge, promoDiscount } from "../lib/promo";
 import type { PromoKind } from "../lib/promo";
 
 type DbCtx = QueryCtx | MutationCtx;
+
+type CheckoutLine = {
+  productId: Id<"products">;
+  name: string;
+  price: number;
+  quantity: number;
+  image: string;
+  promoKind: PromoKind | null;
+};
 
 async function requireUserId(ctx: DbCtx) {
   const userId = await getAuthUserId(ctx);
@@ -33,6 +44,10 @@ export type CartGroup = {
   deliveryDiscount: number;
   promo: { kind: PromoKind; label: string } | null;
   feeFrom: number;
+  /** Cuántas entregas necesita este local (máximo 3 productos cada una). */
+  deliveryBatches: number;
+  /** Suma de los envíos de todas las entregas, ya con la promo de la primera. */
+  deliveryTotal: number;
   distanceKm: number | null;
   deliveryMinutes: number | null;
   deliveryAvailable: boolean;
@@ -84,6 +99,8 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
         deliveryDiscount: 0,
         promo: null,
         feeFrom: DELIVERY_RULES.baseFee,
+        deliveryBatches: 1,
+        deliveryTotal: 0,
         distanceKm: quote?.distanceKm ?? null,
         deliveryMinutes: quote?.minutes ?? null,
         deliveryAvailable: quote !== null || dropoff === null,
@@ -124,8 +141,19 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
     group.promo = { kind, label: promoBadge(kind) };
   }
 
+  for (const group of groups) {
+    const units = group.items.reduce((acc, item) => acc + item.quantity, 0);
+    group.deliveryBatches = Math.max(
+      1,
+      Math.ceil(units / MAX_UNITS_PER_DELIVERY),
+    );
+    group.deliveryTotal =
+      (group.deliveryFullFee ?? 0) * group.deliveryBatches - group.deliveryDiscount;
+  }
+
   const subtotal = groups.reduce((acc, g) => acc + g.subtotal, 0);
-  const deliveryTotal = groups.reduce((acc, g) => acc + (g.deliveryFee ?? 0), 0);
+  const deliveryTotal = groups.reduce((acc, g) => acc + g.deliveryTotal, 0);
+  const deliveryBatches = groups.reduce((acc, g) => acc + g.deliveryBatches, 0);
   const count = groups.reduce(
     (acc, g) => acc + g.items.reduce((a, i) => a + i.quantity, 0),
     0,
@@ -134,6 +162,7 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
   return {
     groups,
     count,
+    deliveryBatches,
     subtotal,
     deliveryTotal,
     deliverySaved: groups.reduce((acc, g) => acc + g.deliveryDiscount, 0),
@@ -149,6 +178,7 @@ export const myCart = query({
       return {
         groups: [] as CartGroup[],
         count: 0,
+        deliveryBatches: 0,
         subtotal: 0,
         deliveryTotal: 0,
         deliverySaved: 0,
@@ -248,6 +278,8 @@ export const checkout = mutation({
     address: v.string(),
     location: geoPointValidator,
     notes: v.optional(v.string()),
+    // El cliente prefiere que el mismo repartidor haga todas las entregas.
+    sameCourier: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -275,17 +307,7 @@ export const checkout = mutation({
       .collect();
     if (cartItems.length === 0) throw new Error("Tu carrito está vacío");
 
-    const byBusiness = new Map<
-      string,
-      Array<{
-        productId: Id<"products">;
-        name: string;
-        price: number;
-        quantity: number;
-        image: string;
-        promoKind: PromoKind | null;
-      }>
-    >();
+    const byBusiness = new Map<string, CheckoutLine[]>();
     const businessIds: Id<"businesses">[] = [];
 
     for (const item of cartItems) {
@@ -318,6 +340,16 @@ export const checkout = mutation({
     let total = 0;
     let created = 0;
     const now = Date.now();
+    const groupCode = `CE-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Se arma el plan de entregas: máximo 3 productos por entrega, en el mismo
+    // orden en que el cliente cargó el carrito.
+    const plan: Array<{
+      businessId: Id<"businesses">;
+      quote: NonNullable<ReturnType<typeof deliveryQuote>>;
+      promoKind: PromoKind | null;
+      batches: CheckoutLine[][];
+    }> = [];
 
     for (const businessId of businessIds) {
       const items = byBusiness.get(businessId)!;
@@ -334,40 +366,62 @@ export const checkout = mutation({
           `Tu punto de entrega queda fuera del área de reparto de ${business.name}.`,
         );
       }
-      const subtotal = items.reduce((acc, i) => acc + i.price * i.quantity, 0);
       const promoKind = bestPromoKind(
         items
           .map((item) => item.promoKind)
           .filter((kind): kind is PromoKind => kind !== null),
       );
-      const deliveryDiscount = promoKind
-        ? Math.min(quote.fee, promoDiscount(quote.fee, promoKind))
-        : 0;
-      const orderTotal = subtotal + quote.fee - deliveryDiscount;
-      total += orderTotal;
-      await ctx.db.insert("orders", {
-        code: `CE-${Math.floor(1000 + Math.random() * 9000)}`,
-        buyerId: userId,
+      plan.push({
         businessId,
-        items: items.map((item) => ({
-          productId: item.productId,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          image: item.image,
-        })),
-        subtotal,
-        deliveryFee: quote.fee,
-        deliveryDiscount: deliveryDiscount || undefined,
-        total: orderTotal,
-        status: "pending",
-        address,
-        deliveryLocation: dropoff,
-        distanceKm: quote.distanceKm,
-        notes: args.notes?.trim() || undefined,
-        createdAt: now,
+        quote,
+        promoKind,
+        batches: splitIntoDeliveries(items),
       });
-      created += 1;
+    }
+
+    for (const entry of plan) {
+      const batchCount = entry.batches.length;
+      for (let index = 0; index < batchCount; index += 1) {
+        const batch = entry.batches[index];
+        const subtotal = batch.reduce((acc, i) => acc + i.price * i.quantity, 0);
+        // La promo de envío se aplica una sola vez por local, en su primera entrega.
+        const deliveryDiscount =
+          index === 0 && entry.promoKind
+            ? Math.min(
+                entry.quote.fee,
+                promoDiscount(entry.quote.fee, entry.promoKind),
+              )
+            : 0;
+        const orderTotal = subtotal + entry.quote.fee - deliveryDiscount;
+        total += orderTotal;
+        created += 1;
+        await ctx.db.insert("orders", {
+          code: batchCount > 1 ? `${groupCode}-${index + 1}` : groupCode,
+          groupCode,
+          batchIndex: index + 1,
+          batchCount,
+          sameCourier: args.sameCourier ?? false,
+          buyerId: userId,
+          businessId: entry.businessId,
+          items: batch.map((item) => ({
+            productId: item.productId,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image,
+          })),
+          subtotal,
+          deliveryFee: entry.quote.fee,
+          deliveryDiscount: deliveryDiscount || undefined,
+          total: orderTotal,
+          status: "pending",
+          address,
+          deliveryLocation: dropoff,
+          distanceKm: entry.quote.distanceKm,
+          notes: args.notes?.trim() || undefined,
+          createdAt: now,
+        });
+      }
     }
 
     for (const item of cartItems) await ctx.db.delete(item._id);

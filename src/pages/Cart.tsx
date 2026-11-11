@@ -9,12 +9,14 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
   Loader2,
   Minus,
+  PackageCheck,
   Plus,
   ShoppingCart,
   Star,
@@ -42,9 +44,13 @@ export default function CartPage() {
   );
   const [notes, setNotes] = useState("");
   const [placing, setPlacing] = useState(false);
+  // Para compras de más de 3 productos: mismo repartidor en todas las entregas.
+  const [sameCourier, setSameCourier] = useState(true);
 
   const groups = cart?.groups ?? [];
   const count = cart?.count ?? 0;
+  const deliveries = cart?.deliveryBatches ?? 0;
+  const splitInDeliveries = groups.some((group) => group.deliveryBatches > 1);
   const hasClosed = groups.some((group) => !group.isOpen);
   const allCovered = groups.every((group) => group.deliveryAvailable);
   const canConfirm = Boolean(dropoff) && address.trim().length >= 6 && allCovered;
@@ -98,13 +104,18 @@ export default function CartPage() {
 
     setPlacing(true);
     try {
-      const result = await checkout({ address, location: dropoff, notes });
+      const result = await checkout({
+        address,
+        location: dropoff,
+        notes,
+        sameCourier: splitInDeliveries ? sameCourier : undefined,
+      });
       toast.success(
         result.created === 1
           ? "Pedido confirmado"
-          : `${result.created} pedidos confirmados`,
+          : `${result.created} entregas confirmadas`,
         {
-          description: `Total ${money(result.total)}. Seguí el estado en Pedidos.`,
+          description: `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`,
         },
       );
       setNotes("");
@@ -184,9 +195,11 @@ export default function CartPage() {
                         ? group.deliveryAvailable
                           ? "Envío al elegir tu punto"
                           : "Fuera de cobertura"
-                        : group.promo
-                          ? `${group.promo.label} · ${group.deliveryFee === 0 ? "gratis" : money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`
-                          : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
+                        : group.deliveryBatches > 1
+                          ? `${group.deliveryBatches} entregas · ${money(group.deliveryTotal)} · ${formatKm(group.distanceKm ?? 0)}`
+                          : group.promo
+                            ? `${group.promo.label} · ${group.deliveryFee === 0 ? "gratis" : money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`
+                            : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
                     </p>
                   </div>
                   {!group.isOpen && (
@@ -277,7 +290,7 @@ export default function CartPage() {
                     )}
                   </span>
                   <span className="font-semibold text-foreground">
-                    {money(group.subtotal + (group.deliveryFee ?? 0))}
+                    {money(group.subtotal + group.deliveryTotal)}
                   </span>
                 </div>
               </motion.section>
@@ -300,7 +313,8 @@ export default function CartPage() {
           >
             <h2 className="font-display text-lg font-bold">Confirmar pedido</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Un pedido por negocio. Los repartidores lo toman apenas esté listo.
+              Un pedido por negocio. Cada entrega lleva hasta 3 productos y los
+              repartidores la toman apenas el local la marca lista.
             </p>
 
             <div className="mt-5 space-y-3">
@@ -325,13 +339,58 @@ export default function CartPage() {
               />
             </div>
 
+            {splitInDeliveries && (
+              <div className="mt-5 rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                  <PackageCheck className="size-3.5" />
+                  {deliveries} entregas · hasta 3 productos cada una
+                </p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                  Tu compra se reparte en varias entregas y cada una paga su
+                  envío. Los locales preparan en orden y podés seguir cada
+                  entrega por separado.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {[
+                    {
+                      value: true,
+                      label: "El mismo repartidor",
+                      hint: "Hace todas las entregas de esta compra",
+                    },
+                    {
+                      value: false,
+                      label: "Repartidores de turno",
+                      hint: "Las toma quien esté disponible",
+                    },
+                  ].map((option) => (
+                    <button
+                      key={String(option.value)}
+                      type="button"
+                      onClick={() => setSameCourier(option.value)}
+                      className={cn(
+                        "rounded-xl border px-3 py-2 text-left transition-colors",
+                        sameCourier === option.value
+                          ? "border-accent/50 bg-accent/10"
+                          : "border-border/70 hover:border-accent/30",
+                      )}
+                    >
+                      <span className="block text-xs font-semibold">{option.label}</span>
+                      <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                        {option.hint}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-5 space-y-2 border-t border-border/60 pt-4 text-sm">
               <div className="flex justify-between text-muted-foreground">
                 <span>Subtotal</span>
                 <span>{money(cart?.subtotal ?? 0)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Envíos ({groups.length})</span>
+                <span>Envíos ({deliveries || groups.length})</span>
                 <span className="flex items-center gap-2">
                   {(cart?.deliverySaved ?? 0) > 0 && (
                     <span className="text-[11px] text-accent">
@@ -383,8 +442,9 @@ export default function CartPage() {
 
             <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
               <Store className="size-3.5" />
-              {groups.length} {groups.length === 1 ? "negocio" : "negocios"} ·
-              Pago en la entrega
+              {groups.length} {groups.length === 1 ? "negocio" : "negocios"} ·{" "}
+              {deliveries || groups.length}{" "}
+              {deliveries === 1 ? "entrega" : "entregas"} · Pago en la entrega
             </p>
 
 

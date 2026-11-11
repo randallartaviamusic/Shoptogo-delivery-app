@@ -30,6 +30,43 @@ export const DELIVERY_RULES = {
   roadFactor: 1.25,
 } as const;
 
+/**
+ * Un repartidor no lleva más de 3 unidades de producto en una entrega. Si la
+ * compra es más grande, se parte en entregas consecutivas y cada una paga su
+ * propio envío.
+ */
+export const MAX_UNITS_PER_DELIVERY = 3;
+
+/**
+ * Parte una lista de productos en entregas de hasta 3 unidades, respetando el
+ * orden en que el cliente armó el carrito.
+ */
+export function splitIntoDeliveries<T extends { quantity: number }>(
+  items: T[],
+): T[][] {
+  const deliveries: T[][] = [];
+  let current: T[] = [];
+  let units = 0;
+
+  for (const item of items) {
+    let remaining = Math.max(0, item.quantity);
+    while (remaining > 0) {
+      if (units === MAX_UNITS_PER_DELIVERY) {
+        deliveries.push(current);
+        current = [];
+        units = 0;
+      }
+      const take = Math.min(MAX_UNITS_PER_DELIVERY - units, remaining);
+      current.push({ ...item, quantity: take });
+      units += take;
+      remaining -= take;
+    }
+  }
+
+  if (current.length > 0) deliveries.push(current);
+  return deliveries;
+}
+
 export type DeliveryQuote = {
   /** Distancia de recorrido estimada, ya con el factor de calles. */
   distanceKm: number;

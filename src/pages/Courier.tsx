@@ -267,11 +267,16 @@ export default function CourierPage() {
                     className="size-12 rounded-xl"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 font-display text-sm font-bold">
+                    <p className="flex flex-wrap items-center gap-2 font-display text-sm font-bold">
                       {order.businessName}
                       <span className="text-[10px] font-normal text-muted-foreground">
                         {order.code}
                       </span>
+                      {order.batchCount && order.batchCount > 1 && (
+                        <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                          Entrega {order.batchIndex} de {order.batchCount}
+                        </span>
+                      )}
                     </p>
                     <div className="mt-0.5">
                       <StatusPill status={order.status} />
@@ -383,7 +388,11 @@ export default function CourierPage() {
                       {order.code} · {order.businessName}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      {order.items.length} productos · {money(order.total)} del pedido
+                      {order.items.reduce((acc, item) => acc + item.quantity, 0)}{" "}
+                      productos · {money(order.total)} a cobrar
+                      {order.batchCount && order.batchCount > 1
+                        ? ` · Entrega ${order.batchIndex} de ${order.batchCount}`
+                        : ""}
                     </p>
                   </div>
                   <StatusPill status={order.status} />

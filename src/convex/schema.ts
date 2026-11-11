@@ -149,6 +149,14 @@ const schema = defineSchema(
 
     orders: defineTable({
       code: v.string(),
+      // Compra que se partió en varias entregas (máximo 3 productos cada una).
+      groupCode: v.optional(v.string()),
+      batchIndex: v.optional(v.number()),
+      batchCount: v.optional(v.number()),
+      // El cliente pidió que el mismo repartidor haga todas las entregas.
+      sameCourier: v.optional(v.boolean()),
+      // Repartidor que tomó la primera entrega y queda reservado para el resto.
+      reservedCourierId: v.optional(v.id("users")),
       buyerId: v.id("users"),
       businessId: v.id("businesses"),
       courierId: v.optional(v.id("users")),
@@ -176,6 +184,7 @@ const schema = defineSchema(
     })
       .index("by_buyer", ["buyerId"])
       .index("by_business", ["businessId"])
+      .index("by_group", ["groupCode"])
       .index("by_courier", ["courierId"])
       .index("by_status", ["status"]),
 
