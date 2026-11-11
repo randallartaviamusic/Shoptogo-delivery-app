@@ -113,9 +113,12 @@ async function previousDeliveryOpen(ctx: DbCtx, order: Doc<"orders">) {
 }
 
 function startOfToday() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now.getTime();
+  // Inicio del día civil de Costa Rica (UTC-6), independientemente de la zona
+  // horaria configurada en el servidor.
+  const costaRicaOffsetMs = 6 * 60 * 60 * 1000;
+  const localNow = new Date(Date.now() - costaRicaOffsetMs);
+  localNow.setUTCHours(0, 0, 0, 0);
+  return localNow.getTime() + costaRicaOffsetMs;
 }
 
 const LOCATION_FRESH_MS = ASSIGNMENT_RULES.maxLocationAgeMinutes * 60_000;
@@ -400,6 +403,13 @@ async function decorateOrder(
     courierId: order.courierId ?? null,
     courierName: courier?.name ?? null,
     courierPhone: courier?.phone ?? null,
+    // Al repartidor se le muestran las instrucciones operativas del local y un
+    // teléfono de contacto; no se exponen al comprador ni a otros roles.
+    businessPhone: viewer === "courier" ? (business?.ownerId ? (await ctx.db.get(business.ownerId))?.phone ?? null : null) : null,
+    pickupInstructions:
+      viewer === "courier" ? (business?.pickupInstructions ?? null) : null,
+    packagingInstructions:
+      viewer === "courier" ? (business?.packagingInstructions ?? null) : null,
     courierRating: courier?.rating ?? null,
     courierReviews: courier?.reviews ?? 0,
     courierVerified: courier?.verificationStatus === "verified",
@@ -455,14 +465,45 @@ export const businessBoard = query({
     }
 
     const today = startOfToday();
+    const newOrders = sorted.filter((o) => o.status === "pending");
     const deliveredToday = sorted.filter(
       (o) => o.deliveredAt && o.deliveredAt >= today,
     );
+    const createdToday = sorted.filter((o) => o.createdAt >= today);
+    const cancelledToday = sorted.filter(
+      (o) => o.status === "cancelled" && (o.cancelledAt ?? o.createdAt) >= today,
+    );
+    const cashHandedToday = sorted.filter(
+      (o) => o.cashHandedAt !== undefined && o.cashHandedAt >= today,
+    );
+    const cashDifferencesToday = cashHandedToday.filter(
+      (o) => o.cashHanded !== undefined && o.cashHanded !== businessDue(o),
+    );
+    const promoOrdersToday = deliveredToday.filter(
+      (o) => (o.deliveryDiscount ?? 0) > 0,
+    );
+    const reportOrders = new Map<string, (typeof decorated)[number]>();
+    for (const order of [...cancelledToday, ...cashDifferencesToday]) {
+      const row = decorated.find((candidate) => candidate._id === order._id);
+      if (row) reportOrders.set(order._id, row);
+    }
     const active = sorted.filter((o) =>
       ["pending", "accepted", "preparing", "ready", "picked_up"].includes(
         o.status,
       ),
     );
+    const newOrderNotifications = [];
+    for (const order of newOrders) {
+      const buyer = await ctx.db.get(order.buyerId);
+      newOrderNotifications.push({
+        _id: order._id,
+        code: order.code,
+        createdAt: order.createdAt,
+        subtotal: order.subtotal,
+        itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        buyerName: buyer?.name ?? "Cliente",
+      });
+    }
 
     return {
       business: {
@@ -480,6 +521,28 @@ export const businessBoard = query({
         deliveryPromo: business.deliveryPromo ?? null,
       },
       orders: decorated,
+      newOrders: newOrderNotifications,
+      dailyReport: {
+        cancelled: cancelledToday.slice(0, 20).map((order) => ({
+          code: order.code,
+          buyerName: reportOrders.get(order._id)?.buyerName ?? "Cliente",
+          total: order.total,
+          reason: order.cancellationReason ?? "Sin motivo registrado",
+          at: order.cancelledAt ?? order.createdAt,
+        })),
+        cashDifferences: cashDifferencesToday.slice(0, 20).map((order) => ({
+          code: order.code,
+          buyerName: reportOrders.get(order._id)?.buyerName ?? "Cliente",
+          due: businessDue(order),
+          received: order.cashHanded ?? 0,
+          difference: (order.cashHanded ?? 0) - businessDue(order),
+          at: order.cashHandedAt ?? order.deliveredAt ?? order.createdAt,
+        })),
+        promoOrders: promoOrdersToday.slice(0, 20).map((order) => ({
+          code: order.code,
+          amount: order.deliveryDiscount ?? 0,
+        })),
+      },
       stats: {
         // El local recibe el 100% de sus productos menos lo que él mismo
         // prometió cubrir de envío: eso es gasto promocional, no comisión.
@@ -496,6 +559,22 @@ export const businessBoard = query({
           0,
         ),
         deliveredToday: deliveredToday.length,
+        ordersToday: createdToday.length,
+        cancelledToday: cancelledToday.length,
+        cashDueToday: deliveredToday.reduce((acc, o) => acc + businessDue(o), 0),
+        cashReceivedToday: cashHandedToday.reduce(
+          (acc, o) => acc + (o.cashHanded ?? 0),
+          0,
+        ),
+        cashPendingToday: deliveredToday.reduce(
+          (acc, o) => acc + Math.max(0, businessDue(o) - (o.cashHanded ?? 0)),
+          0,
+        ),
+        cashDifferenceCountToday: cashDifferencesToday.length,
+        cashDifferenceAmountToday: cashDifferencesToday.reduce(
+          (acc, o) => acc + Math.abs((o.cashHanded ?? 0) - businessDue(o)),
+          0,
+        ),
         // Efectivo de tus productos que el repartidor todavía no confirmó
         // (de todo el historial, no sólo de hoy).
         cashPending: sorted.reduce(

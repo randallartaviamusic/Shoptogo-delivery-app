@@ -420,6 +420,8 @@ export const update = mutation({
     image: v.optional(v.string()),
     // Promoción de envío del local. null = queda sin promoción.
     deliveryPromo: v.optional(v.union(promoKindValidator, v.null())),
+    pickupInstructions: v.optional(v.string()),
+    packagingInstructions: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -445,6 +447,20 @@ export const update = mutation({
       patch.image = args.image.trim();
     if (args.deliveryPromo !== undefined)
       patch.deliveryPromo = args.deliveryPromo ?? undefined;
+    if (args.pickupInstructions !== undefined) {
+      const instructions = args.pickupInstructions.trim();
+      if (instructions.length > 500) {
+        throw new Error("Las instrucciones de retiro no pueden pasar de 500 caracteres");
+      }
+      patch.pickupInstructions = instructions || undefined;
+    }
+    if (args.packagingInstructions !== undefined) {
+      const instructions = args.packagingInstructions.trim();
+      if (instructions.length > 500) {
+        throw new Error("Las instrucciones de empaque no pueden pasar de 500 caracteres");
+      }
+      patch.packagingInstructions = instructions || undefined;
+    }
 
     await ctx.db.patch(business._id, patch);
     return null;

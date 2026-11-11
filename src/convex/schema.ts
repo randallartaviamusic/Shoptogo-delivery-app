@@ -173,6 +173,9 @@ const schema = defineSchema(
       tagline: v.string(),
       image: v.string(),
       address: v.string(),
+      // Información operativa que el repartidor necesita al llegar al local.
+      pickupInstructions: v.optional(v.string()),
+      packagingInstructions: v.optional(v.string()),
       // Dirección exacta fijada en el mapa por el negocio. Obligatoria para
       // los locales nuevos; los viejos se completan en la migración del seed.
       location: v.optional(geoPointValidator),

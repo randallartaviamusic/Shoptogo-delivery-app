@@ -176,6 +176,8 @@ export default function BusinessPage() {
     etaMinutes: "",
     image: "",
     deliveryPromo: null as DeliveryPromo,
+    pickupInstructions: "",
+    packagingInstructions: "",
   });
 
   if (user && user.role !== "business") {
@@ -332,6 +334,8 @@ export default function BusinessPage() {
       etaMinutes: String(business.etaMinutes),
       image: business.image,
       deliveryPromo: business.deliveryPromo ?? null,
+      pickupInstructions: business.pickupInstructions ?? "",
+      packagingInstructions: business.packagingInstructions ?? "",
     });
     setSettingsDialog(true);
   };
@@ -355,6 +359,8 @@ export default function BusinessPage() {
         etaMinutes: Number(settingsForm.etaMinutes) || 20,
         image: settingsForm.image,
         deliveryPromo: settingsForm.deliveryPromo,
+        pickupInstructions: settingsForm.pickupInstructions,
+        packagingInstructions: settingsForm.packagingInstructions,
       });
       toast.success("Local actualizado");
       setSettingsDialog(false);
@@ -632,6 +638,47 @@ export default function BusinessPage() {
               hint="pedidos recibidos"
             />
           </div>
+
+          <section className="surface-raised rounded-3xl p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                  Cierre diario · Costa Rica
+                </p>
+                <h2 className="mt-1 font-display text-lg font-bold">Ventas y caja de hoy</h2>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  El efectivo esperado corresponde a productos entregados, menos los descuentos promocionales cubiertos por el local.
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline" className="border-border/80">
+                <Link to="/business?tab=orders">Ver pedidos del día</Link>
+              </Button>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              <StatCard label="Pedidos creados" value={String(stats?.ordersToday ?? 0)} hint={`${stats?.deliveredToday ?? 0} entregados`} />
+              <StatCard label="Ventas de productos" value={money(stats?.productSalesToday ?? 0)} hint="pedidos entregados" />
+              <StatCard label="Promos financiadas" value={money(stats?.promoSpendToday ?? 0)} hint={`${board?.dailyReport.promoOrders.length ?? 0} pedidos con promo`} />
+              <StatCard label="Efectivo esperado" value={money(stats?.cashDueToday ?? 0)} hint="a recibir por productos" accent="ember" />
+              <StatCard label="Efectivo recibido" value={money(stats?.cashReceivedToday ?? 0)} hint={stats?.cashPendingToday ? `pendiente ${money(stats.cashPendingToday)}` : "cuentas al día"} />
+              <StatCard label="Cancelados" value={String(stats?.cancelledToday ?? 0)} hint="hoy" accent="chili" />
+              <StatCard label="Diferencias de caja" value={String(stats?.cashDifferenceCountToday ?? 0)} hint={`total ${money(stats?.cashDifferenceAmountToday ?? 0)}`} accent={stats?.cashDifferenceCountToday ? "chili" : undefined} />
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Cancelaciones ({board?.dailyReport.cancelled.length ?? 0})</p>
+                {(board?.dailyReport.cancelled.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin cancelaciones hoy.</p> : <ul className="mt-2 space-y-2">{board?.dailyReport.cancelled.map((order) => <li key={order.code} className="text-[10px] leading-relaxed"><span className="font-semibold">{order.code} · {order.buyerName} · {money(order.total)}</span><p className="text-muted-foreground">{order.reason}</p></li>)}</ul>}
+              </div>
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Descuentos promocionales ({board?.dailyReport.promoOrders.length ?? 0})</p>
+                {(board?.dailyReport.promoOrders.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin descuentos de envío hoy.</p> : <ul className="mt-2 space-y-1">{board?.dailyReport.promoOrders.map((order) => <li key={order.code} className="flex justify-between gap-2 text-[10px]"><span>{order.code}</span><span className="font-semibold">−{money(order.amount)}</span></li>)}</ul>}
+              </div>
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Diferencias de caja ({board?.dailyReport.cashDifferences.length ?? 0})</p>
+                {(board?.dailyReport.cashDifferences.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin diferencias registradas hoy.</p> : <ul className="mt-2 space-y-2">{board?.dailyReport.cashDifferences.map((order) => <li key={order.code} className="text-[10px]"><span className="font-semibold">{order.code} · {order.buyerName}</span><p className="text-muted-foreground">Debía {money(order.due)} · recibió {money(order.received)} · diferencia {money(order.difference)}</p></li>)}</ul>}
+              </div>
+            </div>
+          </section>
 
           <div className="surface-raised rounded-3xl p-5">
             <div className="flex items-center justify-between">
@@ -1127,9 +1174,13 @@ export default function BusinessPage() {
                       {product.category} · {money(product.price)}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className={cn("hidden text-[10px] font-semibold sm:inline", product.isAvailable ? "text-accent" : "text-primary")}>
+                      {product.isAvailable ? "Disponible" : "Agotado"}
+                    </span>
                     <Switch
                       checked={product.isAvailable}
+                      aria-label={product.isAvailable ? `Pausar ${product.name} por agotamiento` : `Volver a ofrecer ${product.name}`}
                       onCheckedChange={async (checked) => {
                         try {
                           await updateProduct({
@@ -1137,8 +1188,12 @@ export default function BusinessPage() {
                             isAvailable: checked,
                           });
                           toast(
-                            checked ? "Producto visible" : "Producto oculto",
-                            { description: product.name },
+                            checked ? "Producto disponible" : "Producto pausado por agotamiento",
+                            {
+                              description: checked
+                                ? `${product.name} vuelve a aparecer en el catálogo.`
+                                : `${product.name} deja de aparecer y no se puede pedir hasta que lo actives.`,
+                            },
                           );
                         } catch (error) {
                           toast.error(
@@ -1518,6 +1573,30 @@ export default function BusinessPage() {
                 El costo de envío lo calcula Capricho Express según la distancia
                 entre tu local y el punto de entrega del cliente.
               </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pickup-instructions">Instrucciones para retiro</Label>
+              <Textarea
+                id="pickup-instructions"
+                value={settingsForm.pickupInstructions}
+                onChange={(event) => setSettingsForm({ ...settingsForm, pickupInstructions: event.target.value })}
+                maxLength={500}
+                placeholder="Ej.: tocar timbre lateral; preguntar en caja por el pedido Capricho Express."
+                className="min-h-16 resize-none text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">Se muestra al repartidor. Incluí por dónde entrar o dónde esperar.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="packaging-instructions">Instrucciones de empaque</Label>
+              <Textarea
+                id="packaging-instructions"
+                value={settingsForm.packagingInstructions}
+                onChange={(event) => setSettingsForm({ ...settingsForm, packagingInstructions: event.target.value })}
+                maxLength={500}
+                placeholder="Ej.: bebidas separadas; sellar la bolsa; cubiertos dentro."
+                className="min-h-16 resize-none text-xs"
+              />
+              <p className="text-[10px] text-muted-foreground">El repartidor las verá antes de retirar el pedido.</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="settings-image">Portada (URL)</Label>

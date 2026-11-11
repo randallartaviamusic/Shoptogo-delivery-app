@@ -829,10 +829,28 @@ export default function CourierPage() {
                       Retiro
                     </p>
                     <p className="mt-1 text-sm font-medium">{order.businessName}</p>
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
-                      {order.businessAddress}
-                    </p>
-                  </div>
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        {order.businessAddress}
+                      </p>
+                      {order.businessPhone && (
+                        <a
+                          className="mt-1 inline-flex text-[11px] font-semibold text-accent hover:underline"
+                          href={`tel:${order.businessPhone.replace(/[^+\d]/g, "")}`}
+                        >
+                          Llamar al local · {order.businessPhone}
+                        </a>
+                      )}
+                      {order.pickupInstructions && (
+                        <p className="mt-1 rounded-lg border border-accent/20 bg-accent/[0.05] p-2 text-[10px] leading-relaxed text-muted-foreground">
+                          <strong className="text-foreground">Retiro:</strong> {order.pickupInstructions}
+                        </p>
+                      )}
+                      {order.packagingInstructions && (
+                        <p className="mt-1 rounded-lg border border-border/70 bg-black/20 p-2 text-[10px] leading-relaxed text-muted-foreground">
+                          <strong className="text-foreground">Empaque:</strong> {order.packagingInstructions}
+                        </p>
+                      )}
+                    </div>
                   <div className="rounded-xl border border-border/70 bg-black/20 p-3">
                     <p className="text-[10px] uppercase tracking-wider text-primary">
                       Entrega

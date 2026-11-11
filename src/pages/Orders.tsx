@@ -129,6 +129,9 @@ export type OrderView = {
   businessName: string;
   businessImage: string;
   businessAddress: string;
+  businessPhone: string | null;
+  pickupInstructions: string | null;
+  packagingInstructions: string | null;
   businessLocation: GeoPoint | null;
   deliveryLocation: GeoPoint | null;
   courierLocation: GeoPoint | null;
