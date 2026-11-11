@@ -1,56 +1,48 @@
 /**
- * Promociones de envío que un local financia en sus productos: el cliente paga
- * el envío gratis o al 50% y el local cubre la diferencia.
+ * Promociones de envío que financia el local desde los ajustes de su tienda.
+ *
+ * El envío se cobra una sola vez por entrega, nunca por producto ni por
+ * tienda. Si el local tiene una promo activa cubre la parte del envío que le
+ * corresponde a su tienda en esa entrega (100% o 50%) y el cliente paga el
+ * resto. Ese monto es un gasto promocional del local, no una comisión de la
+ * plataforma: el local recibe siempre el 100% del valor de sus productos.
  */
 export type PromoKind = "free_delivery" | "half_delivery";
 
-export type ProductPromo = {
-  kind: PromoKind;
-  /** Momento en que la promo deja de aplicarse. */
-  endsAt: number;
-};
+/** `null` = el local no ofrece promoción de envío. */
+export type DeliveryPromo = PromoKind | null;
 
 export const PROMO_OPTIONS: Array<{
-  kind: PromoKind;
+  kind: DeliveryPromo;
   label: string;
   detail: string;
 }> = [
   {
+    kind: null,
+    label: "Sin promoción de envío",
+    detail: "El cliente paga el envío completo de cada entrega.",
+  },
+  {
     kind: "free_delivery",
-    label: "Envío express gratis",
-    detail: "Vos pagás el 100% del envío de esos pedidos.",
+    label: "Envío sin costo",
+    detail: "Vos cubrís el 100% de la parte de tu tienda en cada entrega.",
   },
   {
     kind: "half_delivery",
-    label: "Envío express al 50%",
-    detail: "Vos pagás la mitad del envío de esos pedidos.",
+    label: "Promoción de envío al 50%",
+    detail: "Vos cubrís la mitad de la parte de tu tienda en cada entrega.",
   },
 ];
-
-export const PROMO_DAYS = [1, 2, 3, 5, 7];
 
 export function promoBadge(kind: PromoKind) {
   return kind === "free_delivery" ? "Envío gratis" : "Envío 50%";
 }
 
-export function isPromoActive(
-  promo?: { endsAt: number } | null,
-  now = Date.now(),
-) {
-  return Boolean(promo && promo.endsAt > now);
+export function promoLabel(promo?: DeliveryPromo) {
+  return promo ? promoBadge(promo) : "Sin promoción de envío";
 }
 
 /** Monto del envío que absorbe el local. */
 export function promoDiscount(fee: number, kind: PromoKind) {
   return kind === "free_delivery" ? fee : Math.round(fee / 2);
-}
-
-/** La mejor promo entre varias: gratis gana a 50%. */
-export function bestPromoKind(kinds: PromoKind[]): PromoKind | null {
-  if (kinds.includes("free_delivery")) return "free_delivery";
-  return kinds[0] ?? null;
-}
-
-export function promoDaysLeft(endsAt: number, now = Date.now()) {
-  return Math.max(1, Math.ceil((endsAt - now) / 86_400_000));
 }

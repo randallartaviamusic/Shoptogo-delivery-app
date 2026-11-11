@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { DELIVERY_RULES } from "../lib/delivery";
 
 type DbCtx = QueryCtx | MutationCtx;
 
@@ -91,15 +92,20 @@ async function decorateOrder(
       businessId: tripOrder.businessId,
       name: stopBusiness?.name ?? "Local",
       address: stopBusiness?.address ?? "",
+      // Parte del envío único de la entrega que le corresponde a esta tienda.
       fee: tripOrder.deliveryFee,
-      extraStopFee: tripOrder.extraStopFee ?? 0,
       itemCount: tripOrder.items.reduce((acc, item) => acc + item.quantity, 0),
     });
   }
-  const tripEarnings = stops.reduce(
-    (acc, stop) => acc + stop.fee + stop.extraStopFee,
+  const tripEarnings = trip.reduce(
+    (acc, member) => acc + member.deliveryFee + (member.extraStopFee ?? 0),
     0,
   );
+  // Recargo informativo del envío: el cliente lo paga dentro del envío único
+  // de la entrega, no como un cobro aparte por tienda.
+  const stopSurcharge =
+    DELIVERY_RULES.extraStopFee *
+    Math.max(0, (order.tripStops ?? trip.length) - 1);
   return {
     _id: order._id,
     code: order.code,
@@ -139,7 +145,7 @@ async function decorateOrder(
       ),
     // Entrega compartida con más tiendas: el repartidor retira en cada una.
     tripStops: order.tripStops ?? trip.length,
-    extraStopFee: order.extraStopFee ?? 0,
+    extraStopFee: stopSurcharge,
     tripEarnings,
     // Lo que el repartidor cobra al cliente en esta entrega (productos + envío).
     tripTotal: trip.reduce((acc, member) => acc + member.total, 0),
@@ -233,15 +239,24 @@ export const businessBoard = query({
         rating: business.rating,
         reviews: business.reviews,
         isOpen: business.isOpen,
+        deliveryPromo: business.deliveryPromo ?? null,
       },
       orders: decorated,
       stats: {
-        // Lo que el local cubrió de envío por promociones se descuenta de su liquidación.
-        revenueToday:
-          deliveredToday.reduce(
-            (acc, o) => acc + o.subtotal - (o.deliveryDiscount ?? 0),
-            0,
-          ),
+        // El local recibe el 100% de sus productos menos lo que él mismo
+        // prometió cubrir de envío: eso es gasto promocional, no comisión.
+        productSalesToday: deliveredToday.reduce(
+          (acc, o) => acc + o.subtotal,
+          0,
+        ),
+        promoSpendToday: deliveredToday.reduce(
+          (acc, o) => acc + (o.deliveryDiscount ?? 0),
+          0,
+        ),
+        revenueToday: deliveredToday.reduce(
+          (acc, o) => acc + o.subtotal - (o.deliveryDiscount ?? 0),
+          0,
+        ),
         deliveredToday: deliveredToday.length,
         active: active.length,
         waiting: sorted.filter((o) => o.status === "pending").length,

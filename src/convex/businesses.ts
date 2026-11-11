@@ -194,6 +194,7 @@ export const directory = query({
           isOpen: business.isOpen,
           etaMinutes: business.etaMinutes,
           delivery: describeDelivery(business.location, viewer),
+          promo: business.deliveryPromo ?? null,
           address: business.address,
           location: business.location ?? null,
           productCount: entry?.count ?? 0,
@@ -244,7 +245,7 @@ export const storefront = query({
           image: product.image,
           category: product.category,
           tags: product.tags,
-          promo: product.promo ?? null,
+          promo: business.deliveryPromo ?? null,
         })),
     };
   },
@@ -386,6 +387,8 @@ export const update = mutation({
     etaMinutes: v.optional(v.number()),
     isOpen: v.optional(v.boolean()),
     image: v.optional(v.string()),
+    // Promoción de envío del local. null = queda sin promoción.
+    deliveryPromo: v.optional(v.union(promoKindValidator, v.null())),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -409,6 +412,8 @@ export const update = mutation({
     if (args.isOpen !== undefined) patch.isOpen = args.isOpen;
     if (args.image !== undefined && args.image.trim().length > 0)
       patch.image = args.image.trim();
+    if (args.deliveryPromo !== undefined)
+      patch.deliveryPromo = args.deliveryPromo ?? undefined;
 
     await ctx.db.patch(business._id, patch);
     return null;
@@ -490,34 +495,6 @@ export const updateProduct = mutation({
 
     await ctx.db.patch(args.productId, patch);
     return null;
-  },
-});
-
-export const setProductPromo = mutation({
-  args: {
-    productId: v.id("products"),
-    // null = finalizar la promoción
-    kind: v.union(promoKindValidator, v.null()),
-    days: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    const business = await ownedBusiness(ctx, userId);
-    if (!business) throw new Error("No tenés un negocio asociado");
-    const product = await ctx.db.get(args.productId);
-    if (!product || product.businessId !== business._id) {
-      throw new Error("Ese producto no pertenece a tu negocio");
-    }
-
-    if (args.kind === null) {
-      await ctx.db.patch(args.productId, { promo: undefined });
-      return { endsAt: null };
-    }
-
-    const days = Math.min(14, Math.max(1, Math.round(args.days ?? 1)));
-    const endsAt = Date.now() + days * 24 * 60 * 60 * 1000;
-    await ctx.db.patch(args.productId, { promo: { kind: args.kind, endsAt } });
-    return { endsAt };
   },
 });
 

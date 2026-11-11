@@ -73,17 +73,48 @@ export type PlannedTrip = {
   /** Número de entrega dentro de la compra (1, 2, 3...). */
   index: number;
   units: number;
-  /** Tiendas que se retiran en esta entrega, con su tarifa de recorrido. */
+  /**
+   * Tiendas que se retiran en esta entrega. `fee` es la parte del envío único
+   * que le corresponde a cada una (la suma de las partes es el envío entero).
+   */
   stops: Array<{ businessId: string; fee: number }>;
-  /** Recargo por retirar en más de una tienda. */
+  /** Recargo incluido en el envío por retirar en más de una tienda. */
   stopFee: number;
+  /** Envío único de la entrega. */
   fee: number;
 };
 
 /**
+ * Reparte un monto entre varias tiendas en proporción a su recorrido, sin
+ * perder ni un colón por redondeo (el último ajuste cierra la cuenta).
+ */
+export function allocateTripFee(total: number, weights: number[]): number[] {
+  if (weights.length === 0) return [];
+  const safe = weights.map((weight) => Math.max(0, weight));
+  const sum = safe.reduce((acc, weight) => acc + weight, 0);
+  if (sum <= 0) {
+    const base = Math.floor(total / weights.length);
+    return weights.map((_, index) =>
+      index === weights.length - 1
+        ? total - base * (weights.length - 1)
+        : base,
+    );
+  }
+  let assigned = 0;
+  return safe.map((weight, index) => {
+    if (index === safe.length - 1) return Math.max(0, total - assigned);
+    const share = Math.floor((total * weight) / sum);
+    assigned += share;
+    return share;
+  });
+}
+
+/**
  * Arma las entregas de una compra: máximo 3 productos cada una, en el orden del
- * carrito. Una misma entrega puede retirar en varias tiendas y en ese caso
- * suma la tarifa de cada recorrido más un recargo por tienda adicional.
+ * carrito. Una entrega puede retirar en varias tiendas, pero el envío se cobra
+ * una sola vez: el recorrido más largo (no la suma de cada tienda) más un
+ * recargo por cada parada adicional. Ese envío único se reparte entre las
+ * tiendas para saber cuánto cubre cada una si tiene promoción activa.
  */
 export function planDeliveryTrips(
   lines: Array<{ businessId: string; quantity: number }>,
@@ -94,18 +125,20 @@ export function planDeliveryTrips(
     for (const line of chunk) {
       if (!stores.includes(line.businessId)) stores.push(line.businessId);
     }
-    const stops = stores.map((businessId) => ({
-      businessId,
-      fee: feeForBusiness(businessId),
-    }));
+    const routeFees = stores.map((businessId) => feeForBusiness(businessId));
     const stopFee =
-      DELIVERY_RULES.extraStopFee * Math.max(0, stops.length - 1);
+      DELIVERY_RULES.extraStopFee * Math.max(0, stores.length - 1);
+    const fee = Math.max(0, ...routeFees) + stopFee;
+    const shares = allocateTripFee(fee, routeFees);
     return {
       index: index + 1,
       units: chunk.reduce((acc, line) => acc + line.quantity, 0),
-      stops,
+      stops: stores.map((businessId, position) => ({
+        businessId,
+        fee: shares[position],
+      })),
       stopFee,
-      fee: stops.reduce((acc, stop) => acc + stop.fee, 0) + stopFee,
+      fee,
     };
   });
 }

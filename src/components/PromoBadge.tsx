@@ -1,27 +1,22 @@
-import { promoBadge, promoDaysLeft } from "@/lib/promo";
-import type { ProductPromo } from "@/lib/promo";
+import { promoBadge } from "@/lib/promo";
+import type { PromoKind } from "@/lib/promo";
 import { cn } from "@/lib/utils";
 import { TicketPercent } from "lucide-react";
 
-function activePromoOf(promo?: ProductPromo | null) {
-  return promo && promo.endsAt > Date.now() ? promo : null;
-}
-
 /**
- * Etiqueta que se pega sobre la imagen del producto cuando el local está
- * financiando el envío.
+ * Etiqueta que se pega sobre la imagen del producto cuando su local está
+ * financiando parte del envío. La promoción es de la tienda completa.
  */
 export function PromoBadge({
   promo,
   className,
   withIcon = true,
 }: {
-  promo?: ProductPromo | null;
+  promo?: PromoKind | null;
   className?: string;
   withIcon?: boolean;
 }) {
-  const active = activePromoOf(promo);
-  if (!active) return null;
+  if (!promo) return null;
   return (
     <span
       className={cn(
@@ -30,26 +25,7 @@ export function PromoBadge({
       )}
     >
       {withIcon && <TicketPercent className="size-3" />}
-      {promoBadge(active.kind)}
+      {promoBadge(promo)}
     </span>
-  );
-}
-
-/** Texto con cuántos días le quedan a la promo (para el panel del local). */
-export function PromoStatus({
-  promo,
-  className,
-}: {
-  promo?: ProductPromo | null;
-  className?: string;
-}) {
-  const active = activePromoOf(promo);
-  if (!active) return null;
-  const days = promoDaysLeft(active.endsAt);
-  return (
-    <p className={cn("text-[11px] font-semibold text-accent", className)}>
-      {promoBadge(active.kind)} · queda{days === 1 ? "" : "n"} {days} día
-      {days === 1 ? "" : "s"}
-    </p>
   );
 }

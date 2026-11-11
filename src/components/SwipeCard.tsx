@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
 import { promoDiscount } from "@/lib/promo";
-import type { ProductPromo } from "@/lib/promo";
+import type { PromoKind } from "@/lib/promo";
 import { cn } from "@/lib/utils";
 import {
   animate,
@@ -26,7 +26,7 @@ export type Dish = {
   department?: string;
   attributes?: { key: string; value: string }[];
   tags: string[];
-  promo?: ProductPromo | null;
+  promo?: PromoKind | null;
   businessId: string;
   businessName: string;
   businessCategory: string;
@@ -45,18 +45,14 @@ export type Dish = {
 
 export type SwipeDirection = "like" | "pass" | "save";
 
-/** Texto del envío, con la promo del local aplicada si sigue vigente. */
-function deliveryText(
-  delivery: Dish["delivery"],
-  promo?: ProductPromo | null,
-) {
+/** Texto del envío, con la promoción de la tienda aplicada si tiene una. */
+function deliveryText(delivery: Dish["delivery"], promo?: PromoKind | null) {
   if (!delivery.available) return "Fuera de cobertura";
   if (delivery.fee === null) return `Envío desde ${money(delivery.feeFrom)}`;
   const distance = formatKm(delivery.distanceKm ?? 0);
-  const active = promo && promo.endsAt > Date.now() ? promo : null;
-  if (!active) return `Envío ${money(delivery.fee)} · ${distance}`;
-  if (active.kind === "free_delivery") return `Envío gratis · ${distance}`;
-  const clientFee = delivery.fee - promoDiscount(delivery.fee, active.kind);
+  if (!promo) return `Envío ${money(delivery.fee)} · ${distance}`;
+  if (promo === "free_delivery") return `Envío gratis · ${distance}`;
+  const clientFee = delivery.fee - promoDiscount(delivery.fee, promo);
   return `Envío al 50% · ${money(clientFee)} · ${distance}`;
 }
 

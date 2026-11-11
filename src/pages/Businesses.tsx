@@ -2,6 +2,8 @@ import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { PromoBadge } from "@/components/PromoBadge";
+import { promoDiscount } from "@/lib/promo";
+import type { PromoKind } from "@/lib/promo";
 import { LoopRow } from "@/components/LoopRow";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { Button } from "@/components/ui/button";
@@ -309,10 +311,13 @@ type DeliveryInfo = {
   available: boolean;
 };
 
-function deliveryLabel(delivery: DeliveryInfo) {
+function deliveryLabel(delivery: DeliveryInfo, promo?: PromoKind | null) {
   if (!delivery.available) return "Fuera de cobertura";
   if (delivery.fee === null) return `Envío desde ${money(delivery.feeFrom)}`;
-  return `Envío ${money(delivery.fee)} · ${formatKm(delivery.distanceKm ?? 0)}`;
+  const distance = formatKm(delivery.distanceKm ?? 0);
+  if (!promo) return `Envío ${money(delivery.fee)} · ${distance}`;
+  if (promo === "free_delivery") return `Envío gratis · ${distance}`;
+  return `Envío al 50% · ${money(delivery.fee - promoDiscount(delivery.fee, promo))} · ${distance}`;
 }
 
 function BusinessCard({
@@ -329,6 +334,7 @@ function BusinessCard({
     isOpen: boolean;
     etaMinutes: number;
     delivery: DeliveryInfo;
+    promo: PromoKind | null;
     productCount: number;
     minPrice: number | null;
   };
@@ -380,7 +386,7 @@ function BusinessCard({
           </span>
           <span className="flex items-center gap-1">
             <Truck className="size-3 text-accent" />
-            {deliveryLabel(business.delivery)}
+            {deliveryLabel(business.delivery, business.promo)}
           </span>
           <span className="flex items-center gap-1">
             <ShoppingBag className="size-3 text-accent" />
@@ -519,7 +525,7 @@ function Storefront({ slug }: { slug: string }) {
               </span>
               <span className="flex items-center gap-1">
                 <Truck className="size-3 text-accent" />
-                {deliveryLabel(delivery)}
+                {deliveryLabel(delivery, business.deliveryPromo)}
               </span>
               <span className="flex items-center gap-1">
                 <MapPin className="size-3 text-accent" />

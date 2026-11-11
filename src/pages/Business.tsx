@@ -2,7 +2,7 @@ import { EmptyState } from "@/components/AppShell";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
-import { PromoBadge, PromoStatus } from "@/components/PromoBadge";
+import { PromoBadge } from "@/components/PromoBadge";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import {
   AlertDialog,
@@ -39,14 +39,8 @@ import type { OrderStatus } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { getDepartment } from "@/lib/departments";
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
-import {
-  isPromoActive,
-  PROMO_DAYS,
-  PROMO_OPTIONS,
-  promoBadge,
-  promoDaysLeft,
-} from "@/lib/promo";
-import type { PromoKind } from "@/lib/promo";
+import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
+import type { DeliveryPromo } from "@/lib/promo";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -129,17 +123,12 @@ export default function BusinessPage() {
   const addProduct = useMutation(api.businesses.addProduct);
   const updateProduct = useMutation(api.businesses.updateProduct);
   const removeProduct = useMutation(api.businesses.removeProduct);
-  const setProductPromo = useMutation(api.businesses.setProductPromo);
 
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
   const [productDialog, setProductDialog] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
   const [deleting, setDeleting] = useState<Doc<"products"> | null>(null);
-  const [promoProduct, setPromoProduct] = useState<Doc<"products"> | null>(null);
-  const [promoKind, setPromoKind] = useState<PromoKind>("free_delivery");
-  const [promoDays, setPromoDays] = useState(3);
-  const [savingPromo, setSavingPromo] = useState(false);
   const [savingProduct, setSavingProduct] = useState(false);
   const [productForm, setProductForm] = useState({
     name: "",
@@ -156,6 +145,7 @@ export default function BusinessPage() {
     location: null as { lat: number; lng: number } | null,
     etaMinutes: "",
     image: "",
+    deliveryPromo: null as DeliveryPromo,
   });
 
   if (user && user.role !== "business") {
@@ -292,52 +282,6 @@ export default function BusinessPage() {
     }
   };
 
-  const openPromo = (product: Doc<"products">) => {
-    const promo = product.promo;
-    const active = promo && promo.endsAt > Date.now() ? promo : null;
-    setPromoKind(active?.kind ?? "free_delivery");
-    setPromoDays(active ? promoDaysLeft(active.endsAt) : 3);
-    setPromoProduct(product);
-  };
-
-  const handleSavePromo = async () => {
-    if (!promoProduct) return;
-    setSavingPromo(true);
-    try {
-      await setProductPromo({
-        productId: promoProduct._id,
-        kind: promoKind,
-        days: promoDays,
-      });
-      toast.success("Promoción activa", {
-        description: `${promoBadge(promoKind)} en ${promoProduct.name} durante ${promoDays} ${promoDays === 1 ? "día" : "días"}.`,
-      });
-      setPromoProduct(null);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "No pudimos activar la promoción",
-      );
-    } finally {
-      setSavingPromo(false);
-    }
-  };
-
-  const handleClearPromo = async () => {
-    if (!promoProduct) return;
-    setSavingPromo(true);
-    try {
-      await setProductPromo({ productId: promoProduct._id, kind: null });
-      toast("Promoción finalizada", { description: promoProduct.name });
-      setPromoProduct(null);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "No pudimos finalizar la promoción",
-      );
-    } finally {
-      setSavingPromo(false);
-    }
-  };
-
   const openSettings = () => {
     setSettingsForm({
       name: business.name,
@@ -346,6 +290,7 @@ export default function BusinessPage() {
       location: business.location ?? null,
       etaMinutes: String(business.etaMinutes),
       image: business.image,
+      deliveryPromo: business.deliveryPromo ?? null,
     });
     setSettingsDialog(true);
   };
@@ -368,6 +313,7 @@ export default function BusinessPage() {
         location: settingsForm.location ?? undefined,
         etaMinutes: Number(settingsForm.etaMinutes) || 20,
         image: settingsForm.image,
+        deliveryPromo: settingsForm.deliveryPromo,
       });
       toast.success("Local actualizado");
       setSettingsDialog(false);
@@ -464,6 +410,34 @@ export default function BusinessPage() {
             </div>
           )}
 
+          {business.deliveryPromo && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-accent">
+                  <TicketPercent className="size-3.5" />
+                  {promoLabel(business.deliveryPromo)} activo en toda la tienda
+                </p>
+                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
+                  Cubrís{" "}
+                  {business.deliveryPromo === "free_delivery"
+                    ? "el 100%"
+                    : "la mitad"}{" "}
+                  de la parte de envío de tu tienda en cada entrega. Hoy sumás{" "}
+                  {money(stats?.promoSpendToday ?? 0)} de gasto promocional. Tus
+                  productos se te pagan completos: no es una comisión de Capricho.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-accent/40 text-accent"
+                onClick={openSettings}
+              >
+                Cambiar promoción
+              </Button>
+            </div>
+          )}
+
           <div className="relative overflow-hidden rounded-3xl border border-border/70">
             <DishImage
               src={business.image}
@@ -499,7 +473,7 @@ export default function BusinessPage() {
             <StatCard
               label="Ingresos hoy"
               value={money(stats?.revenueToday ?? 0)}
-              hint={`${stats?.deliveredToday ?? 0} entregados`}
+              hint={`${stats?.deliveredToday ?? 0} entregados · productos ${money(stats?.productSalesToday ?? 0)}`}
               accent="ember"
             />
             <StatCard
@@ -673,8 +647,24 @@ export default function BusinessPage() {
                       .filter((stop) => stop.businessId !== order.businessId)
                       .map((stop) => stop.name)
                       .join(" y ")}
-                    . El cliente paga un recargo de envío por la tienda adicional
-                    {order.extraStopFee > 0 ? ` (${money(order.extraStopFee)})` : ""}.
+                    . El envío se cobra una sola vez por entrega y suma{" "}
+                    {money(order.extraStopFee)} por la tienda adicional. A tu tienda
+                    le corresponde {money(order.deliveryFee)} de ese envío.
+                    {(order.deliveryDiscount ?? 0) > 0 && (
+                      <span className="text-accent">
+                        {" "}
+                        Cubrís {money(order.deliveryDiscount ?? 0)} con tu
+                        promoción (gasto promocional, no comisión).
+                      </span>
+                    )}
+                  </p>
+                )}
+
+                {order.tripStops <= 1 && (order.deliveryDiscount ?? 0) > 0 && (
+                  <p className="mt-2 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    Tu promoción cubre {money(order.deliveryDiscount ?? 0)} del
+                    envío de esta entrega. Queda como gasto promocional tuyo, no
+                    como comisión: el valor de tus productos se te paga completo.
                   </p>
                 )}
 
@@ -782,11 +772,13 @@ export default function BusinessPage() {
                       alt={product.name}
                       className="size-16 rounded-xl"
                     />
-                    <PromoBadge
-                      promo={product.promo}
-                      withIcon={false}
-                      className="absolute inset-x-1 bottom-1 justify-center px-1 py-0.5 text-[9px]"
-                    />
+                    {business.deliveryPromo && (
+                      <PromoBadge
+                        promo={business.deliveryPromo}
+                        withIcon={false}
+                        className="absolute inset-x-1 bottom-1 justify-center px-1 py-0.5 text-[9px]"
+                      />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{product.name}</p>
@@ -796,7 +788,6 @@ export default function BusinessPage() {
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {product.category} · {money(product.price)}
                     </p>
-                    <PromoStatus promo={product.promo} className="mt-0.5" />
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Switch
@@ -818,15 +809,6 @@ export default function BusinessPage() {
                         }
                       }}
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Promoción de envío"
-                      className="size-8 text-muted-foreground hover:text-accent"
-                      onClick={() => openPromo(product)}
-                    >
-                      <TicketPercent className="size-3.5" />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1008,118 +990,12 @@ export default function BusinessPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={promoProduct !== null}
-        onOpenChange={(open) => !open && setPromoProduct(null)}
-      >
-        <DialogContent className="max-h-[88vh] overflow-y-auto border-border/80 bg-card sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display">Promoción de envío</DialogTitle>
-            <DialogDescription>
-              {promoProduct
-                ? `${promoProduct.name}: elegí qué parte del envío financiás y por cuántos días.`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            {PROMO_OPTIONS.map((option) => {
-              const selected = promoKind === option.kind;
-              return (
-                <button
-                  key={option.kind}
-                  type="button"
-                  onClick={() => setPromoKind(option.kind)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition-colors",
-                    selected
-                      ? "border-accent/60 bg-accent/[0.08]"
-                      : "border-border/70 hover:border-accent/30",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl",
-                      selected
-                        ? "bg-ember-gradient text-black"
-                        : "bg-secondary text-muted-foreground",
-                    )}
-                  >
-                    <TicketPercent className="size-4" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold">
-                      {option.label}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
-                      {option.detail} El cliente lo ve con etiqueta en la foto del
-                      producto.
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Días de promoción</Label>
-            <div className="flex flex-wrap gap-2">
-              {PROMO_DAYS.map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  onClick={() => setPromoDays(days)}
-                  className={cn(
-                    "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
-                    promoDays === days
-                      ? "border-transparent bg-accent text-accent-foreground"
-                      : "border-border/80 text-muted-foreground hover:border-accent/40",
-                  )}
-                >
-                  {days} {days === 1 ? "día" : "días"}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Arranca ahora mismo y se apaga solo al terminar el último día.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Button
-              className="h-11 gap-2 bg-ember-gradient text-black"
-              disabled={savingPromo}
-              onClick={() => void handleSavePromo()}
-            >
-              {savingPromo ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <TicketPercent className="size-4" />
-              )}
-              {isPromoActive(promoProduct?.promo)
-                ? "Actualizar promoción"
-                : "Activar promoción"}
-            </Button>
-            {isPromoActive(promoProduct?.promo) && (
-              <Button
-                variant="outline"
-                className="h-10 border-primary/40 text-primary hover:bg-primary/10"
-                disabled={savingPromo}
-                onClick={() => void handleClearPromo()}
-              >
-                Finalizar promoción
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={settingsDialog} onOpenChange={setSettingsDialog}>
         <DialogContent className="max-h-[88vh] overflow-y-auto border-border/80 bg-card sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display">Editar local</DialogTitle>
+            <DialogTitle className="font-display">Ajustes de la tienda</DialogTitle>
             <DialogDescription>
-              Estos datos se muestran en cada producto que aparece en el mazo.
+              Estos datos y la promoción de envío se muestran en todo tu catálogo.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSettingsSubmit} className="space-y-3.5">
@@ -1181,6 +1057,66 @@ export default function BusinessPage() {
                 }
               />
             </div>
+
+            <div className="space-y-2 rounded-2xl border border-border/70 bg-black/20 p-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                  <TicketPercent className="size-3.5" />
+                  Promoción de envío
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                  Es opcional y podés cambiarla cuando quieras. El envío se cobra
+                  una sola vez por entrega, no por producto ni por tienda: si la
+                  activás, cubrís la parte que le corresponde a tu tienda en cada
+                  entrega (en compras con varias tiendas, cada local cubre la
+                  suya). Es un gasto promocional tuyo, no una comisión de
+                  Capricho: seguís recibiendo el 100% del valor de tus productos.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {PROMO_OPTIONS.map((option) => {
+                  const selected = settingsForm.deliveryPromo === option.kind;
+                  return (
+                    <button
+                      key={String(option.kind)}
+                      type="button"
+                      onClick={() =>
+                        setSettingsForm({
+                          ...settingsForm,
+                          deliveryPromo: option.kind,
+                        })
+                      }
+                      className={cn(
+                        "flex w-full items-start gap-3 rounded-xl border p-2.5 text-left transition-colors",
+                        selected
+                          ? "border-accent/60 bg-accent/[0.08]"
+                          : "border-border/70 hover:border-accent/30",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg",
+                          selected
+                            ? "bg-ember-gradient text-black"
+                            : "bg-secondary text-muted-foreground",
+                        )}
+                      >
+                        <TicketPercent className="size-3.5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-xs font-semibold">
+                          {option.label}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground">
+                          {option.detail}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <Button type="submit" className="h-11 w-full gap-2 bg-ember-gradient text-black">
               <DollarSign className="size-4" />
               Guardar local

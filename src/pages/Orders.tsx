@@ -72,7 +72,6 @@ export type OrderView = {
     name: string;
     address: string;
     fee: number;
-    extraStopFee: number;
     itemCount: number;
   }>;
   createdAt: number;
@@ -243,12 +242,11 @@ function OrderDetailDialog({
               </p>
               <p className="mt-1">
                 El repartidor retira en{" "}
-                {order.stops.map((stop) => stop.name).join(" y ")}. Por cada tienda
-                adicional el envío suma un recargo
-                {order.extraStopFee > 0
-                  ? ` de ${money(order.extraStopFee)}`
-                  : ""}
-                .
+                {order.stops.map((stop) => stop.name).join(" y ")}. El envío se
+                cobra una sola vez por entrega: suma {money(order.extraStopFee)}{" "}
+                por la tienda adicional y esta entrega te cuesta{" "}
+                {money(order.deliveryFee)}. Las tiendas con promoción cubren la
+                parte que les corresponde sin cambiar lo que pagás.
               </p>
             </div>
           )}
@@ -303,7 +301,12 @@ function OrderDetailDialog({
               <span>{money(order.subtotal)}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>Envío</span>
+              <span>
+                Envío
+                {order.tripStops > 1 && (
+                  <span className="text-[10px]"> (parte de esta tienda)</span>
+                )}
+              </span>
               <span>{money(order.deliveryFee)}</span>
             </div>
             {(order.deliveryDiscount ?? 0) > 0 && (

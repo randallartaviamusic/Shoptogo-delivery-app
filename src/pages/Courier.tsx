@@ -348,15 +348,10 @@ export default function CourierPage() {
                     <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                       Retirás en{" "}
                       {order.stops.map((stop) => stop.name).join(" y ")}. El envío
-                      incluye{" "}
-                      {money(
-                        order.stops.reduce(
-                          (acc, stop) => acc + stop.extraStopFee,
-                          0,
-                        ),
-                      )}{" "}
-                      de recargo por tienda adicional y cobrás todo junto al
-                      cliente.
+                      es uno solo por entrega e incluye{" "}
+                      {money(order.extraStopFee)} de recargo por la tienda
+                      adicional. Cobrás todo junto al cliente y tu ganancia no
+                      cambia si un local tiene promoción.
                     </p>
                   </div>
                 )}

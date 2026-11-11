@@ -134,7 +134,7 @@ export default function CartPage() {
       <PageHeader
         eyebrow="Checkout"
         title="Tu carrito"
-        description="Los antojos que elegiste, agrupados por negocio. Cada local tiene su propio envío."
+        description="Los antojos que elegiste, agrupados por negocio. El envío se cobra una sola vez por entrega."
         action={
           count > 0 ? (
             <Button
@@ -198,7 +198,7 @@ export default function CartPage() {
                           ? "Envío al elegir tu punto"
                           : "Fuera de cobertura"
                         : group.promo
-                          ? `${group.promo.label} · ${group.deliveryFee === 0 ? "gratis" : money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`
+                          ? `${group.promo.label} · ${formatKm(group.distanceKm ?? 0)}`
                           : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
                     </p>
                   </div>
@@ -290,7 +290,7 @@ export default function CartPage() {
                     )}
                   </span>
                   <span className="font-semibold text-foreground">
-                    {money(group.subtotal + (group.deliveryFee ?? 0))}
+                    {money(group.subtotal)}
                   </span>
                 </div>
               </motion.section>
@@ -347,9 +347,9 @@ export default function CartPage() {
                   productos cada una
                 </p>
                 <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                  Cada entrega paga su envío.
+                  Cada entrega paga un solo envío.
                   {multiStore
-                    ? " Si una entrega retira en varias tiendas, el envío suma un recargo por cada tienda adicional."
+                    ? " Si retira en varias tiendas, ese envío suma un recargo por la tienda adicional y cada local cubre la parte que le corresponde si tiene promoción activa."
                     : " Los locales preparan en orden y podés seguir cada entrega por separado."}
                 </p>
 
@@ -367,12 +367,29 @@ export default function CartPage() {
                         <p className="truncate text-[10px] text-muted-foreground">
                           {trip.stops.map((stop) => stop.businessName).join(" + ")}
                         </p>
+                        {trip.stops.length > 1 && (
+                          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                            {trip.stops
+                              .map(
+                                (stop) =>
+                                  `${stop.businessName} ${money(stop.fee)}`,
+                              )
+                              .join(" · ")}
+                          </p>
+                        )}
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-[11px] font-semibold">{money(trip.fee)}</p>
+                        <p className="text-[11px] font-semibold">
+                          {money(trip.clientFee)}
+                        </p>
                         {trip.stopFee > 0 && (
                           <p className="text-[10px] text-accent">
                             recargo {money(trip.stopFee)}
+                          </p>
+                        )}
+                        {trip.discount > 0 && (
+                          <p className="text-[10px] text-accent">
+                            local cubre {money(trip.discount)}
                           </p>
                         )}
                       </div>

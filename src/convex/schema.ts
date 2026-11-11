@@ -96,6 +96,11 @@ const schema = defineSchema(
       location: v.optional(geoPointValidator),
       // Campo heredado: el envío lo calcula la app según la distancia.
       deliveryFee: v.number(),
+      // Promoción de envío que financia el local desde los ajustes de su
+      // tienda. Ausente = sin promoción (el cliente paga el envío completo).
+      // Se aplica a la parte del envío de su tienda en cada entrega y queda
+      // registrada como gasto promocional, nunca como comisión de la app.
+      deliveryPromo: v.optional(promoKindValidator),
       etaMinutes: v.number(),
       rating: v.number(),
       reviews: v.number(),
@@ -116,13 +121,6 @@ const schema = defineSchema(
       attributes: v.array(v.object({ key: v.string(), value: v.string() })),
       tags: v.array(v.string()),
       isAvailable: v.boolean(),
-      // Promo de envío que financia el local mientras no venza.
-      promo: v.optional(
-        v.object({
-          kind: promoKindValidator,
-          endsAt: v.number(),
-        }),
-      ),
       isDemo: v.optional(v.boolean()),
     })
       .index("by_business", ["businessId"])
@@ -155,7 +153,8 @@ const schema = defineSchema(
       batchCount: v.optional(v.number()),
       // Tiendas que se retiran en esta misma entrega (1 = sólo este local).
       tripStops: v.optional(v.number()),
-      // Recargo por las tiendas adicionales del viaje.
+      // Heredado: recargo por tienda adicional guardado aparte del envío.
+      // Las órdenes nuevas ya lo incluyen repartido dentro de `deliveryFee`.
       extraStopFee: v.optional(v.number()),
       // El cliente pidió que el mismo repartidor haga todas las entregas.
       sameCourier: v.optional(v.boolean()),
@@ -170,7 +169,9 @@ const schema = defineSchema(
       items: v.array(orderItemValidator),
       subtotal: v.number(),
       deliveryFee: v.number(),
-      // Parte del envío que cubrió el local por una promoción.
+      // Parte del envío de esta tienda que cubrió su promoción. Es un gasto
+      // promocional del local, no una comisión: su liquidación sigue siendo el
+      // 100% del valor de sus productos menos lo que él mismo prometió cubrir.
       deliveryDiscount: v.optional(v.number()),
       total: v.number(),
       status: orderStatusValidator,
