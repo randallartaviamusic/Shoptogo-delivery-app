@@ -183,7 +183,36 @@ export const swipe = mutation({
     if (!userId) throw new Error("Necesitás iniciar sesión");
 
     const product = await ctx.db.get(args.productId);
-    if (!product) throw new Error("Ese antojo ya no está disponible");
+    if (!product) throw new Error("Ese producto ya no está disponible");
+    if (args.direction === "like") {
+      if (!product.isAvailable) {
+        throw new Error("Ese producto está agotado o ya no está disponible");
+      }
+      const business = await ctx.db.get(product.businessId);
+      if (!business?.isOpen) {
+        throw new Error(`${business?.name ?? "El negocio"} está cerrado ahora`);
+      }
+      if (!business.isDemo && business.ownerId) {
+        const access = await subscriptionAccess(ctx, business.ownerId);
+        const verified = await isAccountVerified(ctx, business.ownerId);
+        if (!access.hasAccess || !verified) {
+          throw new Error("Este negocio no puede recibir pedidos ahora");
+        }
+      }
+    }
+
+    const cartItem =
+      args.direction === "like"
+        ? await ctx.db
+            .query("cartItems")
+            .withIndex("by_user_product", (q) =>
+              q.eq("userId", userId).eq("productId", args.productId),
+            )
+            .unique()
+        : null;
+    if (cartItem && cartItem.quantity >= 20) {
+      throw new Error("El carrito admite hasta 20 unidades de cada producto");
+    }
 
     const existing = await ctx.db
       .query("swipes")
@@ -201,14 +230,10 @@ export const swipe = mutation({
     });
 
     if (args.direction === "like") {
-      const item = await ctx.db
-        .query("cartItems")
-        .withIndex("by_user_product", (q) =>
-          q.eq("userId", userId).eq("productId", args.productId),
-        )
-        .unique();
-      if (item) {
-        await ctx.db.patch(item._id, { quantity: item.quantity + 1 });
+      if (cartItem) {
+        await ctx.db.patch(cartItem._id, {
+          quantity: cartItem.quantity + 1,
+        });
       } else {
         await ctx.db.insert("cartItems", {
           userId,

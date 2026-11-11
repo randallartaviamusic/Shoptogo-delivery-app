@@ -15,7 +15,7 @@ import {
   travelMinutes,
 } from "../lib/delivery";
 import { cashIssueKindValidator } from "./schema";
-import { requireSubscriptionAccess } from "./subscriptions";
+import { requireSubscriptionAccess, subscriptionAccess } from "./subscriptions";
 import { isAdminEmail } from "./branding";
 
 type OrderViewer = "buyer" | "business" | "courier";
@@ -592,6 +592,14 @@ export const businessBoard = query({
   },
 });
 
+async function requireSubscriptionAccessForBoard(
+  ctx: DbCtx,
+  userId: Id<"users">,
+) {
+  const access = await subscriptionAccess(ctx, userId);
+  return access.hasAccess;
+}
+
 export const courierBoard = query({
   args: {},
   handler: async (ctx) => {
@@ -634,6 +642,18 @@ export const courierBoard = query({
       seenTrips.add(key);
       const business = await ctx.db.get(order.businessId);
       const decorated = await decorateOrder(ctx, order, business, "courier");
+      // Antes de aceptar basta con negocio, ubicación general y monto: no
+      // compartimos identidad, dirección ni teléfono del comprador.
+      const preview = {
+        ...decorated,
+        buyerName: "Cliente",
+        buyerPhone: null,
+        address: "Se revela al aceptar la entrega",
+        deliveryLocation: null,
+        notes: null,
+        deliveryPin: null,
+        cashIssue: null,
+      };
       // La distancia de retiro es la de la tienda más lejana del viaje.
       let pickupKm: number | null = null;
       let pickupMinutes: number | null = null;
@@ -671,7 +691,7 @@ export const courierBoard = query({
           ? pickupMinutes + deliveryMinutes
           : null;
       available.push({
-        ...decorated,
+        ...preview,
         pickupKm,
         pickupMinutes,
         deliveryMinutes,
@@ -807,12 +827,22 @@ export const courierBoard = query({
         (a.pickupKm ?? 999) - (b.pickupKm ?? 999) ||
         (a.readyAt ?? a.createdAt) - (b.readyAt ?? b.createdAt),
     );
+    const eligible =
+      user.verificationStatus === "verified" &&
+      (await requireSubscriptionAccessForBoard(ctx, userId));
     const nearest = evaluated
       .filter((order) => order.acceptAllowed && order.pickupKm !== null)
       .sort((a, b) => (a.pickupKm ?? 0) - (b.pickupKm ?? 0))[0];
     const availableWithSuggestion = evaluated.map((order) => ({
       ...order,
-      recommended: nearest?._id === order._id,
+      acceptAllowed: eligible && order.acceptAllowed,
+      acceptReason:
+        !eligible
+          ? user.verificationStatus !== "verified"
+            ? "Verificá tu cuenta en Perfil para tomar entregas."
+            : "Activá o renová tu suscripción para tomar entregas."
+          : order.acceptReason,
+      recommended: eligible && nearest?._id === order._id,
     }));
 
     const today = startOfToday();
@@ -825,7 +855,7 @@ export const courierBoard = query({
       active,
       history: history.slice(0, 15),
       // Hasta dos entregas activas, y la segunda solo si se agrupa bien.
-      canAccept: capacity > 0,
+      canAccept: capacity > 0 && eligible,
       capacity,
       activeCount,
       maxActive: ASSIGNMENT_RULES.maxActiveTrips,
@@ -1424,19 +1454,20 @@ export const courierUpdateStatus = mutation({
     if (trip.some((member) => member.status !== "picked_up")) {
       throw new Error("Primero marcá la entrega como recogida");
     }
+    if (!order.deliveryPin && !trip.some((member) => member.deliveryPin)) {
+      throw new Error("No hay PIN de entrega registrado para esta orden; abrí un caso en Ayuda antes de cerrar la entrega");
+    }
     // El PIN del comprador confirma que el pedido llegó a la persona correcta.
     const expectedPin =
       order.deliveryPin ?? trip.find((member) => member.deliveryPin)?.deliveryPin;
-    if (expectedPin) {
-      const given = (args.pin ?? "").trim();
-      if (!given) {
-        throw new Error(
-          "Pedile el PIN de entrega al comprador para confirmar que recibió el pedido",
-        );
-      }
-      if (given !== expectedPin) {
-        throw new Error("El PIN de entrega no coincide. Verificalo con el comprador");
-      }
+    const givenPin = (args.pin ?? "").trim();
+    if (!givenPin) {
+      throw new Error(
+        "Pedile el PIN de entrega al comprador para confirmar que recibió el pedido",
+      );
+    }
+    if (givenPin !== expectedPin) {
+      throw new Error("El PIN de entrega no coincide. Verificalo con el comprador");
     }
 
     // Sin el registro del efectivo la entrega no se puede cerrar: es lo que
@@ -1506,17 +1537,29 @@ export const cancel = mutation({
         "El pedido ya fue retirado y no se puede cancelar. Si hay un problema, abrí un caso en Ayuda",
       );
     }
-    if (order.status !== "pending") {
-      throw new Error(
-        "El local ya confirmó tu pedido. Si hay un problema con el producto o la dirección, abrí un caso en Ayuda",
-      );
+    const trip = (await tripOrders(ctx, order)).filter(
+      (member) => member.status !== "cancelled",
+    );
+    const now = Date.now();
+    for (const member of trip) {
+      if (member.buyerId !== userId) {
+        throw new Error("La entrega agrupada no pertenece a la misma compra");
+      }
+      if (member.status === "picked_up") {
+        throw new Error("Una parte ya fue retirada; abrí un caso en Ayuda para resolver la compra");
+      }
+      if (member.status !== "pending" || member.courierId) {
+        throw new Error("El local ya confirmó una parte; abrí un caso en Ayuda para resolver la compra");
+      }
     }
-    await ctx.db.patch(args.orderId, {
-      status: "cancelled",
-      cancelledAt: Date.now(),
-      cancellationReason: "Cancelaste el pedido antes de que el local lo confirmara.",
-    });
-    return { cancelled: true };
+    for (const member of trip) {
+      await ctx.db.patch(member._id, {
+        status: "cancelled",
+        cancelledAt: now,
+        cancellationReason: "Cancelaste la compra antes de que los locales la confirmaran.",
+      });
+    }
+    return { cancelled: true, orders: trip.length };
   },
 });
 
@@ -1539,14 +1582,22 @@ export const autoCancelStaleReady = internalMutation({
     for (const order of ready) {
       if (order.courierId) continue;
       const trip = await tripForOrder(ctx, order);
+      // Si cualquier parada ya fue retirada, no se puede cancelar en bloque:
+      // de lo contrario el resto queda perdido aunque el repartidor lleve la carga.
+      if (trip.some((member) => member.status === "picked_up" || member.courierId)) {
+        continue;
+      }
       const readyAt = tripReadyAt(trip) ?? order.readyAt;
       if (!readyAt || readyAt > threshold) continue;
-      await ctx.db.patch(order._id, {
-        status: "cancelled",
-        cancelledAt: now,
-        cancellationReason: `Nadie tomó el pedido en ${ASSIGNMENT_RULES.autoCancelAfterMinutes} minutos. Se canceló automáticamente y no se cobra nada.`,
-      });
-      cancelled += 1;
+      for (const member of trip) {
+        if (member.status !== "ready") continue;
+        await ctx.db.patch(member._id, {
+          status: "cancelled",
+          cancelledAt: now,
+          cancellationReason: `Nadie tomó la entrega en ${ASSIGNMENT_RULES.autoCancelAfterMinutes} minutos. Se canceló automáticamente y no se cobra nada.`,
+        });
+        cancelled += 1;
+      }
     }
     return { cancelled };
   },
@@ -1645,13 +1696,17 @@ export const receipt = query({
       total: order.total,
       address: order.address,
       notes: order.notes ?? null,
-      pickupCode: order.pickupCode ?? null,
-      deliveryPin: order.deliveryPin ?? null,
+      // Cada secreto se entrega sólo a quien debe validarlo.
+      pickupCode: business?.ownerId === userId ? (order.pickupCode ?? null) : null,
+      deliveryPin: order.buyerId === userId ? (order.deliveryPin ?? null) : null,
       cashCollected: order.cashCollected ?? null,
       cashCollectedAt: order.cashCollectedAt ?? null,
       cashHanded: order.cashHanded ?? null,
       cashHandedAt: order.cashHandedAt ?? null,
-      cashIssue: order.cashIssue ?? null,
+      cashIssue:
+        order.courierId === userId || business?.ownerId === userId
+          ? (order.cashIssue ?? null)
+          : null,
       tripStops: order.tripStops ?? 1,
     };
   },

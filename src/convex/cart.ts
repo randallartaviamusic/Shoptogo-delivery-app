@@ -201,6 +201,7 @@ export const add = mutation({
   args: { productId: v.id("products"), quantity: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
+    const quantity = Math.min(20, Math.max(1, Math.round(args.quantity ?? 1)));
     const product = await ctx.db.get(args.productId);
     if (!product || !product.isAvailable) {
       throw new Error("Ese producto está agotado o ya no está disponible");
@@ -230,14 +231,14 @@ export const add = mutation({
       .unique();
     if (existing) {
       await ctx.db.patch(existing._id, {
-        quantity: existing.quantity + (args.quantity ?? 1),
+        quantity: Math.min(20, existing.quantity + quantity),
       });
     } else {
       await ctx.db.insert("cartItems", {
         userId,
         productId: args.productId,
         businessId: product.businessId,
-        quantity: args.quantity ?? 1,
+        quantity,
         addedAt: Date.now(),
       });
     }
@@ -533,56 +534,67 @@ export const repeatOrder = mutation({
           .withIndex("by_group", (q) => q.eq("groupCode", order.groupCode!))
           .collect()
       : [order];
-    const seenProducts = new Set<string>();
+    const requested = new Map<
+      string,
+      { productId: Id<"products">; businessId: Id<"businesses">; name: string; quantity: number }
+    >();
     for (const sibling of siblings) {
       if (sibling.buyerId !== userId || sibling.status === "cancelled") continue;
-      const business = await ctx.db.get(sibling.businessId);
       for (const item of sibling.items) {
-        if (seenProducts.has(item.productId)) continue;
-        seenProducts.add(item.productId);
-        const product = await ctx.db.get(item.productId);
-        if (!product || !product.isAvailable || !business?.isOpen) {
+        const key = String(item.productId);
+        const previous = requested.get(key);
+        requested.set(key, {
+          productId: item.productId,
+          businessId: sibling.businessId,
+          name: item.name,
+          quantity: (previous?.quantity ?? 0) + item.quantity,
+        });
+      }
+    }
+    for (const item of requested.values()) {
+      const business = await ctx.db.get(item.businessId);
+      const product = await ctx.db.get(item.productId);
+      if (!product || !product.isAvailable || !business?.isOpen) {
+        skipped.push(item.name);
+        continue;
+      }
+      if (!business.isDemo && business.ownerId) {
+        try {
+          await requireSubscriptionAccess(
+            ctx,
+            business.ownerId,
+            `${business.name} no está recibiendo pedidos ahora`,
+          );
+          await requireVerifiedAccount(
+            ctx,
+            business.ownerId,
+            `${business.name} todavía no puede recibir pedidos`,
+          );
+        } catch {
           skipped.push(item.name);
           continue;
         }
-        if (!business.isDemo && business.ownerId) {
-          try {
-            await requireSubscriptionAccess(
-              ctx,
-              business.ownerId,
-              `${business.name} no está recibiendo pedidos ahora`,
-            );
-            await requireVerifiedAccount(
-              ctx,
-              business.ownerId,
-              `${business.name} todavía no puede recibir pedidos`,
-            );
-          } catch {
-            skipped.push(item.name);
-            continue;
-          }
-        }
-        const existing = await ctx.db
-          .query("cartItems")
-          .withIndex("by_user_product", (q) =>
-            q.eq("userId", userId).eq("productId", product._id),
-          )
-          .unique();
-        if (existing) {
-          await ctx.db.patch(existing._id, {
-            quantity: Math.min(20, existing.quantity + item.quantity),
-          });
-        } else {
-          await ctx.db.insert("cartItems", {
-            userId,
-            productId: product._id,
-            businessId: business._id,
-            quantity: Math.min(20, item.quantity),
-            addedAt: Date.now(),
-          });
-        }
-        added.push(item.name);
       }
+      const existing = await ctx.db
+        .query("cartItems")
+        .withIndex("by_user_product", (q) =>
+          q.eq("userId", userId).eq("productId", product._id),
+        )
+        .unique();
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          quantity: Math.min(20, existing.quantity + item.quantity),
+        });
+      } else {
+        await ctx.db.insert("cartItems", {
+          userId,
+          productId: product._id,
+          businessId: business._id,
+          quantity: Math.min(20, item.quantity),
+          addedAt: Date.now(),
+        });
+      }
+      added.push(item.name);
     }
     return { added, skipped };
   },
