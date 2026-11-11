@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import { CourierLocationReporter, DeliveryTrackingMap } from "@/components/DeliveryTracking";
+import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { DishImage } from "@/components/DishImage";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import {
@@ -329,6 +330,8 @@ export default function CourierPage() {
       <CourierLocationReporter
         orderIds={active.map((order) => order._id)}
       />
+
+      <SubscriptionReminder />
 
       {busyOrder && (
         <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] px-4 py-3">

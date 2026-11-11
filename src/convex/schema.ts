@@ -29,6 +29,36 @@ export const promoKindValidator = v.union(
 );
 export type PromoKind = Infer<typeof promoKindValidator>;
 
+/** Suscripción mensual: tres planes de precio fijo, sin comisión por venta. */
+export const subscriptionPlanValidator = v.union(
+  v.literal("basico"),
+  v.literal("pro"),
+  v.literal("elite"),
+);
+export type SubscriptionPlanId = Infer<typeof subscriptionPlanValidator>;
+
+export const subscriptionRoleValidator = v.union(
+  v.literal("business"),
+  v.literal("courier"),
+);
+export type SubscriptionRole = Infer<typeof subscriptionRoleValidator>;
+
+export const subscriptionMethodValidator = v.union(
+  v.literal("sinpe"),
+  v.literal("cash"),
+  v.literal("deposit"),
+);
+export type SubscriptionMethod = Infer<typeof subscriptionMethodValidator>;
+
+export const subscriptionPaymentStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("approved"),
+  v.literal("rejected"),
+);
+export type SubscriptionPaymentStatus = Infer<
+  typeof subscriptionPaymentStatusValidator
+>;
+
 export const cashIssueKindValidator = v.union(
   // El cliente pagó menos de lo que correspondía.
   v.literal("shortfall"),
@@ -257,6 +287,43 @@ const schema = defineSchema(
       value: v.string(),
     }).index("by_key", ["key"]),
 
+    // Suscripción vigente de cada negocio o repartidor. Se crea al elegir un
+    // plan o al confirmar el pago, y la administración la activa o renueva.
+    subscriptions: defineTable({
+      ownerId: v.id("users"),
+      role: subscriptionRoleValidator,
+      plan: subscriptionPlanValidator,
+      // Precio fijo del plan al momento de la activación (nunca un % de venta).
+      price: v.number(),
+      activeSince: v.optional(v.number()),
+      activeUntil: v.optional(v.number()),
+      // Recordatorio de pago: sonido elegido y si está habilitado.
+      reminderSound: v.optional(v.string()),
+      reminderEnabled: v.optional(v.boolean()),
+      updatedAt: v.number(),
+    }).index("by_owner", ["ownerId"]),
+
+    // Comprobantes que el negocio o repartidor reporta y la administración
+    // revisa. Cada pago conserva monto, referencia, fecha y quién lo aprobó.
+    subscriptionPayments: defineTable({
+      ownerId: v.id("users"),
+      role: subscriptionRoleValidator,
+      plan: subscriptionPlanValidator,
+      price: v.number(),
+      method: subscriptionMethodValidator,
+      reference: v.string(),
+      note: v.optional(v.string()),
+      // Fecha y hora exactas de vencimiento que se muestran antes de pagar.
+      expiryAt: v.number(),
+      reportedAt: v.number(),
+      status: subscriptionPaymentStatusValidator,
+      reviewedAt: v.optional(v.number()),
+      reviewedBy: v.optional(v.id("users")),
+      reviewNote: v.optional(v.string()),
+    })
+      .index("by_owner", ["ownerId"])
+      .index("by_status", ["status"]),
+
     // Identidad visual de la plataforma que edita el perfil administrador.
     settings: defineTable({
       key: v.string(),
@@ -266,6 +333,11 @@ const schema = defineSchema(
       brandTitleColor: v.optional(v.string()),
       brandTitleFont: v.optional(v.string()),
       brandTitleSize: v.optional(v.number()),
+      // Configuración de cobro de suscripciones (la edita el administrador).
+      sinpePhone: v.optional(v.string()),
+      iban: v.optional(v.string()),
+      whatsappNumbers: v.optional(v.array(v.string())),
+      graceDays: v.optional(v.number()),
       updatedAt: v.optional(v.number()),
     }).index("by_key", ["key"]),
   },

@@ -1,6 +1,7 @@
 import defaultLogo from "@/assets/logo.svg";
 import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
+import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +27,11 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { initials, ROLE_HOME, ROLE_LABEL } from "@/lib/format";
+import {
+  SUBSCRIPTION_STATUS_META,
+  formatExpiry,
+  planOf,
+} from "@/lib/subscriptions";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -46,9 +52,10 @@ import {
   Store,
   Trash2,
   UserRound,
+  Wallet,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
 const LOGO_MIN = 20;
@@ -106,6 +113,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const stats = useQuery(api.catalog.myStats);
   const myBusiness = useQuery(api.businesses.mine);
+  const mySubscription = useQuery(api.subscriptions.mine);
   const updateProfile = useMutation(api.profiles.updateProfile);
   const generatePhotoUploadUrl = useMutation(api.profiles.generatePhotoUploadUrl);
   const setPhoto = useMutation(api.profiles.setPhoto);
@@ -467,6 +475,23 @@ export default function ProfilePage() {
                     Administrador
                   </span>
                 )}
+                {mySubscription && (
+                  <Link
+                    to="/suscripcion"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-secondary/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+                    title={
+                      mySubscription.activeUntil
+                        ? `Vence ${formatExpiry(mySubscription.activeUntil)}`
+                        : "Sin suscripción activa"
+                    }
+                  >
+                    <Wallet className="size-3" />
+                    {SUBSCRIPTION_STATUS_META[mySubscription.status].label}
+                    {mySubscription.plan
+                      ? ` · ${planOf(mySubscription.plan).name}`
+                      : ""}
+                  </Link>
+                )}
               </span>
             </div>
           </div>
@@ -732,6 +757,8 @@ export default function ProfilePage() {
           </div>
         </section>
       )}
+
+      {isAdmin && <SubscriptionAdmin />}
 
       {isAdmin && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">

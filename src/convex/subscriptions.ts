@@ -1,0 +1,615 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { isAdminEmail } from "./branding";
+import {
+  DEFAULT_GRACE_DAYS,
+  DEFAULT_IBAN,
+  DEFAULT_SINPE_PHONE,
+  DEFAULT_WHATSAPP_NUMBERS,
+  MAX_WHATSAPP_NUMBERS,
+  REMINDER_SOUNDS,
+  hasSubscriptionAccess,
+  nextMonthlyExpiry,
+  planOf,
+  renewalBase,
+  subscriptionStatus,
+} from "../lib/subscriptions";
+import type { SubscriptionStatus } from "../lib/subscriptions";
+import {
+  subscriptionMethodValidator,
+  subscriptionPlanValidator,
+} from "./schema";
+
+type DbCtx = QueryCtx | MutationCtx;
+
+const SETTINGS_KEY = "subscription";
+const DAY_MS = 86_400_000;
+
+async function requireUserId(ctx: DbCtx) {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) throw new Error("Necesitás iniciar sesión");
+  return userId;
+}
+
+async function requireAdmin(ctx: DbCtx) {
+  const userId = await requireUserId(ctx);
+  const user = await ctx.db.get(userId);
+  if (!user || !isAdminEmail(user.email)) {
+    throw new Error(
+      "Sólo el perfil administrador puede verificar pagos de suscripción",
+    );
+  }
+  return user;
+}
+
+async function settingsDoc(ctx: DbCtx) {
+  return await ctx.db
+    .query("settings")
+    .withIndex("by_key", (q) => q.eq("key", SETTINGS_KEY))
+    .unique();
+}
+
+/** Configuración pública de cobro: SINPE, IBAN y WhatsApps de la plataforma. */
+export async function subscriptionSettings(ctx: DbCtx) {
+  const doc = await settingsDoc(ctx);
+  const numbers = (doc?.whatsappNumbers ?? [])
+    .map((number) => number.trim())
+    .filter(Boolean)
+    .slice(0, MAX_WHATSAPP_NUMBERS);
+  const graceDays = Math.min(
+    15,
+    Math.max(0, Math.round(doc?.graceDays ?? DEFAULT_GRACE_DAYS)),
+  );
+  return {
+    sinpePhone: doc?.sinpePhone?.trim() || DEFAULT_SINPE_PHONE,
+    iban: doc?.iban?.trim() || DEFAULT_IBAN,
+    whatsappNumbers:
+      numbers.length > 0 ? numbers : [...DEFAULT_WHATSAPP_NUMBERS],
+    graceDays,
+  };
+}
+
+async function subscriptionDoc(ctx: DbCtx, ownerId: Id<"users">) {
+  return await ctx.db
+    .query("subscriptions")
+    .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+    .unique();
+}
+
+async function upsertSubscription(
+  ctx: MutationCtx,
+  ownerId: Id<"users">,
+  role: "business" | "courier",
+  patch: Partial<
+    Pick<
+      Doc<"subscriptions">,
+      | "plan"
+      | "price"
+      | "activeSince"
+      | "activeUntil"
+      | "reminderSound"
+      | "reminderEnabled"
+    >
+  >,
+) {
+  const now = Date.now();
+  const existing = await subscriptionDoc(ctx, ownerId);
+  if (existing) {
+    await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
+    return existing._id;
+  }
+  return await ctx.db.insert("subscriptions", {
+    ownerId,
+    role,
+    plan: patch.plan ?? "basico",
+    price: patch.price ?? planOf(patch.plan).price,
+    activeSince: patch.activeSince,
+    activeUntil: patch.activeUntil,
+    reminderSound: patch.reminderSound,
+    reminderEnabled: patch.reminderEnabled,
+    updatedAt: now,
+  });
+}
+
+/**
+ * Estado de acceso de un negocio o repartidor. Lo usan los pedidos y las
+ * entregas para no dejar operar cuentas vencidas.
+ */
+export async function subscriptionAccess(ctx: DbCtx, ownerId: Id<"users">) {
+  const doc = await subscriptionDoc(ctx, ownerId);
+  const settings = await subscriptionSettings(ctx);
+  const status = subscriptionStatus(doc?.activeUntil, settings.graceDays);
+  return {
+    status,
+    hasAccess: hasSubscriptionAccess(status),
+    activeUntil: doc?.activeUntil ?? null,
+    plan: doc?.plan ?? null,
+    graceDays: settings.graceDays,
+  };
+}
+
+export async function requireSubscriptionAccess(
+  ctx: DbCtx,
+  ownerId: Id<"users">,
+  message: string,
+) {
+  const access = await subscriptionAccess(ctx, ownerId);
+  if (!access.hasAccess) throw new Error(message);
+  return access;
+}
+
+async function pendingPaymentFor(ctx: DbCtx, ownerId: Id<"users">) {
+  const payments = await ctx.db
+    .query("subscriptionPayments")
+    .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+    .collect();
+  return payments
+    .filter((payment) => payment.status === "pending")
+    .sort((a, b) => b.reportedAt - a.reportedAt)[0];
+}
+
+/** Suscripción de la cuenta que está mirando, con estado y recordatorio. */
+export const mine = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      return null;
+    }
+
+    const doc = await subscriptionDoc(ctx, userId);
+    const settings = await subscriptionSettings(ctx);
+    const now = Date.now();
+    const status: SubscriptionStatus = subscriptionStatus(
+      doc?.activeUntil,
+      settings.graceDays,
+      now,
+    );
+    const base = renewalBase(doc?.activeUntil, now);
+    const payments = (
+      await ctx.db
+        .query("subscriptionPayments")
+        .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+        .collect()
+    ).sort((a, b) => b.reportedAt - a.reportedAt);
+    const pending = payments.find((payment) => payment.status === "pending");
+    // Sólo mostramos un plan contratado si hay un pago aprobado (o una
+    // activación manual, que también deja su registro de pago).
+    const approvedPlan =
+      payments.find((payment) => payment.status === "approved")?.plan ?? null;
+
+    return {
+      role: user.role,
+      plan: approvedPlan ? (doc?.plan ?? approvedPlan) : null,
+      price: approvedPlan
+        ? (doc?.price ?? planOf(approvedPlan).price)
+        : null,
+      activeSince: doc?.activeSince ?? null,
+      activeUntil: doc?.activeUntil ?? null,
+      status,
+      hasAccess: hasSubscriptionAccess(status),
+      graceDays: settings.graceDays,
+      reminderSound: doc?.reminderSound ?? "campana",
+      reminderEnabled: doc?.reminderEnabled ?? true,
+      renewalBase: base,
+      // Vista previa del vencimiento mensual con la hora por defecto.
+      expiryPreview: nextMonthlyExpiry(base, 20, 0),
+      pendingPayment: pending
+        ? {
+            _id: pending._id,
+            plan: pending.plan,
+            price: pending.price,
+            method: pending.method,
+            reference: pending.reference,
+            note: pending.note ?? null,
+            expiryAt: pending.expiryAt,
+            reportedAt: pending.reportedAt,
+            status: pending.status,
+          }
+        : null,
+      payments: payments.slice(0, 8).map((payment) => ({
+        _id: payment._id,
+        plan: payment.plan,
+        price: payment.price,
+        method: payment.method,
+        reference: payment.reference,
+        expiryAt: payment.expiryAt,
+        reportedAt: payment.reportedAt,
+        status: payment.status,
+        reviewNote: payment.reviewNote ?? null,
+        reviewedAt: payment.reviewedAt ?? null,
+      })),
+      settings,
+      serverNow: now,
+    };
+  },
+});
+
+/**
+ * El negocio o repartidor elige plan, método y hora de vencimiento, y reporta
+ * el pago. La fecha la fija la plataforma (mensual): no se puede editar.
+ */
+export const requestPayment = mutation({
+  args: {
+    plan: subscriptionPlanValidator,
+    method: subscriptionMethodValidator,
+    reference: v.string(),
+    note: v.optional(v.string()),
+    expiryHour: v.number(),
+    expiryMinute: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("Las suscripciones son para negocios y repartidores");
+    }
+    const reference = args.reference.trim();
+    if (reference.length < 3) {
+      throw new Error("Escribí la referencia o el número de comprobante");
+    }
+    if (await pendingPaymentFor(ctx, userId)) {
+      throw new Error(
+        "Ya tenés un pago en revisión. Esperá la verificación del administrador",
+      );
+    }
+
+    const existing = await subscriptionDoc(ctx, userId);
+    const plan = planOf(args.plan);
+    const hour = Math.min(23, Math.max(0, Math.round(args.expiryHour)));
+    const minute = Math.min(59, Math.max(0, Math.round(args.expiryMinute)));
+    // La fecha nunca se adelanta: si todavía está vigente, se renueva desde ahí.
+    const expiryAt = nextMonthlyExpiry(
+      renewalBase(existing?.activeUntil),
+      hour,
+      minute,
+    );
+
+    const paymentId = await ctx.db.insert("subscriptionPayments", {
+      ownerId: userId,
+      role: user.role,
+      plan: plan.id,
+      price: plan.price,
+      method: args.method,
+      reference,
+      note: args.note?.trim() || undefined,
+      expiryAt,
+      reportedAt: Date.now(),
+      status: "pending",
+    });
+    // El plan se actualiza recién cuando el administrador aprueba el pago:
+    // así nadie obtiene beneficios de un plan superior sin haberlo pagado.
+    return { paymentId, expiryAt, price: plan.price };
+  },
+});
+
+/** Sonido y aviso del recordatorio de pago (lo elige el suscriptor). */
+export const setReminder = mutation({
+  args: {
+    sound: v.string(),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("Las suscripciones son para negocios y repartidores");
+    }
+    const sound = REMINDER_SOUNDS.some((option) => option.id === args.sound)
+      ? args.sound
+      : "campana";
+    await upsertSubscription(ctx, userId, user.role, {
+      reminderSound: sound,
+      reminderEnabled: args.enabled,
+    });
+    return { sound, enabled: args.enabled };
+  },
+});
+
+/** Cola de verificación y cuentas, sólo para el perfil administrador. */
+export const adminOverview = query({
+  args: { search: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    const settings = await subscriptionSettings(ctx);
+    const users = await ctx.db.query("users").collect();
+    const subscriptions = await ctx.db.query("subscriptions").collect();
+    const payments = await ctx.db.query("subscriptionPayments").collect();
+    const businesses = await ctx.db.query("businesses").collect();
+
+    const userById = new Map(users.map((user) => [user._id, user]));
+    const subscriptionByOwner = new Map(
+      subscriptions.map((subscription) => [
+        subscription.ownerId,
+        subscription,
+      ]),
+    );
+    const businessByOwner = new Map(
+      businesses
+        .filter((business) => business.ownerId)
+        .map((business) => [business.ownerId!, business]),
+    );
+
+    const displayName = (ownerId: Id<"users">) => {
+      const user = userById.get(ownerId);
+      return user?.name ?? user?.email ?? "Cuenta";
+    };
+    const displayBusiness = (ownerId: Id<"users">) =>
+      businessByOwner.get(ownerId)?.name ?? null;
+
+    const pending = payments
+      .filter((payment) => payment.status === "pending")
+      .sort((a, b) => a.reportedAt - b.reportedAt)
+      .map((payment) => ({
+        _id: payment._id,
+        ownerId: payment.ownerId,
+        name: displayName(payment.ownerId),
+        email: userById.get(payment.ownerId)?.email ?? null,
+        phone: userById.get(payment.ownerId)?.phone ?? null,
+        businessName: displayBusiness(payment.ownerId),
+        role: payment.role,
+        plan: payment.plan,
+        price: payment.price,
+        method: payment.method,
+        reference: payment.reference,
+        note: payment.note ?? null,
+        expiryAt: payment.expiryAt,
+        reportedAt: payment.reportedAt,
+      }));
+
+    const term = (args.search ?? "").trim().toLowerCase();
+    const accounts = users
+      .filter((user) => user.role === "business" || user.role === "courier")
+      .map((user) => {
+        const subscription = subscriptionByOwner.get(user._id);
+        const status = subscriptionStatus(
+          subscription?.activeUntil,
+          settings.graceDays,
+          now,
+        );
+        return {
+          ownerId: user._id,
+          name: user.name ?? null,
+          email: user.email ?? null,
+          phone: user.phone ?? null,
+          role: user.role as "business" | "courier",
+          businessName: displayBusiness(user._id),
+          plan: subscription?.plan ?? null,
+          price: subscription?.price ?? null,
+          activeUntil: subscription?.activeUntil ?? null,
+          status,
+          hasAccess: hasSubscriptionAccess(status),
+          pending: pending.some((payment) => payment.ownerId === user._id),
+        };
+      })
+      .filter((account) => {
+        if (!term) return true;
+        return [
+          account.name,
+          account.email,
+          account.phone,
+          account.businessName,
+        ].some((value) => (value ?? "").toLowerCase().includes(term));
+      })
+      .sort((a, b) => {
+        const suspended = Number(a.hasAccess) - Number(b.hasAccess);
+        if (suspended !== 0) return suspended;
+        return (a.name ?? a.email ?? "").localeCompare(
+          b.name ?? b.email ?? "",
+        );
+      });
+
+    const recent = payments
+      .filter((payment) => payment.status !== "pending")
+      .sort((a, b) => (b.reviewedAt ?? b.reportedAt) - (a.reviewedAt ?? a.reportedAt))
+      .slice(0, 8)
+      .map((payment) => ({
+        _id: payment._id,
+        ownerId: payment.ownerId,
+        name: displayName(payment.ownerId),
+        businessName: displayBusiness(payment.ownerId),
+        role: payment.role,
+        plan: payment.plan,
+        price: payment.price,
+        status: payment.status,
+        reference: payment.reference,
+        reportedAt: payment.reportedAt,
+        reviewedAt: payment.reviewedAt ?? null,
+        reviewNote: payment.reviewNote ?? null,
+      }));
+
+    return {
+      settings,
+      pending,
+      accounts,
+      recent,
+      totals: {
+        pending: pending.length,
+        accounts: accounts.length,
+        suspended: accounts.filter((account) => !account.hasAccess).length,
+      },
+      serverNow: now,
+    };
+  },
+});
+
+/** Aprobar o rechazar un comprobante: activa o renueva la suscripción. */
+export const adminReviewPayment = mutation({
+  args: {
+    paymentId: v.id("subscriptionPayments"),
+    approve: v.boolean(),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const payment = await ctx.db.get(args.paymentId);
+    if (!payment) throw new Error("Ese pago ya no existe");
+    if (payment.status !== "pending") {
+      throw new Error("Ese pago ya fue revisado");
+    }
+
+    const now = Date.now();
+    const reviewNote = args.note?.trim() || undefined;
+    await ctx.db.patch(payment._id, {
+      status: args.approve ? "approved" : "rejected",
+      reviewedAt: now,
+      reviewedBy: admin._id,
+      reviewNote,
+    });
+
+    if (!args.approve) return { approved: false, activeUntil: null };
+
+    const existing = await subscriptionDoc(ctx, payment.ownerId);
+    const plan = planOf(payment.plan);
+    const activeUntil = Math.max(
+      payment.expiryAt,
+      existing?.activeUntil ?? 0,
+      now + DAY_MS,
+    );
+    await upsertSubscription(ctx, payment.ownerId, payment.role, {
+      plan: plan.id,
+      price: plan.price,
+      activeSince: existing?.activeSince ?? now,
+      activeUntil,
+    });
+    return { approved: true, activeUntil };
+  },
+});
+
+/** Activación o renovación manual (pago en efectivo o ajuste del administrador). */
+export const adminGrant = mutation({
+  args: {
+    ownerId: v.id("users"),
+    plan: subscriptionPlanValidator,
+    months: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const user = await ctx.db.get(args.ownerId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("Esa cuenta no es de negocio ni de repartidor");
+    }
+    const plan = planOf(args.plan);
+    const months = Math.min(12, Math.max(1, Math.round(args.months ?? 1)));
+    const existing = await subscriptionDoc(ctx, user._id);
+    const now = Date.now();
+    let activeUntil = renewalBase(existing?.activeUntil, now);
+    for (let index = 0; index < months; index += 1) {
+      activeUntil = nextMonthlyExpiry(activeUntil, 20, 0);
+    }
+
+    await ctx.db.insert("subscriptionPayments", {
+      ownerId: user._id,
+      role: user.role,
+      plan: plan.id,
+      price: plan.price * months,
+      method: "cash",
+      reference: "Activación manual del administrador",
+      note: `Activación de ${months} ${months === 1 ? "mes" : "meses"}`,
+      expiryAt: activeUntil,
+      reportedAt: now,
+      status: "approved",
+      reviewedAt: now,
+      reviewedBy: admin._id,
+    });
+    await upsertSubscription(ctx, user._id, user.role, {
+      plan: plan.id,
+      price: plan.price,
+      activeSince: existing?.activeSince ?? now,
+      activeUntil,
+    });
+    return { activeUntil, months, plan: plan.id };
+  },
+});
+
+/** Datos de cobro: número SINPE, IBAN, WhatsApps y días de gracia. */
+export const adminSaveSettings = mutation({
+  args: {
+    sinpePhone: v.string(),
+    iban: v.string(),
+    whatsappNumbers: v.array(v.string()),
+    graceDays: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const sinpePhone = args.sinpePhone.replace(/\s+/g, "");
+    if (!/^\d{8}$/.test(sinpePhone)) {
+      throw new Error("El número de SINPE Móvil debe tener 8 dígitos");
+    }
+    const iban = args.iban.replace(/\s+/g, "").toUpperCase();
+    if (!/^CR\d{20}$/.test(iban)) {
+      throw new Error("El IBAN debe empezar con CR y tener 22 caracteres");
+    }
+    const numbers = args.whatsappNumbers
+      .map((number) => number.trim())
+      .filter(Boolean);
+    if (numbers.length === 0) {
+      throw new Error("Agregá al menos un número de WhatsApp");
+    }
+    if (numbers.length > MAX_WHATSAPP_NUMBERS) {
+      throw new Error(`Podés guardar hasta ${MAX_WHATSAPP_NUMBERS} números`);
+    }
+    for (const number of numbers) {
+      if (number.replace(/\D/g, "").length < 8) {
+        throw new Error(`El número ${number} no es válido`);
+      }
+    }
+    const graceDays = Math.min(15, Math.max(0, Math.round(args.graceDays)));
+    const now = Date.now();
+
+    const doc = await settingsDoc(ctx);
+    const patch = {
+      sinpePhone,
+      iban,
+      whatsappNumbers: numbers,
+      graceDays,
+      updatedAt: now,
+    };
+    if (doc) {
+      await ctx.db.patch(doc._id, patch);
+    } else {
+      await ctx.db.insert("settings", { key: SETTINGS_KEY, ...patch });
+    }
+    return subscriptionSettings(ctx);
+  },
+});
+
+/** Datos de cobro públicos para mostrar antes de pagar. */
+export const paymentSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    return await subscriptionSettings(ctx);
+  },
+});
+
+/** Estado de suscripción de una cuenta concreta (administrador). */
+export const adminAccount = query({
+  args: { ownerId: v.id("users") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const user = await ctx.db.get(args.ownerId);
+    if (!user) return null;
+    const doc = await subscriptionDoc(ctx, args.ownerId);
+    const settings = await subscriptionSettings(ctx);
+    const status = subscriptionStatus(doc?.activeUntil, settings.graceDays);
+    return {
+      ownerId: user._id,
+      name: user.name ?? null,
+      email: user.email ?? null,
+      role: user.role ?? null,
+      plan: doc?.plan ?? null,
+      price: doc?.price ?? null,
+      activeSince: doc?.activeSince ?? null,
+      activeUntil: doc?.activeUntil ?? null,
+      status,
+      hasAccess: hasSubscriptionAccess(status),
+      graceDays: settings.graceDays,
+    };
+  },
+});

@@ -69,7 +69,7 @@ const ROLES = [
     description:
       "Tu catálogo aparece en el mazo de toda la ciudad. Cargalo en minutos.",
     icon: Store,
-    points: ["Catálogo propio", "Pedidos en tiempo real", "Sin comisión fija"],
+    points: ["Catálogo propio", "Pedidos en tiempo real", "Sin comisión por venta"],
     href: "/auth?role=business&returnTo=%2Fonboarding",
     cta: "Publicar mi local",
   },
@@ -642,8 +642,9 @@ export default function Landing() {
             Tu próximo antojo está a un swipe de distancia
           </h2>
           <p className="mx-auto mt-3 max-w-md text-sm text-muted-foreground">
-            Creá tu cuenta y deslizá gratis. Si querés vender o repartir, elegí
-            ese rol al registrarte. Sin planes ni suscripciones.
+            Creá tu cuenta y deslizá gratis. Si querés vender o repartir, elegí ese
+            rol y activá un plan mensual fijo de ₡5.000, ₡10.000 o ₡20.000. Sin
+            comisión por pedido: el 100% de tus ventas es tuyo.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" className="h-12 gap-2 bg-ember-gradient px-7 text-black">

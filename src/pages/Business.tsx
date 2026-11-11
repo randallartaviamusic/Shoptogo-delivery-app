@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
+import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
 import { PromoBadge } from "@/components/PromoBadge";
@@ -463,6 +464,8 @@ export default function BusinessPage() {
           </div>
         </div>
       </div>
+
+      <SubscriptionReminder />
 
       <div className="mb-6 flex gap-1 overflow-x-auto rounded-full border border-border/80 p-1 no-scrollbar sm:w-fit">
         {TABS.map((item) => (

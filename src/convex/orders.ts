@@ -5,6 +5,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { DELIVERY_RULES } from "../lib/delivery";
 import { cashIssueKindValidator } from "./schema";
+import { requireSubscriptionAccess } from "./subscriptions";
 
 type OrderViewer = "buyer" | "business" | "courier";
 
@@ -668,6 +669,11 @@ export const courierAccept = mutation({
     if (courier?.role !== "courier") {
       throw new Error("Sólo las cuentas de repartidor pueden tomar pedidos");
     }
+    await requireSubscriptionAccess(
+      ctx,
+      userId,
+      "Tu suscripción de repartidor está vencida o sin activar. Activala en Suscripción para tomar entregas",
+    );
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Ese pedido no existe");
     // Una entrega puede retirar en varias tiendas: se toma el viaje completo.

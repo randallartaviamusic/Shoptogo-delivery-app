@@ -24,6 +24,7 @@ const FavoritesPage = lazy(() => import("./pages/Favorites.tsx"));
 const ProfilePage = lazy(() => import("./pages/Profile.tsx"));
 const BusinessPage = lazy(() => import("./pages/Business.tsx"));
 const CourierPage = lazy(() => import("./pages/Courier.tsx"));
+const SubscriptionPage = lazy(() => import("./pages/Subscription.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 function RouteLoading() {
@@ -228,6 +229,18 @@ createRoot(document.getElementById("root")!).render(
                       description="Registrate con tu correo y contraseña o iniciá sesión en tu cuenta para tomar entregas."
                     >
                       <CourierPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/suscripcion"
+                  element={
+                    <RequireAuth
+                      redirectImmediately
+                      title="Entrá a tu cuenta"
+                      description="La suscripción es para cuentas de negocio y repartidor."
+                    >
+                      <SubscriptionPage />
                     </RequireAuth>
                   }
                 />

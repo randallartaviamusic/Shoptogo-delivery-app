@@ -25,6 +25,7 @@ import {
   ShoppingCart,
   Store,
   UserRound,
+  Wallet,
 } from "lucide-react";
 import {
   useEffect,
@@ -53,6 +54,7 @@ const BUSINESS_NAV: NavItem[] = [
   { to: "/business", label: "Panel", icon: LayoutDashboard },
   { to: "/business?tab=orders", label: "Pedidos", icon: ClipboardList },
   { to: "/business?tab=menu", label: "Productos", icon: Package },
+  { to: "/suscripcion", label: "Suscripción", icon: Wallet },
   { to: "/profile", label: "Perfil", icon: UserRound },
 ];
 
@@ -60,6 +62,7 @@ const COURIER_NAV: NavItem[] = [
   { to: "/courier", label: "Disponibles", icon: Bike },
   { to: "/courier?tab=active", label: "En curso", icon: Navigation },
   { to: "/courier?tab=history", label: "Historial", icon: History },
+  { to: "/suscripcion", label: "Suscripción", icon: Wallet },
   { to: "/profile", label: "Perfil", icon: UserRound },
 ];
 

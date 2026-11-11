@@ -4,6 +4,7 @@ import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { geoPointValidator } from "./schema";
+import { requireSubscriptionAccess } from "./subscriptions";
 import {
   DELIVERY_RULES,
   deliveryQuote,
@@ -203,6 +204,13 @@ export const add = mutation({
     if (!business?.isOpen) {
       throw new Error(`${business?.name ?? "El negocio"} está cerrado ahora`);
     }
+    if (!business.isDemo && business.ownerId) {
+      await requireSubscriptionAccess(
+        ctx,
+        business.ownerId,
+        `${business.name} no está recibiendo pedidos: su suscripción está vencida`,
+      );
+    }
 
     const existing = await ctx.db
       .query("cartItems")
@@ -322,6 +330,13 @@ export const checkout = mutation({
       if (!business.isOpen) {
         throw new Error(
           `${business.name} cerró. Quitá sus productos para continuar.`,
+        );
+      }
+      if (!business.isDemo && business.ownerId) {
+        await requireSubscriptionAccess(
+          ctx,
+          business.ownerId,
+          `${business.name} no está recibiendo pedidos: su suscripción está vencida`,
         );
       }
       if (!byBusiness.has(item.businessId)) {

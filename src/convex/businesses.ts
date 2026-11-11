@@ -4,6 +4,8 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { geoPointValidator, promoKindValidator } from "./schema";
+import { planTier } from "../lib/subscriptions";
+import { subscriptionAccess } from "./subscriptions";
 import {
   DELIVERY_RULES,
   deliveryQuote,
@@ -178,7 +180,26 @@ export const directory = query({
       stats.set(product.businessId, entry);
     }
 
+    // Los locales con suscripción vencida no se muestran ni reciben pedidos;
+    // los planes Pro y Élite se destacan en el orden.
+    const accessByBusiness = new Map<
+      string,
+      { allowed: boolean; tier: number }
+    >();
+    for (const business of businesses) {
+      if (business.isDemo || !business.ownerId) {
+        accessByBusiness.set(business._id, { allowed: true, tier: 1 });
+        continue;
+      }
+      const access = await subscriptionAccess(ctx, business.ownerId);
+      accessByBusiness.set(business._id, {
+        allowed: access.hasAccess,
+        tier: planTier(access.plan),
+      });
+    }
+
     return businesses
+      .filter((business) => accessByBusiness.get(business._id)?.allowed ?? true)
       .map((business) => {
         const entry = stats.get(business._id);
         return {
@@ -204,6 +225,8 @@ export const directory = query({
       .sort(
         (a, b) =>
           Number(b.isOpen) - Number(a.isOpen) ||
+          (accessByBusiness.get(b._id)?.tier ?? 1) -
+            (accessByBusiness.get(a._id)?.tier ?? 1) ||
           b.rating - a.rating ||
           a.name.localeCompare(b.name),
       );

@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { DELIVERY_RULES, deliveryQuote, isValidPoint } from "../lib/delivery";
 import type { GeoPoint } from "../lib/delivery";
+import { planTier } from "../lib/subscriptions";
+import { subscriptionAccess } from "./subscriptions";
 
 /** Stable per-user shuffle so the deck feels random but doesn't jump around. */
 function hash(input: string) {
@@ -35,6 +37,22 @@ export const deck = query({
 
     const swiped = new Set(swipes.map((s) => s.productId));
     const businessMap = new Map(businesses.map((b) => [b._id, b]));
+    // Una suscripción vencida no recibe pedidos: su catálogo sale del mazo.
+    const accessByBusiness = new Map<
+      string,
+      { allowed: boolean; tier: number }
+    >();
+    for (const business of businesses) {
+      if (business.isDemo || !business.ownerId) {
+        accessByBusiness.set(business._id, { allowed: true, tier: 1 });
+        continue;
+      }
+      const access = await subscriptionAccess(ctx, business.ownerId);
+      accessByBusiness.set(business._id, {
+        allowed: access.hasAccess,
+        tier: planTier(access.plan),
+      });
+    }
     const viewerDoc = userId ? await ctx.db.get(userId) : null;
     const viewer = isValidPoint(viewerDoc?.location) ? viewerDoc.location : null;
 
@@ -55,7 +73,11 @@ export const deck = query({
 
     const available = products.filter((product) => {
       const business = businessMap.get(product.businessId);
-      return Boolean(business?.isOpen) && product.isAvailable;
+      return (
+        Boolean(business?.isOpen) &&
+        product.isAvailable &&
+        (accessByBusiness.get(product.businessId)?.allowed ?? true)
+      );
     });
 
     const departmentCounts = new Map<string, number>();
@@ -117,11 +139,17 @@ export const deck = query({
           address: business.address,
         };
       })
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        // Pro y Élite aparecen primero: visibilidad, no comisión.
+        const tierDiff =
+          (accessByBusiness.get(b.businessId)?.tier ?? 1) -
+          (accessByBusiness.get(a.businessId)?.tier ?? 1);
+        if (tierDiff !== 0) return tierDiff;
+        return (
           hash(`${userId ?? "guest"}:${a._id}`) -
-          hash(`${userId ?? "guest"}:${b._id}`),
-      )
+          hash(`${userId ?? "guest"}:${b._id}`)
+        );
+      })
       .slice(0, 40);
 
     return {
