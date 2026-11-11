@@ -15,7 +15,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { OrderStatus } from "@/convex/schema";
 import type { CashIssueView } from "@/lib/cash";
 import type { GeoPoint } from "@/lib/delivery";
-import { formatKm } from "@/lib/delivery";
+import { ASSIGNMENT_RULES, formatKm } from "@/lib/delivery";
 import { ACTIVE_STATUSES, clockTime, money, ORDER_STATUS, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -102,6 +102,27 @@ export type OrderView = {
   pickedUpAt: number | null;
   deliveredAt: number | null;
   cancelledAt: number | null;
+  cancellationReason: string | null;
+  // Temporizador y sugerencias de asignación.
+  waitStartedAt: number | null;
+  waitingMinutes: number | null;
+  assignmentSecondsLeft: number | null;
+  assignmentUrgent: boolean;
+  canCancelUnassigned: boolean;
+  pickupKm?: number | null;
+  pickupMinutes?: number | null;
+  deliveryMinutes?: number | null;
+  totalEtaMinutes?: number | null;
+  acceptAllowed?: boolean;
+  acceptReason?: string | null;
+  groupable?: boolean;
+  groupExtraMinutes?: number | null;
+  recommended?: boolean;
+  // Estimación de llegada y demoras.
+  promisedArrivalAt: number | null;
+  estimatedArrivalAt: number | null;
+  lateMinutes: number;
+  delayed: boolean;
   businessId: string;
   businessName: string;
   businessImage: string;
@@ -256,6 +277,21 @@ function OrderDetailDialog({
           <StatusPill status={order.status} />
           <OrderProgress status={order.status} />
 
+          {order.status === "cancelled" && order.cancellationReason && (
+            <p className="rounded-xl border border-border/70 bg-secondary/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
+              {order.cancellationReason}
+            </p>
+          )}
+
+          {order.status === "ready" && !order.courierId && (
+            <p className="rounded-xl border border-accent/25 bg-accent/[0.06] p-3 text-[11px] leading-relaxed text-muted-foreground">
+              El local ya tiene tu pedido listo y estamos buscando un
+              repartidor cerca. Lleva {order.waitingMinutes ?? 0} min esperando:
+              si nadie lo toma en {ASSIGNMENT_RULES.autoCancelAfterMinutes}{" "}
+              minutos, se cancela automáticamente y no se cobra nada.
+            </p>
+          )}
+
           {order.deliveryPin &&
             (order.status === "ready" || order.status === "picked_up") && (
               <div className="rounded-xl border border-accent/40 bg-accent/[0.08] p-3 text-center">
@@ -308,6 +344,9 @@ function OrderDetailDialog({
               courierAcceptedAt={order.courierAcceptedAt}
               pickedUpAt={order.pickedUpAt}
               deliveredAt={order.deliveredAt}
+              estimatedArrivalAt={order.estimatedArrivalAt}
+              promisedArrivalAt={order.promisedArrivalAt}
+              lateMinutes={order.lateMinutes}
             />
           )}
 
@@ -621,8 +660,21 @@ export default function OrdersPage() {
                     <p className="font-display text-base font-bold">
                       {money(order.total)}
                     </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      ETA {order.etaMinutes} min
+                    <p
+                      className={cn(
+                        "text-[10px]",
+                        order.delayed && order.estimatedArrivalAt
+                          ? "font-semibold text-primary"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {order.delayed && order.estimatedArrivalAt
+                        ? `Demora +${order.lateMinutes} min`
+                        : order.estimatedArrivalAt &&
+                            (order.status === "picked_up" ||
+                              order.status === "ready")
+                          ? `Llegada ~${clockTime(order.estimatedArrivalAt)}`
+                          : `ETA ${order.etaMinutes} min`}
                     </p>
                   </div>
                 </div>

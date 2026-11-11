@@ -1,6 +1,10 @@
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
-import { CourierLocationReporter, DeliveryTrackingMap } from "@/components/DeliveryTracking";
+import {
+  CourierLocationReporter,
+  CourierPresenceReporter,
+  DeliveryTrackingMap,
+} from "@/components/DeliveryTracking";
 import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { DishImage } from "@/components/DishImage";
 import { StatusPill, type OrderView } from "@/pages/Orders";
@@ -38,6 +42,7 @@ import type { CashIssueKind } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { CASH_ISSUE_LABELS } from "@/lib/cash";
 import { clockTime, money, relativeTime, ROLE_HOME } from "@/lib/format";
+import { ASSIGNMENT_RULES, formatKm } from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -48,14 +53,17 @@ import {
   CheckCircle2,
   History,
   KeyRound,
+  Layers,
   Loader2,
+  LocateFixed,
   MapPin,
   Navigation,
   PackageCheck,
   Store,
+  Timer,
   Wallet,
 } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -121,6 +129,15 @@ export default function CourierPage() {
   const [issueAmount, setIssueAmount] = useState("");
   const [issueNote, setIssueNote] = useState("");
   const [savingIssue, setSavingIssue] = useState(false);
+  const pingPresence = useMutation(api.orders.updateCourierPresence);
+  const [now, setNow] = useState(Date.now());
+  const [locating, setLocating] = useState(false);
+
+  // Mantiene vivos los temporizadores de espera sin esperar a la próxima consulta.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   if (user && user.role !== "courier") {
     return (
@@ -144,19 +161,66 @@ export default function CourierPage() {
   const history = (board?.history ?? []) as unknown as OrderView[];
   const stats = board?.stats;
   const canAccept = board?.canAccept ?? true;
+  const activeCount = board?.activeCount ?? active.length;
+  const maxActive = board?.maxActive ?? ASSIGNMENT_RULES.maxActiveTrips;
+  const locationFresh = board?.locationFresh ?? false;
   const busyOrder = (board?.busyOrder ?? null) as unknown as OrderView | null;
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Este dispositivo no permite compartir la ubicación.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        void pingPresence({
+          location: {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          },
+        })
+          .then(() => {
+            toast.success("Ubicación actualizada", {
+              description:
+                "Los pedidos se ordenan por cercanía y ya podés tomar los que estén a menos de 6 km.",
+            });
+          })
+          .catch((error) => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "No pudimos guardar tu ubicación",
+            );
+          })
+          .finally(() => setLocating(false));
+      },
+      () => {
+        setLocating(false);
+        toast.error(
+          "Permití el acceso a la ubicación para tomar pedidos cercanos.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
+    );
+  };
 
   const handleAccept = async (order: OrderView) => {
     setBusy(order._id);
     try {
-      await accept({ orderId: order._id as Id<"orders"> });
-      toast.success("Pedido tomado", {
-        description: takesSeveralDeliveries(order)
-          ? `Son ${order.remainingDeliveries + 1} entregas de esta compra: retirá cada una cuando el local la marque lista. Total en envíos ${money(order.groupEarnings)}.`
-          : order.tripStops > 1
-            ? `Retirá en ${order.tripStops} tiendas y entregá todo junto. Ganás ${money(order.tripEarnings)}.`
-            : `Retirá en ${order.businessName}. Ganás ${money(order.deliveryFee)}.`,
-      });
+      const result = await accept({ orderId: order._id as Id<"orders"> });
+      toast.success(
+        result.grouped ? "Entrega sumada a tu ruta" : "Pedido tomado",
+        {
+          description: result.grouped
+            ? `Ahora tenés 2 entregas activas. Sumaste ${order.businessName}; el desvío es corto y no atrasa tu entrega actual.`
+            : takesSeveralDeliveries(order)
+              ? `Son ${order.remainingDeliveries + 1} entregas de esta compra: retirá cada una cuando el local la marque lista. Total en envíos ${money(order.groupEarnings)}.`
+              : order.tripStops > 1
+                ? `Retirá en ${order.tripStops} tiendas y entregá todo junto. Ganás ${money(order.tripEarnings)}.`
+                : `Retirá en ${order.businessName}. Ganás ${money(order.deliveryFee)}.`,
+        },
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos asignarte el pedido");
     } finally {
@@ -330,6 +394,7 @@ export default function CourierPage() {
       <CourierLocationReporter
         orderIds={active.map((order) => order._id)}
       />
+      <CourierPresenceReporter />
 
       <SubscriptionReminder />
 
@@ -339,10 +404,16 @@ export default function CourierPage() {
             <Bike className="size-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">Tenés una entrega en curso</p>
+            <p className="text-sm font-semibold">
+              {activeCount > 1
+                ? `Tenés ${activeCount} entregas en curso`
+                : "Tenés una entrega en curso"}
+            </p>
             <p className="text-[11px] leading-relaxed text-muted-foreground">
-              {busyOrder.code} · {busyOrder.businessName}. Cuando la termines vas a
-              poder tomar otro pedido.
+              {busyOrder.code} · {busyOrder.businessName}.{" "}
+              {activeCount >= maxActive
+                ? "Completá una para liberar espacio."
+                : "Podés sumar otra solo si está cerca y no atrasa tu ruta."}
             </p>
           </div>
           <Button
@@ -387,11 +458,70 @@ export default function CourierPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-3"
         >
-          {!canAccept && available.length > 0 && (
+          {!locationFresh && (
+            <div className="rounded-2xl border border-primary/30 bg-primary/[0.07] p-4">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-primary">
+                <LocateFixed className="size-4" /> Activá tu ubicación para tomar pedidos
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Usamos tu ubicación solo para mostrarte qué pedidos están cerca y
+                comprobar que el local quede a menos de {ASSIGNMENT_RULES.maxPickupKm}{" "}
+                km. Se actualiza mientras tengas la app abierta.
+              </p>
+              <Button
+                size="sm"
+                className="mt-2 gap-1.5 bg-ember-gradient text-black"
+                disabled={locating}
+                onClick={requestLocation}
+              >
+                {locating ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <LocateFixed className="size-3.5" />
+                )}
+                Compartir mi ubicación
+              </Button>
+            </div>
+          )}
+
+          {locationFresh && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-accent/30 bg-accent/[0.06] px-4 py-2.5">
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                <span className="font-semibold text-accent">Ubicación activa</span>{" "}
+                · los pedidos se ordenan por cercanía
+                {board?.courierLocationAt
+                  ? ` · actualizada ${relativeTime(board.courierLocationAt)}`
+                  : ""}
+                .
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-[11px] text-accent"
+                disabled={locating}
+                onClick={requestLocation}
+              >
+                {locating ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <LocateFixed className="size-3" />
+                )}
+                Actualizar
+              </Button>
+            </div>
+          )}
+
+          {activeCount === 1 && (
             <p className="rounded-2xl border border-border/70 bg-secondary/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-              Mientras tengas una entrega en curso no podés tomar otra: los
-              pedidos quedan visibles, pero se habilitan cuando marques tu
-              entrega como entregada.
+              Tenés una entrega en curso. Los pedidos habilitados se pueden sumar
+              a tu ruta solo si el desvío es corto y no te atrasa: el botón te
+              muestra cuántos minutos agrega.
+            </p>
+          )}
+          {activeCount >= maxActive && available.length > 0 && (
+            <p className="rounded-2xl border border-border/70 bg-secondary/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+              Tenés el máximo de {maxActive} entregas activas. Terminá una para
+              poder tomar otra.
             </p>
           )}
 
@@ -407,7 +537,34 @@ export default function CourierPage() {
               }
             />
           ) : (
-            available.map((order) => (
+            available.map((order) => {
+              const waitStart = order.waitStartedAt ?? order.readyAt;
+              const secondsLeft =
+                waitStart !== null
+                  ? Math.max(
+                      0,
+                      Math.floor(
+                        (waitStart +
+                          ASSIGNMENT_RULES.readyWindowMinutes * 60_000 -
+                          now) /
+                          1000,
+                      ),
+                    )
+                  : null;
+              const waitingMinutes =
+                waitStart !== null
+                  ? Math.max(0, Math.floor((now - waitStart) / 60_000))
+                  : null;
+              const waitOver = secondsLeft === 0 || order.assignmentUrgent;
+              const waitLabel =
+                secondsLeft !== null && secondsLeft > 0
+                  ? `${Math.floor(secondsLeft / 60)}:${String(
+                      secondsLeft % 60,
+                    ).padStart(2, "0")}`
+                  : null;
+              const acceptDisabled =
+                !canAccept || order.acceptAllowed === false;
+              return (
               <div key={order._id} className="surface-raised rounded-3xl p-4 sm:p-5">
                 <div className="flex items-start gap-3">
                   <DishImage
@@ -435,6 +592,48 @@ export default function CourierPage() {
                       {order.items.reduce((acc, item) => acc + item.quantity, 0)}{" "}
                       productos
                     </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                      {order.recommended && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 font-semibold text-accent">
+                          <LocateFixed className="size-3" /> Cerca de vos
+                        </span>
+                      )}
+                      {order.pickupKm != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-secondary/30 px-2 py-0.5 text-muted-foreground">
+                          <MapPin className="size-3" />
+                          {formatKm(order.pickupKm)} al local
+                        </span>
+                      )}
+                      {order.estimatedArrivalAt != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-secondary/30 px-2 py-0.5 text-muted-foreground">
+                          <Timer className="size-3" />
+                          {order.totalEtaMinutes != null
+                            ? `~${order.totalEtaMinutes} min`
+                            : "ETA"}{" "}
+                          · llegada {clockTime(order.estimatedArrivalAt)}
+                        </span>
+                      )}
+                      {waitStart !== null &&
+                        (waitOver ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+                            <Timer className="size-3" /> Esperando{" "}
+                            {waitingMinutes ?? 0} min sin repartidor
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-accent">
+                            <Timer className="size-3" /> Quedan {waitLabel} para
+                            asignar
+                          </span>
+                        ))}
+                      {order.groupable && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 font-semibold text-accent">
+                          <Layers className="size-3" /> Se suma a tu ruta
+                          {order.groupExtraMinutes != null
+                            ? ` (+${order.groupExtraMinutes} min)`
+                            : ""}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="rounded-full bg-accent px-3 py-1 font-display text-sm font-extrabold text-accent-foreground">
                     {money(order.tripEarnings)}
@@ -518,32 +717,38 @@ export default function CourierPage() {
                       Tu envío: {money(order.tripEarnings)}
                     </p>
                   </div>
-                  <Button
-                    className="gap-2 bg-ember-gradient text-black"
-                    disabled={busy === order._id || !canAccept}
-                    title={
-                      canAccept
-                        ? undefined
-                        : "Terminá la entrega que tenés en curso"
-                    }
-                    onClick={() =>
-                      takesSeveralDeliveries(order)
-                        ? setConfirming(order)
-                        : handleAccept(order)
-                    }
-                  >
-                    {busy === order._id ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Navigation className="size-4" />
+                  <div className="flex flex-col items-end gap-1">
+                    <Button
+                      className="gap-2 bg-ember-gradient text-black"
+                      disabled={busy === order._id || acceptDisabled}
+                      title={order.acceptReason ?? undefined}
+                      onClick={() =>
+                        takesSeveralDeliveries(order)
+                          ? setConfirming(order)
+                          : handleAccept(order)
+                      }
+                    >
+                      {busy === order._id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Navigation className="size-4" />
+                      )}
+                      {takesSeveralDeliveries(order)
+                        ? `Aceptar las ${order.remainingDeliveries + 1} entregas`
+                        : order.groupable
+                          ? "Sumar a mi ruta"
+                          : "Tomar pedido"}
+                    </Button>
+                    {order.acceptReason && (
+                      <p className="max-w-[16rem] text-right text-[10px] leading-snug text-muted-foreground">
+                        {order.acceptReason}
+                      </p>
                     )}
-                    {takesSeveralDeliveries(order)
-                      ? `Aceptar las ${order.remainingDeliveries + 1} entregas`
-                      : "Tomar pedido"}
-                  </Button>
+                  </div>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </motion.div>
       )}
@@ -588,6 +793,34 @@ export default function CourierPage() {
                   <StatusPill status={order.status} />
                 </div>
 
+                {order.estimatedArrivalAt !== null &&
+                  order.status !== "delivered" && (
+                    <div
+                      className={cn(
+                        "mt-3 rounded-xl border px-3 py-2 text-[11px] leading-relaxed",
+                        order.delayed
+                          ? "border-primary/40 bg-primary/[0.07] text-primary"
+                          : "border-accent/30 bg-accent/[0.06] text-accent",
+                      )}
+                    >
+                      <p className="flex items-center gap-1.5 font-semibold">
+                        <Timer className="size-3.5" />
+                        {order.delayed
+                          ? `Demora estimada +${order.lateMinutes} min`
+                          : `Llegada estimada ${clockTime(order.estimatedArrivalAt)}`}
+                      </p>
+                      <p
+                        className={
+                          order.delayed ? "" : "text-muted-foreground"
+                        }
+                      >
+                        {order.status === "ready"
+                          ? "Retirá el pedido y salí al cliente."
+                          : "Si te demorás, avisale al comprador por teléfono."}
+                      </p>
+                    </div>
+                  )}
+
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <div className="rounded-xl border border-border/70 bg-black/20 p-3">
                     <p className="text-[10px] uppercase tracking-wider text-accent">
@@ -629,6 +862,9 @@ export default function CourierPage() {
                       courierAcceptedAt={order.courierAcceptedAt}
                       pickedUpAt={order.pickedUpAt}
                       deliveredAt={order.deliveredAt}
+                      estimatedArrivalAt={order.estimatedArrivalAt}
+                      promisedArrivalAt={order.promisedArrivalAt}
+                      lateMinutes={order.lateMinutes}
                     />
                   </div>
                 )}

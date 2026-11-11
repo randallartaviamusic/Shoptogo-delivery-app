@@ -14,6 +14,7 @@ type AvailableOrder = {
   remainingDeliveries?: number;
   tripStops?: number;
   tripEarnings?: number;
+  acceptAllowed?: boolean;
 };
 
 function playChime() {
@@ -67,10 +68,10 @@ export function CourierAlerts({ enabled }: { enabled: boolean }) {
     const fresh = available.filter((order) => !seen.current.has(order._id));
     for (const id of ids) seen.current.add(id);
 
-    // Si está en medio de una entrega no se le ofrece otra.
+    // Solo se avisa de pedidos que realmente puede tomar (cerca y con lugar).
     if (!board?.canAccept || fresh.length === 0) return;
-
-    const first = fresh[0];
+    const first = fresh.find((order) => order.acceptAllowed !== false);
+    if (!first) return;
     playChime();
     const multiple =
       first.sameCourier && (first.remainingDeliveries ?? 0) > 0

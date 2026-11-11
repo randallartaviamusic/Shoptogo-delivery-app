@@ -275,6 +275,9 @@ const schema = defineSchema(
       pickedUpAt: v.optional(v.number()),
       deliveredAt: v.optional(v.number()),
       cancelledAt: v.optional(v.number()),
+      // Motivo visible para el comprador cuando se cancela, por ejemplo un
+      // pedido listo que nadie tomó después de la ventana de asignación.
+      cancellationReason: v.optional(v.string()),
     })
       .index("by_buyer", ["buyerId"])
       .index("by_business", ["businessId"])
@@ -286,6 +289,15 @@ const schema = defineSchema(
       key: v.string(),
       value: v.string(),
     }).index("by_key", ["key"]),
+
+    // Última ubicación conocida de cada repartidor, incluso sin una entrega
+    // activa. Sirve para ordenar los pedidos por cercanía y evitar que alguien
+    // acepte una entrega que está demasiado lejos.
+    courierPresence: defineTable({
+      ownerId: v.id("users"),
+      location: geoPointValidator,
+      updatedAt: v.number(),
+    }).index("by_owner", ["ownerId"]),
 
     // Suscripción vigente de cada negocio o repartidor. Se crea al elegir un
     // plan o al confirmar el pago, y la administración la activa o renueva.

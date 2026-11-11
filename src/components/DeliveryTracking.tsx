@@ -21,6 +21,9 @@ type TrackingProps = {
   courierAcceptedAt: number | null;
   pickedUpAt: number | null;
   deliveredAt: number | null;
+  estimatedArrivalAt?: number | null;
+  promisedArrivalAt?: number | null;
+  lateMinutes?: number | null;
 };
 
 function markerIcon(color: string, glyph: string) {
@@ -76,7 +79,11 @@ export function DeliveryTrackingMap(props: TrackingProps) {
     courierAcceptedAt,
     pickedUpAt,
     deliveredAt,
+    estimatedArrivalAt,
+    promisedArrivalAt,
+    lateMinutes,
   } = props;
+  const late = (lateMinutes ?? 0) > 0;
   const center = businessLocation ?? deliveryLocation ?? { lat: 10.47093, lng: -84.96745 };
   const steps = [
     { label: "Repartidor asignado", at: courierAcceptedAt, icon: Check },
@@ -95,12 +102,37 @@ export function DeliveryTrackingMap(props: TrackingProps) {
               : "Esperando la ubicación del repartidor…"}
           </p>
         </div>
-        {status === "picked_up" && (
-          <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary">
-            <Bike className="size-3" /> En camino
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {estimatedArrivalAt && status !== "delivered" && (
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-1 text-[10px] font-semibold",
+                late
+                  ? "bg-primary/10 text-primary"
+                  : "bg-accent/10 text-accent",
+              )}
+            >
+              {late
+                ? `Demora +${lateMinutes} min`
+                : `Llegada ~${clockTime(estimatedArrivalAt)}`}
+            </span>
+          )}
+          {status === "picked_up" && (
+            <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary">
+              <Bike className="size-3" /> En camino
+            </span>
+          )}
+        </div>
       </div>
+
+      {late && status !== "delivered" && status !== "cancelled" && (
+        <p className="rounded-xl border border-primary/30 bg-primary/[0.07] p-2.5 text-[11px] leading-relaxed text-primary">
+          La entrega va {lateMinutes} min más tarde de lo estimado
+          {promisedArrivalAt ? ` (llegada prometida ${clockTime(promisedArrivalAt)})` : ""}.
+          Si no llega pronto, escribile al repartidor. La demora queda visible
+          para el local y para el comprador.
+        </p>
+      )}
 
       <div className="relative isolate z-0 h-56 overflow-hidden rounded-xl border border-border/70 sm:h-64">
         <MapContainer
@@ -160,6 +192,71 @@ export function DeliveryTrackingMap(props: TrackingProps) {
       </ol>
     </section>
   );
+}
+
+/**
+ * Comparte la ubicación del repartidor aunque todavía no tenga una entrega.
+ * Con eso la plataforma ordena los pedidos cercanos y bloquea los lejanos.
+ */
+export function CourierPresenceReporter({ enabled = true }: { enabled?: boolean }) {
+  const updatePresence = useMutation(api.orders.updateCourierPresence);
+  const lastSent = useRef(0);
+  const lastPosition = useRef<GeolocationPosition | null>(null);
+  const warned = useRef(false);
+
+  useEffect(() => {
+    if (!enabled || !navigator.geolocation) return;
+
+    const send = (position: GeolocationPosition) => {
+      lastPosition.current = position;
+      const now = Date.now();
+      // No hace falta mandar cada segundo: 45 s o un cambio relevante alcanza.
+      if (now - lastSent.current < 45_000) return;
+      lastSent.current = now;
+      void updatePresence({
+        location: {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        },
+      }).catch(() => {
+        if (warned.current) return;
+        warned.current = true;
+        toast.error(
+          "No pudimos compartir tu ubicación. Revisá el permiso del navegador.",
+        );
+      });
+    };
+
+    navigator.geolocation.getCurrentPosition(send, () => undefined, {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 15000,
+    });
+    const watchId = navigator.geolocation.watchPosition(
+      send,
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    );
+    // Si el repartidor no se mueve, el GPS puede no emitir: reenviamos la
+    // última posición para que la presencia no venza a los 12 minutos.
+    const heartbeat = window.setInterval(() => {
+      if (lastPosition.current) {
+        send(lastPosition.current);
+      } else {
+        navigator.geolocation.getCurrentPosition(send, () => undefined, {
+          enableHighAccuracy: true,
+          maximumAge: 5000,
+          timeout: 15000,
+        });
+      }
+    }, 240_000);
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      window.clearInterval(heartbeat);
+    };
+  }, [enabled, updatePresence]);
+
+  return null;
 }
 
 export function CourierLocationReporter({ orderIds }: { orderIds: string[] }) {

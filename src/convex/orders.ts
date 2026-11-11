@@ -1,9 +1,19 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { DELIVERY_RULES } from "../lib/delivery";
+import {
+  ASSIGNMENT_RULES,
+  DELIVERY_RULES,
+  assignmentWindow,
+  deliveryQuote,
+  formatKm,
+  groupRouteExtra,
+  isValidPoint,
+  travelKm,
+  travelMinutes,
+} from "../lib/delivery";
 import { cashIssueKindValidator } from "./schema";
 import { requireSubscriptionAccess } from "./subscriptions";
 
@@ -62,6 +72,19 @@ function tripLeaderOf(trip: Doc<"orders">[]) {
   );
 }
 
+/**
+ * La espera de una entrega con varias tiendas empieza cuando la última quedó
+ * lista, no cuando lo hizo la primera: antes no se podía retirar completa.
+ */
+function tripReadyAt(trip: Doc<"orders">[]) {
+  let latest: number | null = null;
+  for (const member of trip) {
+    if (member.status === "cancelled" || !member.readyAt) continue;
+    latest = latest === null ? member.readyAt : Math.max(latest, member.readyAt);
+  }
+  return latest;
+}
+
 /** Entregas de la compra que todavía no salieron ni se cancelaron. */
 function pendingSiblings(siblings: Doc<"orders">[]) {
   return siblings.filter(
@@ -94,6 +117,60 @@ function startOfToday() {
   return now.getTime();
 }
 
+const LOCATION_FRESH_MS = ASSIGNMENT_RULES.maxLocationAgeMinutes * 60_000;
+
+async function presenceFor(ctx: DbCtx, ownerId: Id<"users">) {
+  return await ctx.db
+    .query("courierPresence")
+    .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+    .unique();
+}
+
+function freshPresence(
+  presence: Awaited<ReturnType<typeof presenceFor>>,
+  now = Date.now(),
+) {
+  if (!presence) return null;
+  return now - presence.updatedAt <= LOCATION_FRESH_MS ? presence.location : null;
+}
+
+async function saveCourierPresence(
+  ctx: MutationCtx,
+  ownerId: Id<"users">,
+  location: { lat: number; lng: number },
+) {
+  const now = Date.now();
+  const point = {
+    lat: Math.round(location.lat * 1e5) / 1e5,
+    lng: Math.round(location.lng * 1e5) / 1e5,
+  };
+  const existing = await presenceFor(ctx, ownerId);
+  if (existing) {
+    await ctx.db.patch(existing._id, { location: point, updatedAt: now });
+  } else {
+    await ctx.db.insert("courierPresence", {
+      ownerId,
+      location: point,
+      updatedAt: now,
+    });
+  }
+  return { location: point, updatedAt: now };
+}
+
+/** Entregas activas del repartidor, una por viaje (no por tienda). */
+function activeTripLeaders(orders: Doc<"orders">[]) {
+  const seen = new Set<string>();
+  const leaders: Doc<"orders">[] = [];
+  for (const order of orders) {
+    if (order.status !== "ready" && order.status !== "picked_up") continue;
+    const key = tripKey(order);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    leaders.push(order);
+  }
+  return leaders;
+}
+
 async function userName(ctx: DbCtx, id?: Id<"users">) {
   if (!id) return null;
   const user = await ctx.db.get(id);
@@ -111,6 +188,7 @@ async function decorateOrder(
   business: Doc<"businesses"> | null,
   viewer: OrderViewer,
 ) {
+  const now = Date.now();
   const buyer = await ctx.db.get(order.buyerId);
   const courier = order.courierId ? await ctx.db.get(order.courierId) : null;
   const pendingGroup = pendingSiblings(await groupSiblings(ctx, order));
@@ -159,6 +237,59 @@ async function decorateOrder(
   const handedByName = await userName(ctx, order.cashHandedBy);
   const issueByName = await userName(ctx, leader.cashIssue?.by);
   const issueResolvedByName = await userName(ctx, leader.cashIssue?.resolvedBy);
+
+  // Llegada estimada y demora contra el tiempo prometido. Para un pedido ya
+  // asignado se usa la ubicación del repartidor y, si falta, la del local.
+  const promisedMinutes =
+    deliveryQuote(business?.location, order.deliveryLocation)?.minutes ?? null;
+  const promiseBase =
+    order.pickedUpAt ?? order.readyAt ?? order.acceptedAt ?? order.createdAt;
+  const promisedArrivalAt =
+    promisedMinutes !== null ? promiseBase + promisedMinutes * 60_000 : null;
+
+  let estimatedArrivalAt: number | null = null;
+  if (order.deliveredAt) {
+    estimatedArrivalAt = order.deliveredAt;
+  } else if (order.status === "picked_up") {
+    const from = isValidPoint(order.courierLocation)
+      ? order.courierLocation
+      : isValidPoint(business?.location)
+        ? business.location
+        : null;
+    const minutes = travelMinutes(
+      from,
+      order.deliveryLocation,
+      ASSIGNMENT_RULES.dropoffHandoffMinutes,
+    );
+    if (minutes !== null) estimatedArrivalAt = now + minutes * 60_000;
+  } else if (order.status === "ready" && order.courierId) {
+    const pickupMinutes = travelMinutes(
+      order.courierLocation,
+      business?.location,
+      ASSIGNMENT_RULES.pickupHandoffMinutes,
+    );
+    const dropoffMinutes = travelMinutes(
+      business?.location,
+      order.deliveryLocation,
+      ASSIGNMENT_RULES.dropoffHandoffMinutes,
+    );
+    if (pickupMinutes !== null && dropoffMinutes !== null) {
+      estimatedArrivalAt =
+        now + (pickupMinutes + dropoffMinutes) * 60_000;
+    }
+  }
+  const lateMinutes =
+    promisedArrivalAt && estimatedArrivalAt
+      ? Math.max(
+          0,
+          Math.round((estimatedArrivalAt - promisedArrivalAt) / 60_000),
+        )
+      : 0;
+  const delayed = lateMinutes > ASSIGNMENT_RULES.delayToleranceMinutes;
+  const unassignedReady = order.status === "ready" && !order.courierId;
+  const effectiveReadyAt = tripReadyAt(trip) ?? order.readyAt ?? null;
+  const wait = assignmentWindow(effectiveReadyAt, now);
+
   return {
     _id: order._id,
     code: order.code,
@@ -245,6 +376,18 @@ async function decorateOrder(
     pickedUpAt: order.pickedUpAt ?? null,
     deliveredAt: order.deliveredAt ?? null,
     cancelledAt: order.cancelledAt ?? null,
+    cancellationReason: order.cancellationReason ?? null,
+    // Temporizador para pedidos listos que todavía no tienen repartidor.
+    waitStartedAt: unassignedReady ? effectiveReadyAt : null,
+    waitingMinutes: unassignedReady ? wait.waitingMinutes : null,
+    assignmentSecondsLeft: unassignedReady ? wait.secondsLeft : null,
+    assignmentUrgent: unassignedReady ? wait.urgent : false,
+    canCancelUnassigned: unassignedReady ? wait.cancellable : false,
+    // Estimación de llegada y aviso de demora.
+    promisedArrivalAt,
+    estimatedArrivalAt,
+    lateMinutes,
+    delayed,
     businessId: order.businessId,
     businessName: business?.name ?? "Capricho Express",
     businessImage: business?.image ?? "",
@@ -371,6 +514,10 @@ export const courierBoard = query({
     const user = await ctx.db.get(userId);
     if (user?.role !== "courier") return null;
 
+    const now = Date.now();
+    const presence = await presenceFor(ctx, userId);
+    const courierLocation = freshPresence(presence, now);
+
     const readyOrders = await ctx.db
       .query("orders")
       .withIndex("by_status", (q) => q.eq("status", "ready"))
@@ -381,7 +528,9 @@ export const courierBoard = query({
       if (order.courierId) continue;
       const key = tripKey(order);
       if (seenTrips.has(key)) continue;
-      const trip = await tripOrders(ctx, order);
+      const trip = (await tripOrders(ctx, order)).filter(
+        (member) => member.status !== "cancelled",
+      );
       // Una entrega con varias tiendas sólo se ofrece cuando todas están listas.
       if (trip.some((member) => member.status !== "ready" || member.courierId)) {
         continue;
@@ -398,7 +547,54 @@ export const courierBoard = query({
       }
       seenTrips.add(key);
       const business = await ctx.db.get(order.businessId);
-      available.push(await decorateOrder(ctx, order, business, "courier"));
+      const decorated = await decorateOrder(ctx, order, business, "courier");
+      // La distancia de retiro es la de la tienda más lejana del viaje.
+      let pickupKm: number | null = null;
+      let pickupMinutes: number | null = null;
+      if (courierLocation) {
+        let farthest = 0;
+        let found = false;
+        for (const member of trip) {
+          const stopBusiness =
+            member.businessId === order.businessId
+              ? business
+              : await ctx.db.get(member.businessId);
+          if (!isValidPoint(stopBusiness?.location)) continue;
+          found = true;
+          farthest = Math.max(
+            farthest,
+            travelKm(courierLocation, stopBusiness.location),
+          );
+        }
+        if (found) {
+          pickupKm = Math.round(farthest * 10) / 10;
+          pickupMinutes =
+            Math.max(
+              1,
+              Math.ceil(farthest * DELIVERY_RULES.minutesPerKm),
+            ) + ASSIGNMENT_RULES.pickupHandoffMinutes;
+        }
+      }
+      const deliveryMinutes = travelMinutes(
+        business?.location,
+        order.deliveryLocation,
+        ASSIGNMENT_RULES.dropoffHandoffMinutes,
+      );
+      const totalEtaMinutes =
+        pickupMinutes !== null && deliveryMinutes !== null
+          ? pickupMinutes + deliveryMinutes
+          : null;
+      available.push({
+        ...decorated,
+        pickupKm,
+        pickupMinutes,
+        deliveryMinutes,
+        totalEtaMinutes,
+        estimatedArrivalAt:
+          totalEtaMinutes !== null
+            ? now + totalEtaMinutes * 60_000
+            : decorated.estimatedArrivalAt,
+      });
     }
 
     const mine = await ctx.db
@@ -406,6 +602,7 @@ export const courierBoard = query({
       .withIndex("by_courier", (q) => q.eq("courierId", userId))
       .collect();
     const sortedMine = mine.sort((a, b) => b.createdAt - a.createdAt);
+    const activeLeaders = activeTripLeaders(sortedMine);
 
     const active = [];
     const history = [];
@@ -423,20 +620,135 @@ export const courierBoard = query({
       }
     }
 
+    const activeCount = activeLeaders.length;
+    const capacity = Math.max(
+      0,
+      ASSIGNMENT_RULES.maxActiveTrips - activeCount,
+    );
+
+    // Con una entrega en curso solo se puede sumar otra si el desvío es corto
+    // y la entrega actual no va demorada.
+    let groupingBase: {
+      pickup: { lat: number; lng: number } | null;
+      dropoff: { lat: number; lng: number } | null;
+      late: boolean;
+    } | null = null;
+    if (activeLeaders.length === 1) {
+      const leader = activeLeaders[0];
+      const leaderBusiness = await ctx.db.get(leader.businessId);
+      const leaderPromise =
+        deliveryQuote(leaderBusiness?.location, leader.deliveryLocation)
+          ?.minutes ?? null;
+      const late =
+        (leader.status === "picked_up" &&
+          !!leader.pickedUpAt &&
+          leaderPromise !== null &&
+          now >
+            leader.pickedUpAt +
+              (leaderPromise + ASSIGNMENT_RULES.delayToleranceMinutes) *
+                60_000) ||
+        // Si todavía no la retiró y ya lleva demasiado esperando, primero
+        // conviene que la retire antes de sumar otra parada.
+        (leader.status === "ready" &&
+          !!leader.readyAt &&
+          now - leader.readyAt > ASSIGNMENT_RULES.readyWindowMinutes * 60_000);
+      groupingBase = {
+        pickup:
+          leader.status === "picked_up"
+            ? courierLocation
+            : (leaderBusiness?.location ?? null),
+        dropoff: leader.deliveryLocation ?? null,
+        late,
+      };
+    }
+
+    const evaluated = available.map((order) => {
+      let acceptReason: string | null = null;
+      let groupable = false;
+      let groupExtraMinutes: number | null = null;
+
+      if (!courierLocation) {
+        acceptReason =
+          "Activá tu ubicación para calcular la distancia al local.";
+      } else if (activeCount >= ASSIGNMENT_RULES.maxActiveTrips) {
+        acceptReason =
+          "Ya tenés el máximo de 2 entregas activas. Terminá una para tomar otra.";
+      } else if (
+        order.pickupKm !== null &&
+        order.pickupKm > ASSIGNMENT_RULES.maxPickupKm
+      ) {
+        acceptReason = `El local está a ${formatKm(order.pickupKm)} de vos (máximo ${ASSIGNMENT_RULES.maxPickupKm} km).`;
+      }
+
+      if (!acceptReason && groupingBase) {
+        if (groupingBase.late) {
+          acceptReason =
+            "Tu entrega actual va demorada: terminala antes de sumar otra.";
+        } else {
+          const extra = groupRouteExtra(groupingBase, {
+            pickup: order.businessLocation,
+            dropoff: order.deliveryLocation,
+          });
+          if (!extra) {
+            acceptReason =
+              "Falta la ubicación de una entrega para calcular el desvío.";
+          } else if (
+            extra.extraKm > ASSIGNMENT_RULES.groupMaxExtraKm ||
+            extra.extraMinutes > ASSIGNMENT_RULES.groupMaxExtraMinutes
+          ) {
+            acceptReason = `Agruparla desvía ${formatKm(extra.extraKm)} y ${extra.extraMinutes} min de tu ruta actual.`;
+          } else {
+            groupable = true;
+            groupExtraMinutes = extra.extraMinutes;
+          }
+        }
+      }
+
+      return {
+        ...order,
+        acceptAllowed: acceptReason === null,
+        acceptReason,
+        groupable,
+        groupExtraMinutes,
+      };
+    });
+
+    // Primero lo urgente; entre lo urgente, lo más cercano. Los pedidos sin
+    // ubicación del repartidor quedan al final.
+    evaluated.sort(
+      (a, b) =>
+        Number(b.assignmentUrgent) - Number(a.assignmentUrgent) ||
+        (a.pickupKm ?? 999) - (b.pickupKm ?? 999) ||
+        (a.readyAt ?? a.createdAt) - (b.readyAt ?? b.createdAt),
+    );
+    const nearest = evaluated
+      .filter((order) => order.acceptAllowed && order.pickupKm !== null)
+      .sort((a, b) => (a.pickupKm ?? 0) - (b.pickupKm ?? 0))[0];
+    const availableWithSuggestion = evaluated.map((order) => ({
+      ...order,
+      recommended: nearest?._id === order._id,
+    }));
+
     const today = startOfToday();
     const deliveredToday = sortedMine.filter(
       (o) => o.status === "delivered" && (o.deliveredAt ?? 0) >= today,
     );
 
     return {
-      available,
+      available: availableWithSuggestion,
       active,
       history: history.slice(0, 15),
-      // Un repartidor atiende una entrega a la vez.
-      canAccept: active.length === 0,
+      // Hasta dos entregas activas, y la segunda solo si se agrupa bien.
+      canAccept: capacity > 0,
+      capacity,
+      activeCount,
+      maxActive: ASSIGNMENT_RULES.maxActiveTrips,
       busyOrder: active[0] ?? null,
+      courierLocation,
+      courierLocationAt: presence?.updatedAt ?? null,
+      locationFresh: !!courierLocation,
       stats: {
-        available: available.length,
+        available: availableWithSuggestion.length,
         active: active.length,
         deliveriesToday: deliveredToday.length,
         earningsToday: deliveredToday.reduce(
@@ -464,7 +776,8 @@ const TRANSITIONS: Record<
   pending: ["accepted", "cancelled"],
   accepted: ["preparing", "cancelled"],
   preparing: ["ready"],
-  ready: [],
+  // Un pedido listo se puede cancelar solo si nadie lo tomó pasado el plazo.
+  ready: ["cancelled"],
   picked_up: [],
   delivered: [],
   cancelled: [],
@@ -485,6 +798,7 @@ export const businessUpdateStatus = mutation({
       v.literal("ready"),
       v.literal("cancelled"),
     ),
+    reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -505,10 +819,31 @@ export const businessUpdateStatus = mutation({
         "Esta compra se prepara en orden: primero tiene que salir la entrega anterior",
       );
     }
+    if (args.status === "cancelled" && order.status === "ready") {
+      if (order.courierId) {
+        throw new Error(
+          "El repartidor ya tomó este pedido: coordiná con él para cancelar",
+        );
+      }
+      const trip = await tripForOrder(ctx, order);
+      const wait = assignmentWindow(tripReadyAt(trip) ?? order.readyAt);
+      if (!wait.cancellable) {
+        throw new Error(
+          `Todavía puede llegar un repartidor. Podés cancelar si nadie lo toma en ${ASSIGNMENT_RULES.cancelAfterMinutes} minutos`,
+        );
+      }
+    }
 
     const patch: Partial<Doc<"orders">> = { status: args.status };
     const stamp = TIMESTAMP[args.status];
     if (stamp) patch[stamp] = Date.now();
+    if (args.status === "cancelled") {
+      patch.cancellationReason =
+        args.reason?.trim() ||
+        (order.status === "ready"
+          ? "Nadie tomó el pedido a tiempo. El local lo canceló."
+          : "El local canceló el pedido.");
+    }
     await ctx.db.patch(args.orderId, patch);
     return { status: args.status };
   },
@@ -674,6 +1009,13 @@ export const courierAccept = mutation({
       userId,
       "Tu suscripción de repartidor está vencida o sin activar. Activala en Suscripción para tomar entregas",
     );
+    const presence = await presenceFor(ctx, userId);
+    const courierPoint = freshPresence(presence);
+    if (!courierPoint) {
+      throw new Error(
+        "Activá tu ubicación para tomar pedidos: así comprobamos que el local esté cerca",
+      );
+    }
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Ese pedido no existe");
     // Una entrega puede retirar en varias tiendas: se toma el viaje completo.
@@ -707,24 +1049,96 @@ export const courierAccept = mutation({
       );
     }
 
-    // Primero se termina la entrega en curso: nadie atiende dos a la vez.
+    // Control de distancia: no se toma un pedido si el local queda lejos.
+    let farthestKm = 0;
+    for (const member of trip) {
+      const stopBusiness = await ctx.db.get(member.businessId);
+      if (!stopBusiness || !isValidPoint(stopBusiness.location)) continue;
+      farthestKm = Math.max(
+        farthestKm,
+        travelKm(courierPoint, stopBusiness.location),
+      );
+    }
+    if (farthestKm > ASSIGNMENT_RULES.maxPickupKm) {
+      throw new Error(
+        `El local está a ${formatKm(farthestKm)} de vos: el máximo para retirar es ${ASSIGNMENT_RULES.maxPickupKm} km. Acercate y volvé a intentar`,
+      );
+    }
+
     const mine = await ctx.db
       .query("orders")
       .withIndex("by_courier", (q) => q.eq("courierId", userId))
       .collect();
-    const busy = mine.find(
-      (item) => item.status === "ready" || item.status === "picked_up",
-    );
-    if (busy) {
+    const activeLeaders = activeTripLeaders(mine);
+    if (activeLeaders.length >= ASSIGNMENT_RULES.maxActiveTrips) {
       throw new Error(
-        `Terminá la entrega ${busy.code} antes de tomar otro pedido`,
+        "Ya tenés el máximo de 2 entregas activas. Terminá una antes de tomar otra",
       );
     }
+
+    // Segunda entrega: solo si está cerca y el desvío no atrasa la actual.
+    let grouped = false;
+    if (activeLeaders.length === 1) {
+      const current = activeLeaders[0];
+      const currentBusiness = await ctx.db.get(current.businessId);
+      const promised =
+        deliveryQuote(currentBusiness?.location, current.deliveryLocation)
+          ?.minutes ?? null;
+      const currentLate =
+        (current.status === "picked_up" &&
+          !!current.pickedUpAt &&
+          promised !== null &&
+          Date.now() >
+            current.pickedUpAt +
+              (promised + ASSIGNMENT_RULES.delayToleranceMinutes) * 60_000) ||
+        (current.status === "ready" &&
+          !!current.readyAt &&
+          Date.now() - current.readyAt >
+            ASSIGNMENT_RULES.readyWindowMinutes * 60_000);
+      if (currentLate) {
+        throw new Error(
+          "Tu entrega actual va demorada: terminala antes de sumar otra",
+        );
+      }
+      const candidateBusiness = await ctx.db.get(order.businessId);
+      const extra = groupRouteExtra(
+        {
+          pickup:
+            current.status === "picked_up"
+              ? courierPoint
+              : (currentBusiness?.location ?? null),
+          dropoff: current.deliveryLocation ?? null,
+        },
+        {
+          pickup: candidateBusiness?.location ?? null,
+          dropoff: order.deliveryLocation ?? null,
+        },
+      );
+      if (!extra) {
+        throw new Error(
+          "Falta la ubicación de una de las entregas para calcular si conviene agruparlas",
+        );
+      }
+      if (
+        extra.extraKm > ASSIGNMENT_RULES.groupMaxExtraKm ||
+        extra.extraMinutes > ASSIGNMENT_RULES.groupMaxExtraMinutes
+      ) {
+        throw new Error(
+          `No conviene agrupar: el desvío suma ${formatKm(extra.extraKm)} y ${extra.extraMinutes} min a tu entrega actual`,
+        );
+      }
+      grouped = true;
+    }
+
+    await saveCourierPresence(ctx, userId, courierPoint);
 
     for (const member of trip) {
       await ctx.db.patch(member._id, {
         courierId: userId,
         courierAcceptedAt: Date.now(),
+        // La ubicación queda disponible enseguida para la ETA y el mapa.
+        courierLocation: courierPoint,
+        courierLocationAt: Date.now(),
       });
     }
 
@@ -746,7 +1160,34 @@ export const courierAccept = mutation({
       }
     }
 
-    return { accepted: true };
+    return { accepted: true, grouped };
+  },
+});
+
+/**
+ * El repartidor comparte su ubicación aunque no tenga una entrega activa. Es
+ * lo que permite ordenar los pedidos por cercanía y bloquear los que quedan
+ * demasiado lejos.
+ */
+export const updateCourierPresence = mutation({
+  args: { location: v.object({ lat: v.number(), lng: v.number() }) },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const courier = await ctx.db.get(userId);
+    if (courier?.role !== "courier") {
+      throw new Error("Sólo las cuentas de repartidor pueden compartir ubicación");
+    }
+    const { lat, lng } = args.location;
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      Math.abs(lat) > 90 ||
+      Math.abs(lng) > 180
+    ) {
+      throw new Error("La ubicación no es válida");
+    }
+    return await saveCourierPresence(ctx, userId, { lat, lng });
   },
 });
 
@@ -794,6 +1235,8 @@ export const updateCourierLocation = mutation({
         courierLocationAt: Date.now(),
       });
     }
+    // Mantener fresca también la presencia general del repartidor.
+    await saveCourierPresence(ctx, userId, { lat, lng });
     return { updated: true };
   },
 });
@@ -968,8 +1411,41 @@ export const cancel = mutation({
     await ctx.db.patch(args.orderId, {
       status: "cancelled",
       cancelledAt: Date.now(),
+      cancellationReason: "Cancelaste el pedido antes de que el local lo confirmara.",
     });
     return { cancelled: true };
+  },
+});
+
+/**
+ * Red de seguridad: un pedido listo que nadie tomó no queda esperando para
+ * siempre. Pasado el plazo se cancela solo, sin cobrar nada y conservando el
+ * historial. El local puede adelantarse y cancelarlo a los 30 minutos.
+ */
+export const autoCancelStaleReady = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const threshold =
+      now - ASSIGNMENT_RULES.autoCancelAfterMinutes * 60_000;
+    const ready = await ctx.db
+      .query("orders")
+      .withIndex("by_status", (q) => q.eq("status", "ready"))
+      .collect();
+    let cancelled = 0;
+    for (const order of ready) {
+      if (order.courierId) continue;
+      const trip = await tripForOrder(ctx, order);
+      const readyAt = tripReadyAt(trip) ?? order.readyAt;
+      if (!readyAt || readyAt > threshold) continue;
+      await ctx.db.patch(order._id, {
+        status: "cancelled",
+        cancelledAt: now,
+        cancellationReason: `Nadie tomó el pedido en ${ASSIGNMENT_RULES.autoCancelAfterMinutes} minutos. Se canceló automáticamente y no se cobra nada.`,
+      });
+      cancelled += 1;
+    }
+    return { cancelled };
   },
 });
 

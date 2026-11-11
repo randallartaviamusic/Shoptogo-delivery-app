@@ -42,6 +42,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { CASH_ISSUE_LABELS } from "@/lib/cash";
 import { getDepartment } from "@/lib/departments";
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
+import { ASSIGNMENT_RULES } from "@/lib/delivery";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
 import type { DeliveryPromo } from "@/lib/promo";
 import { cn } from "@/lib/utils";
@@ -60,11 +61,12 @@ import {
   Settings2,
   Store,
   TicketPercent,
+  Timer,
   Trash2,
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -133,6 +135,14 @@ export default function BusinessPage() {
   const resolveIssue = useMutation(api.orders.resolveCashIssue);
 
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<OrderView | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  // Los temporizadores de espera y las demoras se actualizan en vivo.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   // Efectivo que el negocio confirma haber recibido del repartidor.
   const [cashTarget, setCashTarget] = useState<OrderView | null>(null);
   const [cashAmount, setCashAmount] = useState("");
@@ -222,16 +232,27 @@ export default function BusinessPage() {
   const handleStatus = async (
     orderId: string,
     status: "accepted" | "preparing" | "ready" | "cancelled",
+    reason?: string,
   ) => {
     setBusyOrder(orderId);
     try {
-      await updateStatus({ orderId: orderId as Id<"orders">, status });
+      await updateStatus({
+        orderId: orderId as Id<"orders">,
+        status,
+        reason,
+      });
       toast.success(
         status === "cancelled"
           ? "Pedido cancelado"
           : status === "ready"
             ? "Pedido listo para retirar"
             : "Pedido actualizado",
+        status === "cancelled"
+          ? {
+              description:
+                "El comprador ve el motivo. El pedido y su historial no se borran.",
+            }
+          : undefined,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos actualizar");
@@ -686,7 +707,33 @@ export default function BusinessPage() {
               }
             />
           ) : (
-            orders.map((order) => (
+            orders.map((order) => {
+              const waitStart = order.waitStartedAt ?? order.readyAt;
+              const waitSeconds =
+                waitStart !== null
+                  ? Math.max(
+                      0,
+                      Math.floor(
+                        (waitStart +
+                          ASSIGNMENT_RULES.readyWindowMinutes * 60_000 -
+                          now) /
+                          1000,
+                      ),
+                    )
+                  : null;
+              const waitingMinutes =
+                waitStart !== null
+                  ? Math.max(0, Math.floor((now - waitStart) / 60_000))
+                  : null;
+              const waitUrgent = waitStart !== null && waitSeconds === 0;
+              const canCancel =
+                order.status === "ready" &&
+                !order.courierId &&
+                waitStart !== null &&
+                now >=
+                  waitStart +
+                    ASSIGNMENT_RULES.cancelAfterMinutes * 60_000;
+              return (
               <div key={order._id} className="surface-raised rounded-3xl p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -725,6 +772,9 @@ export default function BusinessPage() {
                       courierAcceptedAt={order.courierAcceptedAt}
                       pickedUpAt={order.pickedUpAt}
                       deliveredAt={order.deliveredAt}
+                      estimatedArrivalAt={order.estimatedArrivalAt}
+                      promisedArrivalAt={order.promisedArrivalAt}
+                      lateMinutes={order.lateMinutes}
                     />
                   </div>
                 )}
@@ -950,25 +1000,71 @@ export default function BusinessPage() {
                         {action.label}
                       </Button>
                     ))}
-                    {order.status === "ready" && (
-                      <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] font-semibold text-accent">
-                        Esperando repartidor
-                      </span>
-                    )}
+                    {order.status === "ready" &&
+                      (order.courierId ? (
+                        <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] font-semibold text-accent">
+                          {order.courierName ?? "Repartidor"} va a retirar
+                        </span>
+                      ) : (
+                        <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-border/70 bg-black/20 p-3">
+                          <div>
+                            <p
+                              className={cn(
+                                "flex items-center gap-1.5 text-[11px] font-semibold",
+                                waitUrgent ? "text-primary" : "text-accent",
+                              )}
+                            >
+                              <Timer className="size-3.5" />
+                              {waitUrgent
+                                ? "Nadie lo tomó todavía"
+                                : "Esperando repartidor"}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {waitingMinutes ?? 0} min esperando
+                              {!waitUrgent && waitSeconds !== null
+                                ? ` · quedan ${Math.floor(
+                                    waitSeconds / 60,
+                                  )}:${String(waitSeconds % 60).padStart(2, "0")}`
+                                : ""}
+                              {" · "}código {order.pickupCode ?? "—"}
+                            </p>
+                            <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+                              {canCancel
+                                ? `Podés cancelarlo ahora o esperar: a los ${ASSIGNMENT_RULES.autoCancelAfterMinutes} min se cancela solo. El comprador ve el motivo.`
+                                : `Podés cancelarlo a los ${ASSIGNMENT_RULES.cancelAfterMinutes} min; a los ${ASSIGNMENT_RULES.autoCancelAfterMinutes} se cancela solo.`}
+                            </p>
+                          </div>
+                          {canCancel && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5 border-primary/40 text-[11px] text-primary hover:bg-primary/10"
+                              disabled={busyOrder === order._id}
+                              onClick={() => setCancelling(order)}
+                            >
+                              Cancelar sin repartidor
+                            </Button>
+                          )}
+                        </div>
+                      ))}
                     {order.status === "picked_up" && (
                       <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[11px] font-semibold text-primary">
                         {order.courierName ?? "Repartidor"} en camino
                       </span>
                     )}
                     {(order.status === "delivered" || order.status === "cancelled") && (
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="max-w-md text-[11px] text-muted-foreground">
                         {ORDER_STATUS[order.status].label}
+                        {order.status === "cancelled" && order.cancellationReason
+                          ? ` · ${order.cancellationReason}`
+                          : ""}
                       </span>
                     )}
                   </div>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </motion.div>
       )}
@@ -1532,6 +1628,52 @@ export default function BusinessPage() {
               }}
             >
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={cancelling !== null}
+        onOpenChange={(open) => {
+          if (!open) setCancelling(null);
+        }}
+      >
+        <AlertDialogContent className="border-border/80 bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display">
+              ¿Cancelar el pedido {cancelling?.code}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-sm leading-relaxed">
+              <span className="block">
+                Pasaron {ASSIGNMENT_RULES.cancelAfterMinutes} minutos desde que
+                quedó listo y ningún repartidor lo tomó. Si no lo cancelás, a los{" "}
+                {ASSIGNMENT_RULES.autoCancelAfterMinutes} minutos se cancela solo.
+                El comprador ve el motivo y el pedido queda registrado: no se
+                borra nada de tu historial.
+              </span>
+              <span className="block font-semibold text-foreground">
+                {cancelling?.buyerName} · {money(cancelling?.total ?? 0)}
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir esperando</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={() => {
+                const order = cancelling;
+                setCancelling(null);
+                if (order) {
+                  void handleStatus(
+                    order._id,
+                    "cancelled",
+                    "Nadie tomó el pedido dentro del tiempo de espera. El local lo canceló.",
+                  );
+                }
+              }}
+            >
+              Cancelar pedido
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -33,6 +33,38 @@ export const DELIVERY_RULES = {
 } as const;
 
 /**
+ * Reglas de asignación y confiabilidad de entregas.
+ *
+ * Un pedido listo no espera para siempre: primero se avisa a los repartidores
+ * cercanos, después queda urgente y, pasado un tiempo prudencial, el local
+ * puede cancelarlo. Para aceptar hace falta compartir una ubicación reciente y
+ * estar dentro del radio. Las entregas solo se agrupan cuando el desvío real
+ * es corto y no atrasa la entrega que ya está en curso.
+ */
+export const ASSIGNMENT_RULES = {
+  /** Minutos para que alguien tome un pedido listo antes de marcarlo urgente. */
+  readyWindowMinutes: 12,
+  /** Después de estos minutos sin repartidor, el local puede cancelar. */
+  cancelAfterMinutes: 30,
+  /** Si nadie lo toma, se cancela solo para no esperar indefinidamente. */
+  autoCancelAfterMinutes: 60,
+  /** Distancia máxima del repartidor al local para poder tomar el pedido. */
+  maxPickupKm: 6,
+  /** Antigüedad máxima de la ubicación del repartidor. */
+  maxLocationAgeMinutes: 12,
+  /** Entregas activas simultáneas como máximo (una sola o dos agrupadas). */
+  maxActiveTrips: 2,
+  /** Desvío máximo aceptable para sumar una segunda entrega a la ruta. */
+  groupMaxExtraKm: 3.5,
+  groupMaxExtraMinutes: 10,
+  /** Margen antes de avisar que la entrega va demorada. */
+  delayToleranceMinutes: 5,
+  /** Minutos fijos de retiro y de entrega para las estimaciones. */
+  pickupHandoffMinutes: 3,
+  dropoffHandoffMinutes: 4,
+} as const;
+
+/**
  * Un repartidor no lleva más de 3 unidades de producto en una entrega. Si la
  * compra es más grande, se parte en entregas consecutivas y cada una paga su
  * propio envío.
@@ -202,6 +234,68 @@ export function deliveryQuote(
 /** Distancia legible: "2,4 km". */
 export function formatKm(distanceKm: number) {
   return `${distanceKm.toFixed(1).replace(".", ",")} km`;
+}
+
+/** Minutos estimados de recorrido, incluyendo el tiempo fijo de la parada. */
+export function travelMinutes(
+  from: GeoPoint | null | undefined,
+  to: GeoPoint | null | undefined,
+  bufferMinutes = 0,
+) {
+  if (!isValidPoint(from) || !isValidPoint(to)) return null;
+  return Math.max(
+    1,
+    Math.ceil(travelKm(from, to) * DELIVERY_RULES.minutesPerKm) + bufferMinutes,
+  );
+}
+
+/**
+ * Cuánto suma sumar una segunda entrega a la ruta actual: se compara el
+ * recorrido directo contra el recorrido con la parada nueva. Devuelve null si
+ * falta alguna ubicación.
+ */
+export function groupRouteExtra(
+  current: { pickup: GeoPoint | null; dropoff: GeoPoint | null },
+  candidate: { pickup: GeoPoint | null; dropoff: GeoPoint | null },
+) {
+  if (
+    !isValidPoint(current.pickup) ||
+    !isValidPoint(current.dropoff) ||
+    !isValidPoint(candidate.pickup) ||
+    !isValidPoint(candidate.dropoff)
+  ) {
+    return null;
+  }
+  const direct = travelKm(current.pickup, current.dropoff);
+  const withStop =
+    travelKm(current.pickup, candidate.pickup) +
+    travelKm(candidate.pickup, candidate.dropoff) +
+    travelKm(candidate.dropoff, current.dropoff);
+  const extraKm = Math.max(0, withStop - direct);
+  return {
+    extraKm: Math.round(extraKm * 10) / 10,
+    extraMinutes: Math.ceil(extraKm * DELIVERY_RULES.minutesPerKm),
+  };
+}
+
+/** Estado del temporizador de un pedido listo que todavía no tiene repartidor. */
+export function assignmentWindow(readyAt?: number | null, now = Date.now()) {
+  if (!readyAt) {
+    return {
+      waitingMinutes: 0,
+      secondsLeft: null as number | null,
+      urgent: false,
+      cancellable: false,
+    };
+  }
+  const deadline = readyAt + ASSIGNMENT_RULES.readyWindowMinutes * 60_000;
+  const cancelAt = readyAt + ASSIGNMENT_RULES.cancelAfterMinutes * 60_000;
+  return {
+    waitingMinutes: Math.max(0, Math.floor((now - readyAt) / 60_000)),
+    secondsLeft: Math.max(0, Math.floor((deadline - now) / 1000)),
+    urgent: now >= deadline,
+    cancellable: now >= cancelAt,
+  };
 }
 
 /** Redondeo a 5 decimales (~1 m) antes de guardar un punto. */
