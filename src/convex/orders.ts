@@ -13,6 +13,25 @@ async function myBusiness(ctx: DbCtx, userId: Id<"users">) {
     .first();
 }
 
+/** Entregas hermanas de la misma compra partida en varias entregas. */
+async function groupSiblings(ctx: DbCtx, order: Doc<"orders">) {
+  if (!order.groupCode) return [];
+  const groupCode = order.groupCode;
+  const siblings = await ctx.db
+    .query("orders")
+    .withIndex("by_group", (q) => q.eq("groupCode", groupCode))
+    .collect();
+  return siblings.filter((sibling) => sibling._id !== order._id);
+}
+
+/** Entregas de la compra que todavía no salieron ni se cancelaron. */
+function pendingSiblings(siblings: Doc<"orders">[]) {
+  return siblings.filter(
+    (sibling) =>
+      sibling.status !== "delivered" && sibling.status !== "cancelled",
+  );
+}
+
 /**
  * Las entregas de una compra grande se preparan una detrás de otra: la
  * siguiente recién se habilita cuando la anterior ya salió del local.
@@ -21,10 +40,7 @@ async function previousDeliveryOpen(ctx: DbCtx, order: Doc<"orders">) {
   if (!order.groupCode || !order.batchIndex || order.batchIndex <= 1) {
     return false;
   }
-  const siblings = await ctx.db
-    .query("orders")
-    .withIndex("by_group", (q) => q.eq("groupCode", order.groupCode))
-    .collect();
+  const siblings = await groupSiblings(ctx, order);
   return siblings.some(
     (sibling) =>
       sibling.businessId === order.businessId &&
@@ -48,6 +64,7 @@ async function decorateOrder(
 ) {
   const buyer = await ctx.db.get(order.buyerId);
   const courier = order.courierId ? await ctx.db.get(order.courierId) : null;
+  const pendingGroup = pendingSiblings(await groupSiblings(ctx, order));
   return {
     _id: order._id,
     code: order.code,
@@ -67,6 +84,19 @@ async function decorateOrder(
     sameCourier: order.sameCourier ?? false,
     reservedCourierId: order.reservedCourierId ?? null,
     locked: await previousDeliveryOpen(ctx, order),
+    // Entregas que le faltan a esta compra: le sirve al repartidor para saber
+    // si se está comprometiendo a varias entregas.
+    remainingDeliveries: pendingGroup.length,
+    // De esas, las que están reservadas para este repartidor y puede soltar.
+    reservedDeliveries: pendingGroup.filter(
+      (sibling) =>
+        !!order.courierId &&
+        !sibling.courierId &&
+        sibling.reservedCourierId === order.courierId,
+    ).length,
+    groupEarnings:
+      order.deliveryFee +
+      pendingGroup.reduce((acc, sibling) => acc + sibling.deliveryFee, 0),
     createdAt: order.createdAt,
     acceptedAt: order.acceptedAt ?? null,
     courierAcceptedAt: order.courierAcceptedAt ?? null,
@@ -340,10 +370,7 @@ export const courierAccept = mutation({
     // Con "mismo repartidor", las entregas que falten de la compra quedan
     // reservadas para quien tomó la primera.
     if (order.sameCourier && order.groupCode) {
-      const siblings = await ctx.db
-        .query("orders")
-        .withIndex("by_group", (q) => q.eq("groupCode", order.groupCode!))
-        .collect();
+      const siblings = await groupSiblings(ctx, order);
       for (const sibling of siblings) {
         if (
           sibling._id === order._id ||
@@ -397,6 +424,34 @@ export const updateCourierLocation = mutation({
       courierLocationAt: Date.now(),
     });
     return { updated: true };
+  },
+});
+
+/**
+ * El repartidor ya no quiere hacer las entregas restantes de una compra
+ * grande: libera las que tenía reservadas para que otro las tome.
+ */
+export const courierRenounceRemaining = mutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Ese pedido no existe");
+    if (order.courierId !== userId) {
+      throw new Error("Este pedido no está asignado a vos");
+    }
+
+    let released = 0;
+    for (const sibling of await groupSiblings(ctx, order)) {
+      if (sibling.status === "delivered" || sibling.status === "cancelled") {
+        continue;
+      }
+      if (sibling.courierId || sibling.reservedCourierId !== userId) continue;
+      await ctx.db.patch(sibling._id, { reservedCourierId: undefined });
+      released += 1;
+    }
+    return { released };
   },
 });
 

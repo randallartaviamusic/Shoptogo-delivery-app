@@ -60,6 +60,9 @@ export type OrderView = {
   sameCourier: boolean;
   reservedCourierId: string | null;
   locked: boolean;
+  remainingDeliveries: number;
+  reservedDeliveries: number;
+  groupEarnings: number;
   createdAt: number;
   acceptedAt: number | null;
   courierAcceptedAt: number | null;

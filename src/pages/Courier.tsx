@@ -2,6 +2,16 @@ import { EmptyState } from "@/components/AppShell";
 import { CourierLocationReporter, DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { StatusPill, type OrderView } from "@/pages/Orders";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -11,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowRight,
   Bike,
   CheckCircle2,
@@ -69,7 +80,12 @@ export default function CourierPage() {
   const board = useQuery(api.orders.courierBoard);
   const accept = useMutation(api.orders.courierAccept);
   const updateStatus = useMutation(api.orders.courierUpdateStatus);
+  const renounce = useMutation(api.orders.courierRenounceRemaining);
   const [busy, setBusy] = useState<string | null>(null);
+  // Pedido con varias entregas que el repartidor está por aceptar.
+  const [confirming, setConfirming] = useState<OrderView | null>(null);
+  // Pedido del que quiere bajarse después de la primera entrega.
+  const [renouncing, setRenouncing] = useState<OrderView | null>(null);
 
   if (user && user.role !== "courier") {
     return (
@@ -100,12 +116,41 @@ export default function CourierPage() {
     try {
       await accept({ orderId: order._id as Id<"orders"> });
       toast.success("Pedido tomado", {
-        description: `Retirá en ${order.businessName}. Ganás ${money(order.deliveryFee)}.`,
+        description: takesSeveralDeliveries(order)
+          ? `Son ${order.remainingDeliveries + 1} entregas de esta compra: retirá cada una cuando el local la marque lista. Total en envíos ${money(order.groupEarnings)}.`
+          : `Retirá en ${order.businessName}. Ganás ${money(order.deliveryFee)}.`,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos asignarte el pedido");
     } finally {
       setBusy(null);
+    }
+  };
+
+  // Compra partida en varias entregas que el cliente quiere que haga el mismo
+  // repartidor: se avisa antes de aceptar y se puede renunciar después.
+  const takesSeveralDeliveries = (order: OrderView) =>
+    order.sameCourier && order.remainingDeliveries > 0;
+
+  const handleRenounce = async (order: OrderView) => {
+    setBusy(order._id);
+    try {
+      const result = await renounce({ orderId: order._id as Id<"orders"> });
+      toast.success("Liberaste las entregas restantes", {
+        description:
+          result.released === 0
+            ? "No quedaban entregas pendientes en esta compra."
+            : `${result.released} ${
+                result.released === 1 ? "entrega quedó" : "entregas quedaron"
+              } disponibles para otro repartidor.`,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos liberar las entregas",
+      );
+    } finally {
+      setBusy(null);
+      setRenouncing(null);
     }
   };
 
@@ -292,6 +337,20 @@ export default function CourierPage() {
                   </span>
                 </div>
 
+                {takesSeveralDeliveries(order) && (
+                  <div className="mt-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2.5">
+                    <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-accent">
+                      <AlertCircle className="size-3.5" />
+                      Compra de {order.remainingDeliveries + 1} entregas
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      El cliente pidió el mismo repartidor para todas. Aceptá solo
+                      si vas a hacer las {order.remainingDeliveries + 1} entregas:
+                      ganás {money(order.groupEarnings)} en envíos.
+                    </p>
+                  </div>
+                )}
+
                 <div className="mt-4 space-y-2.5">
                   <div className="flex gap-3">
                     <span className="relative mt-1 flex size-5 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-accent/10">
@@ -343,14 +402,20 @@ export default function CourierPage() {
                         ? undefined
                         : "Terminá la entrega que tenés en curso"
                     }
-                    onClick={() => handleAccept(order)}
+                    onClick={() =>
+                      takesSeveralDeliveries(order)
+                        ? setConfirming(order)
+                        : handleAccept(order)
+                    }
                   >
                     {busy === order._id ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : (
                       <Navigation className="size-4" />
                     )}
-                    Tomar pedido
+                    {takesSeveralDeliveries(order)
+                      ? `Aceptar las ${order.remainingDeliveries + 1} entregas`
+                      : "Tomar pedido"}
                   </Button>
                 </div>
               </div>
@@ -443,6 +508,28 @@ export default function CourierPage() {
                   </div>
                 )}
 
+                {order.remainingDeliveries > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/30 bg-accent/[0.07] px-3 py-2.5">
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Te faltan {order.remainingDeliveries}{" "}
+                      {order.remainingDeliveries === 1 ? "entrega" : "entregas"} de
+                      esta compra.
+                      {order.sameCourier ? " El cliente pidió el mismo repartidor." : ""}
+                    </p>
+                    {order.reservedDeliveries > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5 text-muted-foreground hover:text-primary"
+                        disabled={busy === order._id}
+                        onClick={() => setRenouncing(order)}
+                      >
+                        Renunciar a las próximas
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">
                   <p className="text-[11px] text-muted-foreground">
                     Recogido {order.pickedUpAt ? clockTime(order.pickedUpAt) : "—"}
@@ -518,6 +605,86 @@ export default function CourierPage() {
           )}
         </motion.div>
       )}
+
+      <AlertDialog
+        open={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null);
+        }}
+      >
+        <AlertDialogContent className="border-border/80 bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display">
+              Esta compra tiene varias entregas
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-sm leading-relaxed">
+              <span className="block">
+                {confirming?.businessName} pidió que el mismo repartidor haga las{" "}
+                {(confirming?.remainingDeliveries ?? 0) + 1} entregas de este
+                pedido. Cada una se retira cuando el local la marca lista.
+              </span>
+              <span className="block font-semibold text-foreground">
+                Ganás {money(confirming?.groupEarnings ?? 0)} en envíos si las
+                hacés todas.
+              </span>
+              <span className="block">
+                Aceptá solo si estás de acuerdo. Si después de la primera entrega
+                cambiás de opinión, podés liberar las siguientes para otro
+                repartidor.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Ahora no</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-ember-gradient text-black"
+              onClick={() => {
+                const order = confirming;
+                setConfirming(null);
+                if (order) void handleAccept(order);
+              }}
+            >
+              Acepto todas las entregas
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={renouncing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenouncing(null);
+        }}
+      >
+        <AlertDialogContent className="border-border/80 bg-card">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display">
+              ¿Renunciar a las entregas restantes?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm leading-relaxed">
+              Vas a terminar la entrega que tenés en curso, pero las{" "}
+              {renouncing?.remainingDeliveries ?? 0}{" "}
+              {(renouncing?.remainingDeliveries ?? 0) === 1
+                ? "entrega que falta"
+                : "entregas que faltan"}{" "}
+              de este pedido quedan disponibles para otro repartidor. No vas a
+              cobrar esos envíos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Seguir con las entregas</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-primary text-primary-foreground"
+              onClick={() => {
+                const order = renouncing;
+                if (order) void handleRenounce(order);
+              }}
+            >
+              Renunciar a las próximas
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

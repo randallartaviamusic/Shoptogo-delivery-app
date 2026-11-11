@@ -10,6 +10,8 @@ type AvailableOrder = {
   code: string;
   businessName: string;
   deliveryFee: number;
+  sameCourier?: boolean;
+  remainingDeliveries?: number;
 };
 
 function playChime() {
@@ -68,15 +70,19 @@ export function CourierAlerts({ enabled }: { enabled: boolean }) {
 
     const first = fresh[0];
     playChime();
+    const multiple =
+      first.sameCourier && (first.remainingDeliveries ?? 0) > 0
+        ? ` · compra de ${(first.remainingDeliveries ?? 0) + 1} entregas para el mismo repartidor`
+        : "";
     toast("Pedido listo para entregar", {
-      description: `${first.businessName} · ${money(first.deliveryFee)}${
+      description: `${first.businessName} · ${money(first.deliveryFee)}${multiple}${
         fresh.length > 1 ? ` · y ${fresh.length - 1} más` : ""
       }`,
+      duration: multiple ? 16000 : 12000,
       action: {
         label: "Ver pedidos",
         onClick: () => navigate("/courier"),
       },
-      duration: 12000,
     });
   }, [board, enabled, navigate]);
 
