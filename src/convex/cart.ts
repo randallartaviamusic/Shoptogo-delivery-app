@@ -405,6 +405,10 @@ export const checkout = mutation({
 
     for (const trip of trips) {
       const tripStops = trip.stops.length;
+      // Un código de retiro y un PIN de entrega por entrega, no por tienda: el
+      // repartidor lo recibe del local al retirar y del comprador al entregar.
+      const pickupCode = String(Math.floor(1000 + Math.random() * 9000));
+      const deliveryPin = String(Math.floor(1000 + Math.random() * 9000));
 
       for (const [position, tripStop] of trip.stops.entries()) {
         const store = stores.get(tripStop.businessId);
@@ -452,6 +456,9 @@ export const checkout = mutation({
           batchIndex: trip.index,
           batchCount: trips.length,
           tripStops,
+          tripPosition: position,
+          pickupCode,
+          deliveryPin,
           sameCourier: args.sameCourier ?? false,
           buyerId: userId,
           businessId: store.id,

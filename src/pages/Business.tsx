@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/AppShell";
+import { CashIssueNote } from "@/components/CashIssueNote";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
@@ -35,8 +36,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import type { OrderStatus } from "@/convex/schema";
+import type { CashIssueKind, OrderStatus } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { CASH_ISSUE_LABELS } from "@/lib/cash";
 import { getDepartment } from "@/lib/departments";
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
@@ -51,6 +53,7 @@ import {
   DollarSign,
   Loader2,
   MapPin,
+  PackageCheck,
   Pencil,
   Plus,
   Settings2,
@@ -58,6 +61,7 @@ import {
   TicketPercent,
   Trash2,
   UtensilsCrossed,
+  Wallet,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
@@ -123,8 +127,22 @@ export default function BusinessPage() {
   const addProduct = useMutation(api.businesses.addProduct);
   const updateProduct = useMutation(api.businesses.updateProduct);
   const removeProduct = useMutation(api.businesses.removeProduct);
+  const confirmCash = useMutation(api.orders.businessConfirmCash);
+  const reportIssue = useMutation(api.orders.reportCashIssue);
+  const resolveIssue = useMutation(api.orders.resolveCashIssue);
 
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
+  // Efectivo que el negocio confirma haber recibido del repartidor.
+  const [cashTarget, setCashTarget] = useState<OrderView | null>(null);
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashNote, setCashNote] = useState("");
+  const [savingCash, setSavingCash] = useState(false);
+  // Reclamo o faltante que reporta el negocio.
+  const [issueTarget, setIssueTarget] = useState<OrderView | null>(null);
+  const [issueKind, setIssueKind] = useState<CashIssueKind>("incomplete");
+  const [issueAmount, setIssueAmount] = useState("");
+  const [issueNote, setIssueNote] = useState("");
+  const [savingIssue, setSavingIssue] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
@@ -322,6 +340,82 @@ export default function BusinessPage() {
     }
   };
 
+  const openCash = (order: OrderView) => {
+    setCashTarget(order);
+    setCashAmount(String(order.businessDue));
+    setCashNote("");
+  };
+
+  const cashDifference = cashTarget
+    ? Math.round(Number(cashAmount) || 0) - cashTarget.businessDue
+    : 0;
+
+  const handleConfirmCash = async () => {
+    if (!cashTarget) return;
+    setSavingCash(true);
+    try {
+      const amount = Math.round(Number(cashAmount) || 0);
+      await confirmCash({
+        orderId: cashTarget._id as Id<"orders">,
+        amount,
+        note: cashNote.trim() || undefined,
+      });
+      toast.success("Efectivo confirmado", {
+        description: `${money(amount)} registrados para el pedido ${cashTarget.code}.`,
+      });
+      setCashTarget(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos confirmar el efectivo",
+      );
+    } finally {
+      setSavingCash(false);
+    }
+  };
+
+  const openIssue = (order: OrderView) => {
+    setIssueTarget(order);
+    setIssueKind("incomplete");
+    setIssueAmount(String(Math.max(0, order.businessPending)));
+    setIssueNote("");
+  };
+
+  const handleReportIssue = async () => {
+    if (!issueTarget) return;
+    setSavingIssue(true);
+    try {
+      await reportIssue({
+        orderId: issueTarget._id as Id<"orders">,
+        kind: issueKind,
+        amount: Number(issueAmount) || undefined,
+        note: issueNote,
+      });
+      toast.success("Problema registrado", {
+        description: "Queda con fecha, usuario y monto para hacer seguimiento.",
+      });
+      setIssueTarget(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos registrar el problema",
+      );
+    } finally {
+      setSavingIssue(false);
+    }
+  };
+
+  const handleResolveIssue = async (order: OrderView) => {
+    try {
+      await resolveIssue({ orderId: order._id as Id<"orders"> });
+      toast.success("Caso cerrado", {
+        description: "El problema de efectivo quedó resuelto con fecha y usuario.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos cerrar el caso",
+      );
+    }
+  };
+
   return (
     <div>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -434,6 +528,25 @@ export default function BusinessPage() {
                 onClick={openSettings}
               >
                 Cambiar promoción
+              </Button>
+            </div>
+          )}
+
+          {(stats?.cashPending ?? 0) > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/[0.07] p-3.5">
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <Wallet className="size-3.5" />
+                  Efectivo pendiente de confirmar
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Los repartidores tienen {money(stats?.cashPending ?? 0)} de tus
+                  ventas sin confirmar. Confirmá el monto recibido en cada pedido
+                  entregado para cerrar la diferencia.
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline" className="border-primary/40 text-primary">
+                <Link to="/business?tab=orders">Revisar entregas</Link>
               </Button>
             </div>
           )}
@@ -639,6 +752,130 @@ export default function BusinessPage() {
                   <MapPin className="mt-0.5 size-3.5 shrink-0 text-accent" />
                   <span>{order.address}</span>
                 </div>
+
+                {order.pickupCode &&
+                  (order.status === "ready" || order.status === "picked_up") && (
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2.5">
+                      <div>
+                        <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                          <PackageCheck className="size-3.5" /> Código de retiro
+                        </p>
+                        <p className="mt-0.5 font-display text-2xl font-extrabold tracking-[0.3em]">
+                          {order.pickupCode}
+                        </p>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground">
+                          Dáselo al repartidor cuando retire la entrega. Confirma
+                          que se lleva el pedido correcto.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                <div className="mt-3 rounded-xl border border-border/70 p-3">
+                  <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                    <Wallet className="size-3.5" /> Efectivo de este pedido
+                  </p>
+                  <div className="mt-2 space-y-1 text-[11px]">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Productos de tu local</span>
+                      <span>{money(order.subtotal)}</span>
+                    </div>
+                    {(order.deliveryDiscount ?? 0) > 0 && (
+                      <div className="flex justify-between text-accent">
+                        <span>Tu promoción de envío cubre</span>
+                        <span>−{money(order.deliveryDiscount ?? 0)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-border/60 pt-1 font-semibold">
+                      <span>Recibís del repartidor</span>
+                      <span>{money(order.businessDue)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Envío (para el repartidor)</span>
+                      <span>{money(order.deliveryFee)}</span>
+                    </div>
+                  </div>
+
+                  {order.cashCollected !== null && (
+                    <p className="mt-2 rounded-lg bg-secondary/40 p-2 text-[10px] leading-relaxed text-muted-foreground">
+                      El repartidor confirmó {money(order.cashCollected)} cobrados al
+                      comprador por toda la entrega
+                      {order.cashCollectedByName
+                        ? ` (${order.cashCollectedByName})`
+                        : ""}
+                      {" · "}
+                      {relativeTime(order.cashCollectedAt ?? order.createdAt)}.
+                      {(order.cashDifference ?? 0) !== 0 && (
+                        <span className="text-primary">
+                          {" "}
+                          Diferencia de {money(order.cashDifference ?? 0)} sobre lo
+                          esperado.
+                        </span>
+                      )}
+                    </p>
+                  )}
+
+                  {order.cashHanded !== null ? (
+                    <div className="mt-2 space-y-1 text-[11px] leading-relaxed">
+                      <p className="text-accent">
+                        Confirmaste {money(order.cashHanded)} recibidos
+                        {order.cashHandedByName
+                          ? ` · ${order.cashHandedByName}`
+                          : ""}{" · "}
+                        {relativeTime(order.cashHandedAt ?? order.createdAt)}
+                      </p>
+                      {order.businessPending !== 0 && (
+                        <p className="text-primary">
+                          Diferencia pendiente: {money(order.businessPending)}
+                          {order.businessPending > 0
+                            ? " · todavía te falta cobrar."
+                            : " · recibiste de más."}
+                        </p>
+                      )}
+                      {order.cashHandedLog.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Registros:{" "}
+                          {order.cashHandedLog
+                            .map(
+                              (entry) =>
+                                `${money(entry.amount)} (${relativeTime(entry.at)})`,
+                            )
+                            .join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  ) : order.status === "delivered" ? (
+                    <Button
+                      size="sm"
+                      className="mt-2 w-full gap-1.5 bg-ember-gradient text-black"
+                      onClick={() => openCash(order)}
+                    >
+                      <Wallet className="size-3.5" />
+                      Confirmar efectivo recibido
+                    </Button>
+                  ) : (
+                    <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                      El efectivo se confirma cuando la entrega está completada.
+                    </p>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-7 px-2 text-[11px] text-muted-foreground hover:text-primary"
+                    onClick={() => openIssue(order)}
+                  >
+                    Reportar problema de efectivo
+                  </Button>
+                </div>
+
+                {order.cashIssue && (
+                  <CashIssueNote
+                    issue={order.cashIssue}
+                    className="mt-2"
+                    onResolve={() => void handleResolveIssue(order)}
+                  />
+                )}
 
                 {order.tripStops > 1 && (
                   <p className="mt-2 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
@@ -987,6 +1224,140 @@ export default function BusinessPage() {
               )}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={cashTarget !== null}
+        onOpenChange={(open) => !open && setCashTarget(null)}
+      >
+        <DialogContent className="border-border/80 bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Confirmar efectivo recibido
+            </DialogTitle>
+            <DialogDescription>
+              Pedido {cashTarget?.code}: te corresponden{" "}
+              {money(cashTarget?.businessDue ?? 0)} por tus productos. Queda
+              registrado el monto, la fecha y quién lo confirmó.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="cash-amount">Monto recibido</Label>
+              <Input
+                id="cash-amount"
+                type="number"
+                min={0}
+                value={cashAmount}
+                onChange={(event) => setCashAmount(event.target.value)}
+              />
+            </div>
+            {cashDifference !== 0 && (
+              <>
+                <p className="rounded-xl border border-primary/30 bg-primary/[0.07] p-2.5 text-[11px] leading-relaxed text-primary">
+                  Diferencia: {money(cashDifference)}{" "}
+                  {cashDifference < 0 ? "menos" : "más"} de lo que te
+                  corresponde. Queda asentado como problema de efectivo.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cash-note">Qué pasó</Label>
+                  <Textarea
+                    id="cash-note"
+                    value={cashNote}
+                    onChange={(event) => setCashNote(event.target.value)}
+                    placeholder="Ej: el repartidor entregó de menos y quedó pendiente ₡1.500."
+                    className="min-h-16 resize-none"
+                  />
+                </div>
+              </>
+            )}
+            <Button
+              className="h-11 w-full gap-2 bg-ember-gradient text-black"
+              disabled={savingCash}
+              onClick={() => void handleConfirmCash()}
+            >
+              {savingCash ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Wallet className="size-4" />
+              )}
+              Confirmar monto
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={issueTarget !== null}
+        onOpenChange={(open) => !open && setIssueTarget(null)}
+      >
+        <DialogContent className="border-border/80 bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Reportar problema de efectivo
+            </DialogTitle>
+            <DialogDescription>
+              Pedido {issueTarget?.code}. El repartidor también lo ve y queda con
+              fecha, usuario y monto.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Tipo de problema</Label>
+              <Select
+                value={issueKind}
+                onValueChange={(value) => setIssueKind(value as CashIssueKind)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CASH_ISSUE_LABELS).map(([kind, meta]) => (
+                    <SelectItem key={kind} value={kind}>
+                      {meta.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                {CASH_ISSUE_LABELS[issueKind].hint}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="issue-amount">Monto (opcional)</Label>
+              <Input
+                id="issue-amount"
+                type="number"
+                min={0}
+                value={issueAmount}
+                onChange={(event) => setIssueAmount(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="issue-note">Qué pasó</Label>
+              <Textarea
+                id="issue-note"
+                required
+                value={issueNote}
+                onChange={(event) => setIssueNote(event.target.value)}
+                placeholder="Contá el detalle para poder resolverlo."
+                className="min-h-20 resize-none"
+              />
+            </div>
+            <Button
+              className="h-11 w-full gap-2 bg-ember-gradient text-black"
+              disabled={savingIssue}
+              onClick={() => void handleReportIssue()}
+            >
+              {savingIssue ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Wallet className="size-4" />
+              )}
+              Registrar problema
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

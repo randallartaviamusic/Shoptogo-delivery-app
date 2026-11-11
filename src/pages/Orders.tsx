@@ -1,4 +1,5 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
+import { CashIssueNote } from "@/components/CashIssueNote";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { OrderStatus } from "@/convex/schema";
+import type { CashIssueView } from "@/lib/cash";
 import type { GeoPoint } from "@/lib/delivery";
 import { formatKm } from "@/lib/delivery";
 import { ACTIVE_STATUSES, clockTime, money, ORDER_STATUS, relativeTime } from "@/lib/format";
@@ -28,6 +30,7 @@ import {
   PackageCheck,
   ReceiptText,
   Store,
+  Wallet,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -67,6 +70,24 @@ export type OrderView = {
   extraStopFee: number;
   tripEarnings: number;
   tripTotal: number;
+  // Efectivo verificable.
+  businessDue: number;
+  businessPending: number;
+  expectedTotal: number;
+  expectedEarnings: number;
+  cashCollected: number | null;
+  cashCollectedAt: number | null;
+  cashCollectedByName: string | null;
+  cashCollectedLog: Array<{ amount: number; at: number }>;
+  cashHandedLog: Array<{ amount: number; at: number }>;
+  cashHanded: number | null;
+  cashHandedAt: number | null;
+  cashHandedByName: string | null;
+  cashDifference: number | null;
+  cashPending: number;
+  cashIssue: CashIssueView | null;
+  pickupCode: string | null;
+  deliveryPin: string | null;
   stops: Array<{
     businessId: string;
     name: string;
@@ -235,6 +256,22 @@ function OrderDetailDialog({
           <StatusPill status={order.status} />
           <OrderProgress status={order.status} />
 
+          {order.deliveryPin &&
+            (order.status === "ready" || order.status === "picked_up") && (
+              <div className="rounded-xl border border-accent/40 bg-accent/[0.08] p-3 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+                  PIN de entrega
+                </p>
+                <p className="mt-1 font-display text-3xl font-extrabold tracking-[0.35em]">
+                  {order.deliveryPin}
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Dalo al repartidor solo cuando tengas el pedido en la mano. Él lo
+                  ingresa para cerrar la entrega; el efectivo se registra aparte.
+                </p>
+              </div>
+            )}
+
           {order.tripStops > 1 && (
             <div className="rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
               <p className="font-semibold text-accent">
@@ -316,10 +353,78 @@ function OrderDetailDialog({
               </div>
             )}
             <div className="flex justify-between border-t border-border/60 pt-1.5 font-bold">
-              <span>Total</span>
+              <span>
+                {order.tripStops > 1 ? "Total de esta tienda" : "Total"}
+              </span>
               <span>{money(order.total)}</span>
             </div>
           </div>
+
+          <div className="rounded-xl border border-border/70 p-3">
+            <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+              <Wallet className="size-3.5" /> Efectivo del pedido
+            </p>
+            <div className="mt-2 space-y-1 text-[11px]">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Productos (para el local)</span>
+                <span>{money(order.businessDue)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>
+                  Envío (para el repartidor
+                  {order.tripStops > 1 ? ", parte de esta tienda" : ""})
+                </span>
+                <span>{money(order.deliveryFee)}</span>
+              </div>
+              <div className="flex justify-between border-t border-border/60 pt-1 font-semibold">
+                <span>
+                  {order.tripStops > 1
+                    ? `Total a cobrar (entrega de ${order.tripStops} tiendas)`
+                    : "Total a cobrar al comprador"}
+                </span>
+                <span>{money(order.tripTotal)}</span>
+              </div>
+            </div>
+
+            <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-[11px] leading-relaxed">
+              {order.status === "cancelled" ? (
+                <p className="text-muted-foreground">
+                  Pedido cancelado: no se cobra efectivo. Si ya se había cobrado,
+                  el reembolso queda registrado como problema de efectivo.
+                </p>
+              ) : order.cashCollected === null ? (
+                <p className="text-muted-foreground">
+                  El repartidor confirma el efectivo recibido al entregar. Se cobra
+                  una sola vez por entrega.
+                </p>
+              ) : (
+                <>
+                  <div className="flex justify-between text-accent">
+                    <span>Efectivo recibido por el repartidor</span>
+                    <span>{money(order.cashCollected)}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Confirmado por {order.cashCollectedByName ?? "el repartidor"}{" "}
+                    · {relativeTime(order.cashCollectedAt ?? order.createdAt)}
+                  </p>
+                  {(order.cashDifference ?? 0) !== 0 && (
+                    <p className="text-primary">
+                      Diferencia: {money(order.cashDifference ?? 0)} sobre un total
+                      de {money(order.tripTotal)}.
+                    </p>
+                  )}
+                  {order.cashHanded !== null && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Entregado al local</span>
+                      <span>{money(order.cashHanded)}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {order.cashIssue && <CashIssueNote issue={order.cashIssue} />}
 
           <div className="space-y-2 text-sm">
             <p className="flex items-start gap-2 text-muted-foreground">

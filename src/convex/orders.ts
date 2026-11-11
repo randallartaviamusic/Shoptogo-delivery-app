@@ -4,6 +4,9 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { DELIVERY_RULES } from "../lib/delivery";
+import { cashIssueKindValidator } from "./schema";
+
+type OrderViewer = "buyer" | "business" | "courier";
 
 type DbCtx = QueryCtx | MutationCtx;
 
@@ -41,6 +44,23 @@ function tripKey(order: Doc<"orders">) {
   return `${order.groupCode ?? order.code}#${order.batchIndex ?? 1}`;
 }
 
+/** Órdenes vigentes de la entrega (sin las tiendas canceladas). */
+async function tripForOrder(ctx: DbCtx, order: Doc<"orders">) {
+  const trip = (await tripOrders(ctx, order)).filter(
+    (member) => member.status !== "cancelled",
+  );
+  return trip.length > 0 ? trip : [order];
+}
+
+/** La orden líder guarda el efectivo cobrado y los problemas del viaje. */
+function tripLeaderOf(trip: Doc<"orders">[]) {
+  return trip.reduce(
+    (best, member) =>
+      (member.tripPosition ?? 0) < (best.tripPosition ?? 0) ? member : best,
+    trip[0],
+  );
+}
+
 /** Entregas de la compra que todavía no salieron ni se cancelaron. */
 function pendingSiblings(siblings: Doc<"orders">[]) {
   return siblings.filter(
@@ -73,15 +93,30 @@ function startOfToday() {
   return now.getTime();
 }
 
+async function userName(ctx: DbCtx, id?: Id<"users">) {
+  if (!id) return null;
+  const user = await ctx.db.get(id);
+  return user?.name ?? null;
+}
+
+/** Lo que el local recibe en efectivo por sus productos (sin el envío). */
+function businessDue(order: Doc<"orders">) {
+  return order.subtotal - (order.deliveryDiscount ?? 0);
+}
+
 async function decorateOrder(
   ctx: DbCtx,
   order: Doc<"orders">,
   business: Doc<"businesses"> | null,
+  viewer: OrderViewer,
 ) {
   const buyer = await ctx.db.get(order.buyerId);
   const courier = order.courierId ? await ctx.db.get(order.courierId) : null;
   const pendingGroup = pendingSiblings(await groupSiblings(ctx, order));
-  const trip = await tripOrders(ctx, order);
+  // Las tiendas canceladas del viaje no cuentan para el cobro ni las paradas.
+  const trip = (await tripOrders(ctx, order)).filter(
+    (member) => member.status !== "cancelled" || member._id === order._id,
+  );
   const stops = [];
   for (const tripOrder of trip) {
     const stopBusiness =
@@ -106,6 +141,23 @@ async function decorateOrder(
   const stopSurcharge =
     DELIVERY_RULES.extraStopFee *
     Math.max(0, (order.tripStops ?? trip.length) - 1);
+  const tripTotal = trip.reduce((acc, member) => acc + member.total, 0);
+  // La orden líder del viaje guarda el efectivo cobrado y los problemas.
+  const leader = trip.reduce(
+    (best, member) =>
+      (member.tripPosition ?? 0) < (best.tripPosition ?? 0) ? member : best,
+    trip[0],
+  );
+  const due = businessDue(order);
+  const tripDue = trip.reduce((acc, member) => acc + businessDue(member), 0);
+  const tripHanded = trip.reduce(
+    (acc, member) => acc + (member.cashHanded ?? 0),
+    0,
+  );
+  const collectorName = await userName(ctx, leader.cashCollectedBy);
+  const handedByName = await userName(ctx, order.cashHandedBy);
+  const issueByName = await userName(ctx, leader.cashIssue?.by);
+  const issueResolvedByName = await userName(ctx, leader.cashIssue?.resolvedBy);
   return {
     _id: order._id,
     code: order.code,
@@ -148,7 +200,42 @@ async function decorateOrder(
     extraStopFee: stopSurcharge,
     tripEarnings,
     // Lo que el repartidor cobra al cliente en esta entrega (productos + envío).
-    tripTotal: trip.reduce((acc, member) => acc + member.total, 0),
+    tripTotal,
+    // Efectivo verificable: montos esperados, confirmados y diferencias.
+    businessDue: due,
+    businessPending: due - (order.cashHanded ?? 0),
+    expectedTotal: tripTotal,
+    expectedEarnings: tripEarnings,
+    cashCollected: leader.cashCollected ?? null,
+    cashCollectedAt: leader.cashCollectedAt ?? null,
+    cashCollectedByName: collectorName,
+    cashHanded: order.cashHanded ?? null,
+    cashHandedAt: order.cashHandedAt ?? null,
+    cashHandedByName: handedByName,
+    cashCollectedLog: (leader.cashCollectedLog ?? []).map((entry) => ({
+      amount: entry.amount,
+      at: entry.at,
+    })),
+    cashHandedLog: (order.cashHandedLog ?? []).map((entry) => ({
+      amount: entry.amount,
+      at: entry.at,
+    })),
+    cashDifference:
+      leader.cashCollected !== undefined
+        ? leader.cashCollected - tripTotal
+        : null,
+    // Dinero de los locales que el repartidor todavía tiene en la mano.
+    cashPending: tripDue - tripHanded,
+    cashIssue: leader.cashIssue
+      ? {
+          ...leader.cashIssue,
+          byName: issueByName,
+          resolvedByName: issueResolvedByName,
+        }
+      : null,
+    // Los códigos se muestran sólo a quien tiene que usarlos.
+    pickupCode: viewer === "business" ? (order.pickupCode ?? null) : null,
+    deliveryPin: viewer === "buyer" ? (order.deliveryPin ?? null) : null,
     stops,
     createdAt: order.createdAt,
     acceptedAt: order.acceptedAt ?? null,
@@ -192,7 +279,7 @@ export const myOrders = query({
     const result = [];
     for (const order of sorted) {
       const business = await ctx.db.get(order.businessId);
-      result.push(await decorateOrder(ctx, order, business));
+      result.push(await decorateOrder(ctx, order, business, "buyer"));
     }
     return result;
   },
@@ -213,7 +300,7 @@ export const businessBoard = query({
     const sorted = orders.sort((a, b) => b.createdAt - a.createdAt);
     const decorated = [];
     for (const order of sorted) {
-      decorated.push(await decorateOrder(ctx, order, business));
+      decorated.push(await decorateOrder(ctx, order, business, "business"));
     }
 
     const today = startOfToday();
@@ -258,6 +345,15 @@ export const businessBoard = query({
           0,
         ),
         deliveredToday: deliveredToday.length,
+        // Efectivo de tus productos que el repartidor todavía no confirmó
+        // (de todo el historial, no sólo de hoy).
+        cashPending: sorted.reduce(
+          (acc, o) =>
+            o.status === "delivered"
+              ? acc + Math.max(0, businessDue(o) - (o.cashHanded ?? 0))
+              : acc,
+          0,
+        ),
         active: active.length,
         waiting: sorted.filter((o) => o.status === "pending").length,
         totalOrders: sorted.length,
@@ -301,7 +397,7 @@ export const courierBoard = query({
       }
       seenTrips.add(key);
       const business = await ctx.db.get(order.businessId);
-      available.push(await decorateOrder(ctx, order, business));
+      available.push(await decorateOrder(ctx, order, business, "courier"));
     }
 
     const mine = await ctx.db
@@ -318,7 +414,7 @@ export const courierBoard = query({
       if (seenMine.has(key)) continue;
       seenMine.add(key);
       const business = await ctx.db.get(order.businessId);
-      const decorated = await decorateOrder(ctx, order, business);
+      const decorated = await decorateOrder(ctx, order, business, "courier");
       if (order.status === "picked_up" || order.status === "ready") {
         active.push(decorated);
       } else if (order.status === "delivered") {
@@ -414,6 +510,152 @@ export const businessUpdateStatus = mutation({
     if (stamp) patch[stamp] = Date.now();
     await ctx.db.patch(args.orderId, patch);
     return { status: args.status };
+  },
+});
+
+/**
+ * El negocio confirma cuánto efectivo le entregó el repartidor. La diferencia
+ * contra el valor de sus productos queda registrada como faltante o reclamo.
+ */
+export const businessConfirmCash = mutation({
+  args: {
+    orderId: v.id("orders"),
+    amount: v.number(),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const business = await myBusiness(ctx, userId);
+    if (!business) throw new Error("No tenés un negocio asociado");
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.businessId !== business._id) {
+      throw new Error("Ese pedido no pertenece a tu negocio");
+    }
+    if (order.status !== "delivered") {
+      throw new Error("El efectivo se confirma cuando la entrega ya se completó");
+    }
+
+    const amount = Math.round(args.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error("Ese monto no es válido");
+    }
+    const due = businessDue(order);
+    const difference = amount - due;
+    const note = (args.note ?? "").trim();
+    if (difference !== 0 && note.length < 4) {
+      throw new Error(
+        "El monto no coincide con lo que te corresponde: escribí una nota con lo que pasó",
+      );
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.orderId, {
+      cashHanded: amount,
+      cashHandedAt: now,
+      cashHandedBy: userId,
+      cashHandedLog: [
+        ...(order.cashHandedLog ?? []),
+        { amount, at: now, by: userId },
+      ],
+    });
+
+    const trip = await tripForOrder(ctx, order);
+    const leader = tripLeaderOf(trip);
+    if (difference !== 0) {
+      await ctx.db.patch(leader._id, {
+        cashIssue: {
+          kind: difference < 0 ? "incomplete" : "claim",
+          amount: Math.abs(difference),
+          note,
+          at: now,
+          by: userId,
+          orderId: order._id,
+        },
+      });
+    } else if (
+      leader.cashIssue?.orderId === order._id &&
+      !leader.cashIssue.resolvedAt
+    ) {
+      // Si después se completa el monto, el faltante de este local se cierra.
+      await ctx.db.patch(leader._id, {
+        cashIssue: {
+          ...leader.cashIssue,
+          resolvedAt: now,
+          resolvedBy: userId,
+        },
+      });
+    }
+    return { difference };
+  },
+});
+
+/** Cualquiera de las partes puede dejar asentado un problema de efectivo. */
+export const reportCashIssue = mutation({
+  args: {
+    orderId: v.id("orders"),
+    kind: cashIssueKindValidator,
+    amount: v.optional(v.number()),
+    note: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Ese pedido no existe");
+    const business = await myBusiness(ctx, userId);
+    const isOwner = business?._id === order.businessId;
+    const isCourier = order.courierId === userId;
+    const isBuyer = order.buyerId === userId;
+    if (!isOwner && !isCourier && !isBuyer) {
+      throw new Error("Ese pedido no es tuyo");
+    }
+    const note = args.note.trim();
+    if (note.length < 6) {
+      throw new Error("Contá brevemente qué pasó con el efectivo");
+    }
+    const amount = Math.max(0, Math.round(args.amount ?? 0));
+    const now = Date.now();
+    const trip = await tripForOrder(ctx, order);
+    const leader = tripLeaderOf(trip);
+    await ctx.db.patch(leader._id, {
+      cashIssue: {
+        kind: args.kind,
+        amount,
+        note,
+        at: now,
+        by: userId,
+        orderId: order._id,
+      },
+    });
+    return { reported: true };
+  },
+});
+
+export const resolveCashIssue = mutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Ese pedido no existe");
+    const business = await myBusiness(ctx, userId);
+    const isOwner = business?._id === order.businessId;
+    const isCourier = order.courierId === userId;
+    if (!isOwner && !isCourier) {
+      throw new Error("Sólo el local o el repartidor pueden cerrar el caso");
+    }
+    const trip = await tripForOrder(ctx, order);
+    const leader = tripLeaderOf(trip);
+    if (!leader.cashIssue || leader.cashIssue.resolvedAt) return null;
+    await ctx.db.patch(leader._id, {
+      cashIssue: {
+        ...leader.cashIssue,
+        resolvedAt: Date.now(),
+        resolvedBy: userId,
+      },
+    });
+    return { resolved: true };
   },
 });
 
@@ -582,6 +824,14 @@ export const courierUpdateStatus = mutation({
   args: {
     orderId: v.id("orders"),
     status: v.union(v.literal("picked_up"), v.literal("delivered")),
+    // Código que entrega el local al retirar el pedido.
+    pickupCode: v.optional(v.string()),
+    // PIN que da el comprador al recibir.
+    pin: v.optional(v.string()),
+    // Efectivo que el repartidor confirma haber cobrado al comprador.
+    cashAmount: v.optional(v.number()),
+    // Nota obligatoria si el monto no coincide con el total del pedido.
+    cashNote: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -601,26 +851,100 @@ export const courierUpdateStatus = mutation({
       if (trip.some((member) => member.status !== "ready")) {
         throw new Error("Todavía falta que una tienda tenga su parte lista");
       }
+      // El código confirma que el repartidor se lleva el pedido correcto.
+      const expectedCode =
+        order.pickupCode ?? trip.find((member) => member.pickupCode)?.pickupCode;
+      if (expectedCode) {
+        const given = (args.pickupCode ?? "").trim();
+        if (!given) {
+          throw new Error(
+            "Pedile el código de retiro al local para confirmar que llevás el pedido correcto",
+          );
+        }
+        if (given !== expectedCode) {
+          throw new Error(
+            "El código de retiro no coincide. Revisalo con el local antes de salir",
+          );
+        }
+      }
       for (const member of trip) {
         await ctx.db.patch(member._id, {
           status: "picked_up",
           pickedUpAt: now,
         });
       }
-    } else {
-      if (trip.some((member) => member.status !== "picked_up")) {
-        throw new Error("Primero marcá la entrega como recogida");
+      return { status: args.status, orders: trip.length };
+    }
+
+    if (trip.some((member) => member.status !== "picked_up")) {
+      throw new Error("Primero marcá la entrega como recogida");
+    }
+    // El PIN del comprador confirma que el pedido llegó a la persona correcta.
+    const expectedPin =
+      order.deliveryPin ?? trip.find((member) => member.deliveryPin)?.deliveryPin;
+    if (expectedPin) {
+      const given = (args.pin ?? "").trim();
+      if (!given) {
+        throw new Error(
+          "Pedile el PIN de entrega al comprador para confirmar que recibió el pedido",
+        );
       }
-      for (const member of trip) {
-        await ctx.db.patch(member._id, {
-          status: "delivered",
-          deliveredAt: now,
-          courierLocation: undefined,
-          courierLocationAt: undefined,
-        });
+      if (given !== expectedPin) {
+        throw new Error("El PIN de entrega no coincide. Verificalo con el comprador");
       }
     }
-    return { status: args.status, orders: trip.length };
+
+    // Sin el registro del efectivo la entrega no se puede cerrar: es lo que
+    // permite verificar que el dinero llegó al local.
+    if (args.cashAmount === undefined) {
+      throw new Error("Confirmá cuánto efectivo cobraste antes de cerrar la entrega");
+    }
+    const cashAmount = Math.round(args.cashAmount);
+    if (!Number.isFinite(cashAmount) || cashAmount < 0) {
+      throw new Error("Ese monto en efectivo no es válido");
+    }
+    const expectedTotal = trip.reduce((acc, member) => acc + member.total, 0);
+    const difference = cashAmount - expectedTotal;
+    const note = (args.cashNote ?? "").trim();
+    if (difference !== 0 && note.length < 4) {
+      throw new Error(
+        "El efectivo no coincide con el total: escribí una nota con lo que pasó",
+      );
+    }
+
+    const leader = trip.reduce(
+      (best, member) =>
+        (member.tripPosition ?? 0) < (best.tripPosition ?? 0) ? member : best,
+      trip[0],
+    );
+    for (const member of trip) {
+      await ctx.db.patch(member._id, {
+        status: "delivered",
+        deliveredAt: now,
+        courierLocation: undefined,
+        courierLocationAt: undefined,
+      });
+    }
+    const cashPatch: Partial<Doc<"orders">> = {
+      cashCollected: cashAmount,
+      cashCollectedAt: now,
+      cashCollectedBy: userId,
+      cashCollectedLog: [
+        ...(leader.cashCollectedLog ?? []),
+        { amount: cashAmount, at: now, by: userId },
+      ],
+    };
+    if (difference !== 0) {
+      cashPatch.cashIssue = {
+        kind: difference < 0 ? "shortfall" : "claim",
+        amount: Math.abs(difference),
+        note,
+        at: now,
+        by: userId,
+      };
+    }
+    await ctx.db.patch(leader._id, cashPatch);
+    return { status: args.status, orders: trip.length, cashDifference: difference };
   },
 });
 
@@ -655,6 +979,11 @@ export const orderDetail = query({
     const isBuyer = order.buyerId === userId;
     const isCourier = order.courierId === userId;
     if (!isOwner && !isBuyer && !isCourier) return null;
-    return await decorateOrder(ctx, order, business);
+    return await decorateOrder(
+      ctx,
+      order,
+      business,
+      isOwner ? "business" : isBuyer ? "buyer" : "courier",
+    );
   },
 });

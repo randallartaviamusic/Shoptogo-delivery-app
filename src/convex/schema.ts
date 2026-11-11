@@ -29,6 +29,18 @@ export const promoKindValidator = v.union(
 );
 export type PromoKind = Infer<typeof promoKindValidator>;
 
+export const cashIssueKindValidator = v.union(
+  // El cliente pagó menos de lo que correspondía.
+  v.literal("shortfall"),
+  // El repartidor entregó menos al local.
+  v.literal("incomplete"),
+  // Devolución de efectivo por un pedido cancelado.
+  v.literal("refund"),
+  // Reclamo de cualquiera de las partes.
+  v.literal("claim"),
+);
+export type CashIssueKind = Infer<typeof cashIssueKindValidator>;
+
 export const orderStatusValidator = v.union(
   v.literal("pending"),
   v.literal("accepted"),
@@ -156,6 +168,53 @@ const schema = defineSchema(
       // Heredado: recargo por tienda adicional guardado aparte del envío.
       // Las órdenes nuevas ya lo incluyen repartido dentro de `deliveryFee`.
       extraStopFee: v.optional(v.number()),
+      // Posición de la tienda dentro de la entrega (0 = líder del viaje).
+      tripPosition: v.optional(v.number()),
+      // Custodia: el local entrega el código de retiro al repartidor y el
+      // comprador da su PIN al recibir. Confirman que el pedido correcto
+      // cambió de manos, pero no reemplazan el registro del efectivo.
+      pickupCode: v.optional(v.string()),
+      deliveryPin: v.optional(v.string()),
+      // Efectivo cobrado al comprador. Se guarda en la orden líder del viaje.
+      cashCollected: v.optional(v.number()),
+      cashCollectedAt: v.optional(v.number()),
+      cashCollectedBy: v.optional(v.id("users")),
+      // Cada confirmación queda con monto, fecha y usuario.
+      cashCollectedLog: v.optional(
+        v.array(
+          v.object({
+            amount: v.number(),
+            at: v.number(),
+            by: v.id("users"),
+          }),
+        ),
+      ),
+      // Efectivo entregado al negocio, confirmado por el negocio.
+      cashHanded: v.optional(v.number()),
+      cashHandedAt: v.optional(v.number()),
+      cashHandedBy: v.optional(v.id("users")),
+      cashHandedLog: v.optional(
+        v.array(
+          v.object({
+            amount: v.number(),
+            at: v.number(),
+            by: v.id("users"),
+          }),
+        ),
+      ),
+      // Problema de efectivo del viaje (faltante, pago incompleto, etc.).
+      cashIssue: v.optional(
+        v.object({
+          kind: cashIssueKindValidator,
+          amount: v.number(),
+          note: v.string(),
+          at: v.number(),
+          by: v.id("users"),
+          orderId: v.optional(v.id("orders")),
+          resolvedAt: v.optional(v.number()),
+          resolvedBy: v.optional(v.id("users")),
+        }),
+      ),
       // El cliente pidió que el mismo repartidor haga todas las entregas.
       sameCourier: v.optional(v.boolean()),
       // Repartidor que tomó la primera entrega y queda reservado para el resto.

@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/AppShell";
+import { CashIssueNote } from "@/components/CashIssueNote";
 import { CourierLocationReporter, DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { StatusPill, type OrderView } from "@/pages/Orders";
@@ -13,9 +14,28 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { CashIssueKind } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { CASH_ISSUE_LABELS } from "@/lib/cash";
 import { clockTime, money, relativeTime, ROLE_HOME } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -26,6 +46,7 @@ import {
   Bike,
   CheckCircle2,
   History,
+  KeyRound,
   Loader2,
   MapPin,
   Navigation,
@@ -81,11 +102,24 @@ export default function CourierPage() {
   const accept = useMutation(api.orders.courierAccept);
   const updateStatus = useMutation(api.orders.courierUpdateStatus);
   const renounce = useMutation(api.orders.courierRenounceRemaining);
+  const reportIssue = useMutation(api.orders.reportCashIssue);
   const [busy, setBusy] = useState<string | null>(null);
   // Pedido con varias entregas que el repartidor está por aceptar.
   const [confirming, setConfirming] = useState<OrderView | null>(null);
   // Pedido del que quiere bajarse después de la primera entrega.
   const [renouncing, setRenouncing] = useState<OrderView | null>(null);
+  // Custodia del pedido: código del local y PIN del comprador.
+  const [pickupOrder, setPickupOrder] = useState<OrderView | null>(null);
+  const [pickupCode, setPickupCode] = useState("");
+  const [deliveryOrder, setDeliveryOrder] = useState<OrderView | null>(null);
+  const [deliveryPin, setDeliveryPin] = useState("");
+  const [cashAmount, setCashAmount] = useState("");
+  const [cashNote, setCashNote] = useState("");
+  const [issueTarget, setIssueTarget] = useState<OrderView | null>(null);
+  const [issueKind, setIssueKind] = useState<CashIssueKind>("claim");
+  const [issueAmount, setIssueAmount] = useState("");
+  const [issueNote, setIssueNote] = useState("");
+  const [savingIssue, setSavingIssue] = useState(false);
 
   if (user && user.role !== "courier") {
     return (
@@ -156,23 +190,88 @@ export default function CourierPage() {
     }
   };
 
-  const handleAdvance = async (order: OrderView, status: "picked_up" | "delivered") => {
+  const handleAdvance = async (
+    order: OrderView,
+    status: "picked_up" | "delivered",
+    extra?: {
+      pickupCode?: string;
+      pin?: string;
+      cashAmount?: number;
+      cashNote?: string;
+    },
+  ) => {
     setBusy(order._id);
     try {
-      await updateStatus({ orderId: order._id as Id<"orders">, status });
+      const result = await updateStatus({
+        orderId: order._id as Id<"orders">,
+        status,
+        ...extra,
+      });
       toast.success(
         status === "picked_up" ? "Pedido recogido" : "¡Pedido entregado!",
         {
           description:
             status === "picked_up"
               ? "Ahora andá a la dirección de entrega."
-              : `Sumaste ${money(order.tripEarnings)} a tus ganancias.`,
+              : `Sumaste ${money(order.tripEarnings)} a tus ganancias. ${
+                  result.cashDifference === 0
+                    ? "Efectivo confirmado por el total."
+                    : "Quedó registrada la diferencia de efectivo."
+                }`,
         },
       );
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos actualizar");
+      return false;
     } finally {
       setBusy(null);
+    }
+  };
+
+  const openPickup = (order: OrderView) => {
+    setPickupOrder(order);
+    setPickupCode("");
+  };
+
+  const openDelivery = (order: OrderView) => {
+    setDeliveryOrder(order);
+    setDeliveryPin("");
+    setCashAmount(String(order.tripTotal));
+    setCashNote("");
+  };
+
+  const deliveryDifference = deliveryOrder
+    ? Math.round(Number(cashAmount) || 0) - deliveryOrder.tripTotal
+    : 0;
+
+  const openIssue = (order: OrderView) => {
+    setIssueTarget(order);
+    setIssueKind("claim");
+    setIssueAmount(String(Math.max(0, order.cashDifference ?? 0)));
+    setIssueNote("");
+  };
+
+  const handleReportIssue = async () => {
+    if (!issueTarget) return;
+    setSavingIssue(true);
+    try {
+      await reportIssue({
+        orderId: issueTarget._id as Id<"orders">,
+        kind: issueKind,
+        amount: Number(issueAmount) || undefined,
+        note: issueNote,
+      });
+      toast.success("Problema registrado", {
+        description: "El local también lo ve, con fecha, usuario y monto.",
+      });
+      setIssueTarget(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos registrar el problema",
+      );
+    } finally {
+      setSavingIssue(false);
     }
   };
 
@@ -407,10 +506,13 @@ export default function CourierPage() {
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      Cobrás
+                      Cobrás al cliente
                     </p>
                     <p className="font-display text-lg font-extrabold text-accent">
-                      {money(order.tripEarnings)}
+                      {money(order.tripTotal)}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Tu envío: {money(order.tripEarnings)}
                     </p>
                   </div>
                   <Button
@@ -528,6 +630,62 @@ export default function CourierPage() {
                   </div>
                 )}
 
+                <div className="mt-3 rounded-xl border border-border/70 p-3">
+                  <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                    <Wallet className="size-3.5" /> Efectivo de esta entrega
+                  </p>
+                  <div className="mt-2 space-y-1 text-[11px]">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Total a cobrar al comprador</span>
+                      <span>{money(order.tripTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Para los locales (productos)</span>
+                      <span>{money(order.tripTotal - order.tripEarnings)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-accent">
+                      <span>Tu envío</span>
+                      <span>{money(order.tripEarnings)}</span>
+                    </div>
+                  </div>
+                  {order.cashCollected === null ? (
+                    <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                      Al cerrar la entrega te pedimos el PIN del comprador y cuánto
+                      efectivo cobraste. El registro no depende del código.
+                    </p>
+                  ) : (
+                    <div className="mt-2 space-y-1 text-[11px] leading-relaxed">
+                      <p className="text-accent">
+                        Confirmaste {money(order.cashCollected)} cobrados ·{" "}
+                        {relativeTime(order.cashCollectedAt ?? order.createdAt)}
+                      </p>
+                      {(order.cashDifference ?? 0) !== 0 && (
+                        <p className="text-primary">
+                          Diferencia registrada: {money(order.cashDifference ?? 0)}
+                        </p>
+                      )}
+                      {order.cashPending > 0 && (
+                        <p className="text-muted-foreground">
+                          Todavía tenés {money(order.cashPending)} de los locales:
+                          confirmá la entrega del efectivo con cada uno.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 h-7 px-2 text-[11px] text-muted-foreground hover:text-primary"
+                    onClick={() => openIssue(order)}
+                  >
+                    Reportar problema de efectivo
+                  </Button>
+                </div>
+
+                {order.cashIssue && (
+                  <CashIssueNote issue={order.cashIssue} className="mt-2" />
+                )}
+
                 {order.remainingDeliveries > 0 && (
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/30 bg-accent/[0.07] px-3 py-2.5">
                     <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -558,19 +716,19 @@ export default function CourierPage() {
                     <Button
                       className="gap-2 bg-ember-gradient text-black"
                       disabled={busy === order._id}
-                      onClick={() => handleAdvance(order, "picked_up")}
+                      onClick={() => openPickup(order)}
                     >
                       <PackageCheck className="size-4" />
-                      Marcar recogido
+                      Código y retirar
                     </Button>
                   ) : (
                     <Button
                       className="gap-2 bg-ember-gradient text-black"
                       disabled={busy === order._id}
-                      onClick={() => handleAdvance(order, "delivered")}
+                      onClick={() => openDelivery(order)}
                     >
                       <CheckCircle2 className="size-4" />
-                      Marcar entregado
+                      Entregar y cobrar
                     </Button>
                   )}
                 </div>
@@ -614,6 +772,14 @@ export default function CourierPage() {
                       {order.deliveredAt
                         ? `${clockTime(order.deliveredAt)} hs`
                         : relativeTime(order.createdAt)}
+                      {order.cashCollected !== null &&
+                        ` · cobraste ${money(order.cashCollected)}`}
+                      {(order.cashDifference ?? 0) !== 0 &&
+                        ` · diferencia ${money(order.cashDifference ?? 0)}`}
+                      {order.status === "delivered" &&
+                        (order.cashPending > 0
+                          ? ` · falta entregar ${money(order.cashPending)} a los locales`
+                          : " · efectivo confirmado por los locales")}
                     </p>
                   </div>
                   <p className="font-display text-sm font-bold text-accent">
@@ -625,6 +791,241 @@ export default function CourierPage() {
           )}
         </motion.div>
       )}
+
+      <Dialog
+        open={pickupOrder !== null}
+        onOpenChange={(open) => !open && setPickupOrder(null)}
+      >
+        <DialogContent className="border-border/80 bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Código de retiro</DialogTitle>
+            <DialogDescription>
+              Pedíselo al local cuando te entreguen el pedido. Confirma que te
+              llevás la entrega correcta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border/70 bg-black/20 p-3 text-[11px] leading-relaxed">
+              <p className="font-semibold">
+                {pickupOrder?.businessName} · {pickupOrder?.code}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Cobrás {money(pickupOrder?.tripTotal ?? 0)} al comprador. Tu envío:{" "}
+                {money(pickupOrder?.tripEarnings ?? 0)}.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pickup-code">Código que te da el local</Label>
+              <Input
+                id="pickup-code"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={pickupCode}
+                onChange={(event) => setPickupCode(event.target.value)}
+                placeholder="0000"
+                className="text-center font-display text-xl tracking-[0.4em]"
+              />
+            </div>
+            <Button
+              className="h-11 w-full gap-2 bg-ember-gradient text-black"
+              disabled={busy === pickupOrder?._id}
+              onClick={async () => {
+                const order = pickupOrder;
+                if (!order) return;
+                const ok = await handleAdvance(order, "picked_up", { pickupCode });
+                if (ok) setPickupOrder(null);
+              }}
+            >
+              {busy === pickupOrder?._id ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <KeyRound className="size-4" />
+              )}
+              Confirmar retiro
+            </Button>
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              El código confirma la custodia del pedido, no el dinero: el efectivo
+              se registra al entregar.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deliveryOrder !== null}
+        onOpenChange={(open) => !open && setDeliveryOrder(null)}
+      >
+        <DialogContent className="border-border/80 bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Entregar y cobrar</DialogTitle>
+            <DialogDescription>
+              Pedile el PIN al comprador y confirmá el efectivo antes de cerrar la
+              entrega del pedido {deliveryOrder?.code}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1 rounded-xl border border-border/70 bg-black/20 p-3 text-[11px]">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Total a cobrar</span>
+                <span>{money(deliveryOrder?.tripTotal ?? 0)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Para los locales (productos)</span>
+                <span>
+                  {money(
+                    (deliveryOrder?.tripTotal ?? 0) -
+                      (deliveryOrder?.tripEarnings ?? 0),
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between font-semibold text-accent">
+                <span>Tu envío</span>
+                <span>{money(deliveryOrder?.tripEarnings ?? 0)}</span>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="delivery-pin">PIN que te da el comprador</Label>
+              <Input
+                id="delivery-pin"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={deliveryPin}
+                onChange={(event) => setDeliveryPin(event.target.value)}
+                placeholder="0000"
+                className="text-center font-display text-xl tracking-[0.4em]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cash-amount">Efectivo que cobraste</Label>
+              <Input
+                id="cash-amount"
+                type="number"
+                min={0}
+                value={cashAmount}
+                onChange={(event) => setCashAmount(event.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Viene con el total exacto. Si cobraste otra cosa, corregilo.
+              </p>
+            </div>
+            {deliveryDifference !== 0 && (
+              <>
+                <p className="rounded-xl border border-primary/30 bg-primary/[0.07] p-2.5 text-[11px] leading-relaxed text-primary">
+                  Diferencia: {money(deliveryDifference)}{" "}
+                  {deliveryDifference < 0 ? "menos" : "más"} del total. Queda
+                  asentado como problema de efectivo.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cash-note">Qué pasó</Label>
+                  <Textarea
+                    id="cash-note"
+                    value={cashNote}
+                    onChange={(event) => setCashNote(event.target.value)}
+                    placeholder="Ej: el cliente solo tenía parte del total."
+                    className="min-h-16 resize-none"
+                  />
+                </div>
+              </>
+            )}
+            <Button
+              className="h-11 w-full gap-2 bg-ember-gradient text-black"
+              disabled={busy === deliveryOrder?._id}
+              onClick={async () => {
+                const order = deliveryOrder;
+                if (!order) return;
+                const ok = await handleAdvance(order, "delivered", {
+                  pin: deliveryPin,
+                  cashAmount: Math.round(Number(cashAmount) || 0),
+                  cashNote,
+                });
+                if (ok) setDeliveryOrder(null);
+              }}
+            >
+              {busy === deliveryOrder?._id ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
+              Cerrar entrega y registrar efectivo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={issueTarget !== null}
+        onOpenChange={(open) => !open && setIssueTarget(null)}
+      >
+        <DialogContent className="border-border/80 bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Reportar problema de efectivo
+            </DialogTitle>
+            <DialogDescription>
+              Pedido {issueTarget?.code}. Queda con fecha, usuario y monto, y el
+              local también lo ve.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Tipo de problema</Label>
+              <Select
+                value={issueKind}
+                onValueChange={(value) => setIssueKind(value as CashIssueKind)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CASH_ISSUE_LABELS).map(([kind, meta]) => (
+                    <SelectItem key={kind} value={kind}>
+                      {meta.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                {CASH_ISSUE_LABELS[issueKind].hint}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="issue-amount">Monto (opcional)</Label>
+              <Input
+                id="issue-amount"
+                type="number"
+                min={0}
+                value={issueAmount}
+                onChange={(event) => setIssueAmount(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="issue-note">Qué pasó</Label>
+              <Textarea
+                id="issue-note"
+                required
+                value={issueNote}
+                onChange={(event) => setIssueNote(event.target.value)}
+                placeholder="Contá el detalle para poder resolverlo."
+                className="min-h-20 resize-none"
+              />
+            </div>
+            <Button
+              className="h-11 w-full gap-2 bg-ember-gradient text-black"
+              disabled={savingIssue}
+              onClick={() => void handleReportIssue()}
+            >
+              {savingIssue ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Wallet className="size-4" />
+              )}
+              Registrar problema
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={confirming !== null}
