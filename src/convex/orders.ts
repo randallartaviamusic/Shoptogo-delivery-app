@@ -24,6 +24,22 @@ async function groupSiblings(ctx: DbCtx, order: Doc<"orders">) {
   return siblings.filter((sibling) => sibling._id !== order._id);
 }
 
+/** Órdenes que forman una misma entrega (una por tienda del viaje). */
+async function tripOrders(ctx: DbCtx, order: Doc<"orders">) {
+  if (!order.groupCode || !order.batchIndex) return [order];
+  const groupCode = order.groupCode;
+  const batchIndex = order.batchIndex;
+  const group = await ctx.db
+    .query("orders")
+    .withIndex("by_group", (q) => q.eq("groupCode", groupCode))
+    .collect();
+  return group.filter((sibling) => sibling.batchIndex === batchIndex);
+}
+
+function tripKey(order: Doc<"orders">) {
+  return `${order.groupCode ?? order.code}#${order.batchIndex ?? 1}`;
+}
+
 /** Entregas de la compra que todavía no salieron ni se cancelaron. */
 function pendingSiblings(siblings: Doc<"orders">[]) {
   return siblings.filter(
@@ -43,7 +59,6 @@ async function previousDeliveryOpen(ctx: DbCtx, order: Doc<"orders">) {
   const siblings = await groupSiblings(ctx, order);
   return siblings.some(
     (sibling) =>
-      sibling.businessId === order.businessId &&
       (sibling.batchIndex ?? 0) < (order.batchIndex ?? 0) &&
       sibling.status !== "picked_up" &&
       sibling.status !== "delivered" &&
@@ -65,6 +80,26 @@ async function decorateOrder(
   const buyer = await ctx.db.get(order.buyerId);
   const courier = order.courierId ? await ctx.db.get(order.courierId) : null;
   const pendingGroup = pendingSiblings(await groupSiblings(ctx, order));
+  const trip = await tripOrders(ctx, order);
+  const stops = [];
+  for (const tripOrder of trip) {
+    const stopBusiness =
+      tripOrder.businessId === order.businessId
+        ? business
+        : await ctx.db.get(tripOrder.businessId);
+    stops.push({
+      businessId: tripOrder.businessId,
+      name: stopBusiness?.name ?? "Local",
+      address: stopBusiness?.address ?? "",
+      fee: tripOrder.deliveryFee,
+      extraStopFee: tripOrder.extraStopFee ?? 0,
+      itemCount: tripOrder.items.reduce((acc, item) => acc + item.quantity, 0),
+    });
+  }
+  const tripEarnings = stops.reduce(
+    (acc, stop) => acc + stop.fee + stop.extraStopFee,
+    0,
+  );
   return {
     _id: order._id,
     code: order.code,
@@ -96,7 +131,19 @@ async function decorateOrder(
     ).length,
     groupEarnings:
       order.deliveryFee +
-      pendingGroup.reduce((acc, sibling) => acc + sibling.deliveryFee, 0),
+      (order.extraStopFee ?? 0) +
+      pendingGroup.reduce(
+        (acc, sibling) =>
+          acc + sibling.deliveryFee + (sibling.extraStopFee ?? 0),
+        0,
+      ),
+    // Entrega compartida con más tiendas: el repartidor retira en cada una.
+    tripStops: order.tripStops ?? trip.length,
+    extraStopFee: order.extraStopFee ?? 0,
+    tripEarnings,
+    // Lo que el repartidor cobra al cliente en esta entrega (productos + envío).
+    tripTotal: trip.reduce((acc, member) => acc + member.total, 0),
+    stops,
     createdAt: order.createdAt,
     acceptedAt: order.acceptedAt ?? null,
     courierAcceptedAt: order.courierAcceptedAt ?? null,
@@ -217,11 +264,27 @@ export const courierBoard = query({
       .withIndex("by_status", (q) => q.eq("status", "ready"))
       .collect();
     const available = [];
+    const seenTrips = new Set<string>();
     for (const order of readyOrders) {
       if (order.courierId) continue;
+      const key = tripKey(order);
+      if (seenTrips.has(key)) continue;
+      const trip = await tripOrders(ctx, order);
+      // Una entrega con varias tiendas sólo se ofrece cuando todas están listas.
+      if (trip.some((member) => member.status !== "ready" || member.courierId)) {
+        continue;
+      }
       // Si el cliente pidió el mismo repartidor, las siguientes entregas sólo
       // las ve quien ya hizo la primera.
-      if (order.reservedCourierId && order.reservedCourierId !== userId) continue;
+      if (
+        trip.some(
+          (member) =>
+            member.reservedCourierId && member.reservedCourierId !== userId,
+        )
+      ) {
+        continue;
+      }
+      seenTrips.add(key);
       const business = await ctx.db.get(order.businessId);
       available.push(await decorateOrder(ctx, order, business));
     }
@@ -234,7 +297,11 @@ export const courierBoard = query({
 
     const active = [];
     const history = [];
+    const seenMine = new Set<string>();
     for (const order of sortedMine) {
+      const key = tripKey(order);
+      if (seenMine.has(key)) continue;
+      seenMine.add(key);
       const business = await ctx.db.get(order.businessId);
       const decorated = await decorateOrder(ctx, order, business);
       if (order.status === "picked_up" || order.status === "ready") {
@@ -260,8 +327,19 @@ export const courierBoard = query({
         available: available.length,
         active: active.length,
         deliveriesToday: deliveredToday.length,
-        earningsToday: deliveredToday.reduce((acc, o) => acc + o.deliveryFee, 0),
-        earningsTotal: history.reduce((acc, o) => acc + o.deliveryFee, 0),
+        earningsToday: deliveredToday.reduce(
+          (acc, o) => acc + o.deliveryFee + (o.extraStopFee ?? 0),
+          0,
+        ),
+        // Se suman todas las órdenes entregadas: una entrega con varias
+        // tiendas genera una orden por tienda y el viaje completo es la suma.
+        earningsTotal: sortedMine.reduce(
+          (acc, o) =>
+            o.status === "delivered"
+              ? acc + o.deliveryFee + (o.extraStopFee ?? 0)
+              : acc,
+          0,
+        ),
       },
     };
   },
@@ -335,9 +413,27 @@ export const courierAccept = mutation({
     }
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Ese pedido no existe");
-    if (order.status !== "ready") throw new Error("El pedido todavía no está listo");
-    if (order.courierId) throw new Error("Otro repartidor ya tomó este pedido");
-    if (order.reservedCourierId && order.reservedCourierId !== userId) {
+    // Una entrega puede retirar en varias tiendas: se toma el viaje completo.
+    const trip = (await tripOrders(ctx, order)).filter(
+      (member) => member.status !== "cancelled",
+    );
+    if (trip.length === 0) throw new Error("Esta entrega fue cancelada");
+    if (trip.some((member) => member.courierId)) {
+      throw new Error("Otro repartidor ya tomó esta entrega");
+    }
+    if (trip.some((member) => member.status !== "ready")) {
+      throw new Error(
+        trip.length > 1
+          ? "Falta que una de las tiendas marque su parte lista"
+          : "El pedido todavía no está listo",
+      );
+    }
+    if (
+      trip.some(
+        (member) =>
+          member.reservedCourierId && member.reservedCourierId !== userId,
+      )
+    ) {
       throw new Error(
         "El cliente pidió que el mismo repartidor haga todas las entregas de esta compra",
       );
@@ -362,18 +458,21 @@ export const courierAccept = mutation({
       );
     }
 
-    await ctx.db.patch(args.orderId, {
-      courierId: userId,
-      courierAcceptedAt: Date.now(),
-    });
+    for (const member of trip) {
+      await ctx.db.patch(member._id, {
+        courierId: userId,
+        courierAcceptedAt: Date.now(),
+      });
+    }
 
     // Con "mismo repartidor", las entregas que falten de la compra quedan
     // reservadas para quien tomó la primera.
     if (order.sameCourier && order.groupCode) {
+      const tripIds = new Set(trip.map((member) => member._id));
       const siblings = await groupSiblings(ctx, order);
       for (const sibling of siblings) {
         if (
-          sibling._id === order._id ||
+          tripIds.has(sibling._id) ||
           sibling.courierId ||
           sibling.status === "delivered" ||
           sibling.status === "cancelled"
@@ -410,19 +509,28 @@ export const updateCourierLocation = mutation({
       throw new Error("La ubicación no es válida");
     }
     const order = await ctx.db.get(args.orderId);
-    if (!order || order.courierId !== userId) {
+    if (!order) throw new Error("Ese pedido no existe");
+    // La ubicación se comparte con todas las tiendas de la entrega.
+    const trip = await tripOrders(ctx, order);
+    if (trip.some((member) => member.courierId !== userId)) {
       throw new Error("Este pedido no está asignado a vos");
     }
-    if (order.status !== "ready" && order.status !== "picked_up") {
+    if (
+      trip.every(
+        (member) => member.status !== "ready" && member.status !== "picked_up",
+      )
+    ) {
       throw new Error("El seguimiento no está activo para este pedido");
     }
-    await ctx.db.patch(args.orderId, {
-      courierLocation: {
-        lat: Math.round(lat * 1e5) / 1e5,
-        lng: Math.round(lng * 1e5) / 1e5,
-      },
-      courierLocationAt: Date.now(),
-    });
+    for (const member of trip) {
+      await ctx.db.patch(member._id, {
+        courierLocation: {
+          lat: Math.round(lat * 1e5) / 1e5,
+          lng: Math.round(lng * 1e5) / 1e5,
+        },
+        courierLocationAt: Date.now(),
+      });
+    }
     return { updated: true };
   },
 });
@@ -465,27 +573,39 @@ export const courierUpdateStatus = mutation({
     if (!userId) throw new Error("Necesitás iniciar sesión");
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Ese pedido no existe");
-    if (order.courierId !== userId) {
+    // El estado se mueve para todas las tiendas de la misma entrega.
+    const trip = (await tripOrders(ctx, order)).filter(
+      (member) => member.status !== "cancelled",
+    );
+    if (trip.length === 0) throw new Error("Esta entrega fue cancelada");
+    if (trip.some((member) => member.courierId !== userId)) {
       throw new Error("Este pedido no está asignado a vos");
     }
+    const now = Date.now();
     if (args.status === "picked_up") {
-      if (order.status !== "ready") throw new Error("El pedido no está listo");
-      await ctx.db.patch(args.orderId, {
-        status: "picked_up",
-        pickedUpAt: Date.now(),
-      });
-    } else {
-      if (order.status !== "picked_up") {
-        throw new Error("Primero marcá el pedido como recogido");
+      if (trip.some((member) => member.status !== "ready")) {
+        throw new Error("Todavía falta que una tienda tenga su parte lista");
       }
-      await ctx.db.patch(args.orderId, {
-        status: "delivered",
-        deliveredAt: Date.now(),
-        courierLocation: undefined,
-        courierLocationAt: undefined,
-      });
+      for (const member of trip) {
+        await ctx.db.patch(member._id, {
+          status: "picked_up",
+          pickedUpAt: now,
+        });
+      }
+    } else {
+      if (trip.some((member) => member.status !== "picked_up")) {
+        throw new Error("Primero marcá la entrega como recogida");
+      }
+      for (const member of trip) {
+        await ctx.db.patch(member._id, {
+          status: "delivered",
+          deliveredAt: now,
+          courierLocation: undefined,
+          courierLocationAt: undefined,
+        });
+      }
     }
-    return { status: args.status };
+    return { status: args.status, orders: trip.length };
   },
 });
 

@@ -118,7 +118,9 @@ export default function CourierPage() {
       toast.success("Pedido tomado", {
         description: takesSeveralDeliveries(order)
           ? `Son ${order.remainingDeliveries + 1} entregas de esta compra: retirá cada una cuando el local la marque lista. Total en envíos ${money(order.groupEarnings)}.`
-          : `Retirá en ${order.businessName}. Ganás ${money(order.deliveryFee)}.`,
+          : order.tripStops > 1
+            ? `Retirá en ${order.tripStops} tiendas y entregá todo junto. Ganás ${money(order.tripEarnings)}.`
+            : `Retirá en ${order.businessName}. Ganás ${money(order.deliveryFee)}.`,
       });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos asignarte el pedido");
@@ -164,7 +166,7 @@ export default function CourierPage() {
           description:
             status === "picked_up"
               ? "Ahora andá a la dirección de entrega."
-              : `Sumaste ${money(order.deliveryFee)} a tus ganancias.`,
+              : `Sumaste ${money(order.tripEarnings)} a tus ganancias.`,
         },
       );
     } catch (error) {
@@ -333,9 +335,31 @@ export default function CourierPage() {
                     </p>
                   </div>
                   <span className="rounded-full bg-accent px-3 py-1 font-display text-sm font-extrabold text-accent-foreground">
-                    {money(order.deliveryFee)}
+                    {money(order.tripEarnings)}
                   </span>
                 </div>
+
+                {order.tripStops > 1 && (
+                  <div className="mt-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2.5">
+                    <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-accent">
+                      <Store className="size-3.5" />
+                      Entrega con {order.tripStops} tiendas
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      Retirás en{" "}
+                      {order.stops.map((stop) => stop.name).join(" y ")}. El envío
+                      incluye{" "}
+                      {money(
+                        order.stops.reduce(
+                          (acc, stop) => acc + stop.extraStopFee,
+                          0,
+                        ),
+                      )}{" "}
+                      de recargo por tienda adicional y cobrás todo junto al
+                      cliente.
+                    </p>
+                  </div>
+                )}
 
                 {takesSeveralDeliveries(order) && (
                   <div className="mt-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2.5">
@@ -391,7 +415,7 @@ export default function CourierPage() {
                       Cobrás
                     </p>
                     <p className="font-display text-lg font-extrabold text-accent">
-                      {money(order.deliveryFee)}
+                      {money(order.tripEarnings)}
                     </p>
                   </div>
                   <Button
@@ -454,7 +478,8 @@ export default function CourierPage() {
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {order.items.reduce((acc, item) => acc + item.quantity, 0)}{" "}
-                      productos · {money(order.total)} a cobrar
+                      productos en esta tienda · {money(order.tripTotal)} a cobrar
+                      {order.tripStops > 1 ? ` · ${order.tripStops} tiendas` : ""}
                       {order.batchCount && order.batchCount > 1
                         ? ` · Entrega ${order.batchIndex} de ${order.batchCount}`
                         : ""}
@@ -597,7 +622,7 @@ export default function CourierPage() {
                     </p>
                   </div>
                   <p className="font-display text-sm font-bold text-accent">
-                    +{money(order.deliveryFee)}
+                    +{money(order.tripEarnings)}
                   </p>
                 </div>
               ))}

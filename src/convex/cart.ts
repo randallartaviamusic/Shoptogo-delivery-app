@@ -8,8 +8,8 @@ import {
   DELIVERY_RULES,
   deliveryQuote,
   isValidPoint,
-  MAX_UNITS_PER_DELIVERY,
   normalizePoint,
+  planDeliveryTrips,
   splitIntoDeliveries,
 } from "../lib/delivery";
 import { bestPromoKind, promoBadge, promoDiscount } from "../lib/promo";
@@ -44,10 +44,6 @@ export type CartGroup = {
   deliveryDiscount: number;
   promo: { kind: PromoKind; label: string } | null;
   feeFrom: number;
-  /** Cuántas entregas necesita este local (máximo 3 productos cada una). */
-  deliveryBatches: number;
-  /** Suma de los envíos de todas las entregas, ya con la promo de la primera. */
-  deliveryTotal: number;
   distanceKm: number | null;
   deliveryMinutes: number | null;
   deliveryAvailable: boolean;
@@ -99,8 +95,6 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
         deliveryDiscount: 0,
         promo: null,
         feeFrom: DELIVERY_RULES.baseFee,
-        deliveryBatches: 1,
-        deliveryTotal: 0,
         distanceKm: quote?.distanceKm ?? null,
         deliveryMinutes: quote?.minutes ?? null,
         deliveryAvailable: quote !== null || dropoff === null,
@@ -141,19 +135,36 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
     group.promo = { kind, label: promoBadge(kind) };
   }
 
-  for (const group of groups) {
-    const units = group.items.reduce((acc, item) => acc + item.quantity, 0);
-    group.deliveryBatches = Math.max(
-      1,
-      Math.ceil(units / MAX_UNITS_PER_DELIVERY),
-    );
-    group.deliveryTotal =
-      (group.deliveryFullFee ?? 0) * group.deliveryBatches - group.deliveryDiscount;
-  }
-
   const subtotal = groups.reduce((acc, g) => acc + g.subtotal, 0);
-  const deliveryTotal = groups.reduce((acc, g) => acc + g.deliveryTotal, 0);
-  const deliveryBatches = groups.reduce((acc, g) => acc + g.deliveryBatches, 0);
+  const discountTotal = groups.reduce(
+    (acc, g) => acc + g.deliveryDiscount,
+    0,
+  );
+
+  // Las entregas se arman con el carrito en orden. Una entrega puede retirar
+  // en varias tiendas y por eso suma las tarifas de cada recorrido más el
+  // recargo por tienda adicional.
+  const feeByBusiness = new Map<string, number>(
+    groups.map((group) => [group.businessId, group.deliveryFullFee ?? 0]),
+  );
+  const trips = planDeliveryTrips(
+    cartItems.map((item) => ({
+      businessId: item.businessId as string,
+      quantity: item.quantity,
+    })),
+    (businessId) => feeByBusiness.get(businessId) ?? 0,
+  ).map((trip) => ({
+    ...trip,
+    stops: trip.stops.map((stop) => ({
+      ...stop,
+      businessName:
+        groups.find((group) => group.businessId === stop.businessId)
+          ?.businessName ?? "Local",
+    })),
+  }));
+
+  const deliveryTotal =
+    trips.reduce((acc, trip) => acc + trip.fee, 0) - discountTotal;
   const count = groups.reduce(
     (acc, g) => acc + g.items.reduce((a, i) => a + i.quantity, 0),
     0,
@@ -161,11 +172,12 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
 
   return {
     groups,
+    trips,
     count,
-    deliveryBatches,
+    deliveryBatches: Math.max(trips.length, dropoff ? 1 : 0),
     subtotal,
     deliveryTotal,
-    deliverySaved: groups.reduce((acc, g) => acc + g.deliveryDiscount, 0),
+    deliverySaved: discountTotal,
     total: subtotal + deliveryTotal,
   };
 }
@@ -177,6 +189,7 @@ export const myCart = query({
     if (!userId) {
       return {
         groups: [] as CartGroup[],
+        trips: [],
         count: 0,
         deliveryBatches: 0,
         subtotal: 0,
@@ -337,19 +350,16 @@ export const checkout = mutation({
       });
     }
 
-    let total = 0;
-    let created = 0;
-    const now = Date.now();
-    const groupCode = `CE-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    // Se arma el plan de entregas: máximo 3 productos por entrega, en el mismo
-    // orden en que el cliente cargó el carrito.
-    const plan: Array<{
-      businessId: Id<"businesses">;
-      quote: NonNullable<ReturnType<typeof deliveryQuote>>;
-      promoKind: PromoKind | null;
-      batches: CheckoutLine[][];
-    }> = [];
+    // Datos de cada local: recorrido hasta el cliente y promo vigente.
+    const stores = new Map<
+      string,
+      {
+        id: Id<"businesses">;
+        fee: number;
+        distanceKm: number;
+        promoKind: PromoKind | null;
+      }
+    >();
 
     for (const businessId of businessIds) {
       const items = byBusiness.get(businessId)!;
@@ -366,58 +376,129 @@ export const checkout = mutation({
           `Tu punto de entrega queda fuera del área de reparto de ${business.name}.`,
         );
       }
-      const promoKind = bestPromoKind(
-        items
-          .map((item) => item.promoKind)
-          .filter((kind): kind is PromoKind => kind !== null),
-      );
-      plan.push({
-        businessId,
-        quote,
-        promoKind,
-        batches: splitIntoDeliveries(items),
+      stores.set(businessId, {
+        id: businessId,
+        fee: quote.fee,
+        distanceKm: quote.distanceKm,
+        promoKind: bestPromoKind(
+          items
+            .map((item) => item.promoKind)
+            .filter((kind): kind is PromoKind => kind !== null),
+        ),
       });
     }
 
-    for (const entry of plan) {
-      const batchCount = entry.batches.length;
-      for (let index = 0; index < batchCount; index += 1) {
-        const batch = entry.batches[index];
-        const subtotal = batch.reduce((acc, i) => acc + i.price * i.quantity, 0);
-        // La promo de envío se aplica una sola vez por local, en su primera entrega.
+    // Cada entrega lleva hasta 3 productos y puede retirar en varias tiendas;
+    // en ese caso se cobra el recorrido de cada una más el recargo por parada.
+    const lines = cartItems.map((item) => {
+      const product = byBusiness
+        .get(item.businessId)!
+        .find((line) => line.productId === item.productId)!;
+      return {
+        businessId: item.businessId as string,
+        productId: item.productId,
+        name: product.name,
+        price: product.price,
+        image: product.image,
+        quantity: item.quantity,
+      };
+    });
+    const trips = splitIntoDeliveries(lines).map((chunk, index) => {
+      const storeIds: string[] = [];
+      for (const line of chunk) {
+        if (!storeIds.includes(line.businessId)) storeIds.push(line.businessId);
+      }
+      const tripStops = storeIds.map((businessId) => ({
+        businessId,
+        fee: stores.get(businessId)?.fee ?? 0,
+      }));
+      const stopFee =
+        DELIVERY_RULES.extraStopFee * Math.max(0, tripStops.length - 1);
+      return {
+        index: index + 1,
+        stops: tripStops,
+        stopFee,
+        fee: tripStops.reduce((acc, stop) => acc + stop.fee, 0) + stopFee,
+        lines: chunk,
+      };
+    });
+
+    let total = 0;
+    let created = 0;
+    const now = Date.now();
+    const groupCode = `CE-${Math.floor(1000 + Math.random() * 9000)}`;
+    // La promo de envío se aplica una sola vez por local, en su primera entrega.
+    const discounted = new Set<string>();
+
+    for (const trip of trips) {
+      const tripStops = trip.stops.length;
+      // El recargo por tienda adicional se cobra una sola vez por entrega y
+      // queda visible en la primera parada del viaje.
+      let pendingStopFee = trip.stopFee;
+
+      for (const [position, tripStop] of trip.stops.entries()) {
+        const store = stores.get(tripStop.businessId);
+        if (!store) continue;
+
+        // Productos de este local dentro de la entrega, en orden de carrito.
+        const storeLines = trip.lines.filter(
+          (line) => line.businessId === tripStop.businessId,
+        );
+        if (storeLines.length === 0) continue;
+
+        const items = storeLines.map((line) => ({
+          productId: line.productId,
+          name: line.name,
+          price: line.price,
+          quantity: line.quantity,
+          image: line.image,
+        }));
+        const subtotal = items.reduce(
+          (acc, item) => acc + item.price * item.quantity,
+          0,
+        );
+
+        const firstForStore = !discounted.has(tripStop.businessId);
         const deliveryDiscount =
-          index === 0 && entry.promoKind
+          firstForStore && store.promoKind
             ? Math.min(
-                entry.quote.fee,
-                promoDiscount(entry.quote.fee, entry.promoKind),
+                store.fee,
+                promoDiscount(store.fee, store.promoKind),
               )
             : 0;
-        const orderTotal = subtotal + entry.quote.fee - deliveryDiscount;
+        if (firstForStore) discounted.add(tripStop.businessId);
+
+        const extraStopFee = position === 0 ? pendingStopFee : 0;
+        pendingStopFee -= extraStopFee;
+        const orderTotal =
+          subtotal + store.fee - deliveryDiscount + extraStopFee;
         total += orderTotal;
         created += 1;
+
+        const suffix =
+          trips.length > 1 || tripStops > 1
+            ? `-${trip.index}${tripStops > 1 ? String.fromCharCode(65 + position) : ""}`
+            : "";
+
         await ctx.db.insert("orders", {
-          code: batchCount > 1 ? `${groupCode}-${index + 1}` : groupCode,
+          code: `${groupCode}${suffix}`,
           groupCode,
-          batchIndex: index + 1,
-          batchCount,
+          batchIndex: trip.index,
+          batchCount: trips.length,
+          tripStops,
+          extraStopFee: extraStopFee || undefined,
           sameCourier: args.sameCourier ?? false,
           buyerId: userId,
-          businessId: entry.businessId,
-          items: batch.map((item) => ({
-            productId: item.productId,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            image: item.image,
-          })),
+          businessId: store.id,
+          items,
           subtotal,
-          deliveryFee: entry.quote.fee,
+          deliveryFee: store.fee,
           deliveryDiscount: deliveryDiscount || undefined,
           total: orderTotal,
           status: "pending",
           address,
           deliveryLocation: dropoff,
-          distanceKm: entry.quote.distanceKm,
+          distanceKm: store.distanceKm,
           notes: args.notes?.trim() || undefined,
           createdAt: now,
         });
@@ -427,6 +508,6 @@ export const checkout = mutation({
     for (const item of cartItems) await ctx.db.delete(item._id);
     await ctx.db.patch(userId, { address, location: dropoff });
 
-    return { created, total };
+    return { created: trips.length, orders: created, total };
   },
 });

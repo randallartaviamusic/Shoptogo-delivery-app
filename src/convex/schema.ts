@@ -153,6 +153,10 @@ const schema = defineSchema(
       groupCode: v.optional(v.string()),
       batchIndex: v.optional(v.number()),
       batchCount: v.optional(v.number()),
+      // Tiendas que se retiran en esta misma entrega (1 = sólo este local).
+      tripStops: v.optional(v.number()),
+      // Recargo por las tiendas adicionales del viaje.
+      extraStopFee: v.optional(v.number()),
       // El cliente pidió que el mismo repartidor haga todas las entregas.
       sameCourier: v.optional(v.boolean()),
       // Repartidor que tomó la primera entrega y queda reservado para el resto.

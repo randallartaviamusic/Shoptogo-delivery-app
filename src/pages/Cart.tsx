@@ -50,7 +50,9 @@ export default function CartPage() {
   const groups = cart?.groups ?? [];
   const count = cart?.count ?? 0;
   const deliveries = cart?.deliveryBatches ?? 0;
-  const splitInDeliveries = groups.some((group) => group.deliveryBatches > 1);
+  const trips = cart?.trips ?? [];
+  const splitInDeliveries = deliveries > 1;
+  const multiStore = trips.some((trip) => trip.stops.length > 1);
   const hasClosed = groups.some((group) => !group.isOpen);
   const allCovered = groups.every((group) => group.deliveryAvailable);
   const canConfirm = Boolean(dropoff) && address.trim().length >= 6 && allCovered;
@@ -195,11 +197,9 @@ export default function CartPage() {
                         ? group.deliveryAvailable
                           ? "Envío al elegir tu punto"
                           : "Fuera de cobertura"
-                        : group.deliveryBatches > 1
-                          ? `${group.deliveryBatches} entregas · ${money(group.deliveryTotal)} · ${formatKm(group.distanceKm ?? 0)}`
-                          : group.promo
-                            ? `${group.promo.label} · ${group.deliveryFee === 0 ? "gratis" : money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`
-                            : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
+                        : group.promo
+                          ? `${group.promo.label} · ${group.deliveryFee === 0 ? "gratis" : money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`
+                          : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
                     </p>
                   </div>
                   {!group.isOpen && (
@@ -290,7 +290,7 @@ export default function CartPage() {
                     )}
                   </span>
                   <span className="font-semibold text-foreground">
-                    {money(group.subtotal + group.deliveryTotal)}
+                    {money(group.subtotal + (group.deliveryFee ?? 0))}
                   </span>
                 </div>
               </motion.section>
@@ -339,48 +339,82 @@ export default function CartPage() {
               />
             </div>
 
-            {splitInDeliveries && (
+            {(splitInDeliveries || multiStore) && (
               <div className="mt-5 rounded-2xl border border-border/70 bg-black/20 p-3">
                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
                   <PackageCheck className="size-3.5" />
-                  {deliveries} entregas · hasta 3 productos cada una
+                  {deliveries} {deliveries === 1 ? "entrega" : "entregas"} · hasta 3
+                  productos cada una
                 </p>
                 <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                  Tu compra se reparte en varias entregas y cada una paga su
-                  envío. Los locales preparan en orden y podés seguir cada
-                  entrega por separado.
+                  Cada entrega paga su envío.
+                  {multiStore
+                    ? " Si una entrega retira en varias tiendas, el envío suma un recargo por cada tienda adicional."
+                    : " Los locales preparan en orden y podés seguir cada entrega por separado."}
                 </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {[
-                    {
-                      value: true,
-                      label: "El mismo repartidor",
-                      hint: "Hace todas las entregas de esta compra",
-                    },
-                    {
-                      value: false,
-                      label: "Repartidores de turno",
-                      hint: "Las toma quien esté disponible",
-                    },
-                  ].map((option) => (
-                    <button
-                      key={String(option.value)}
-                      type="button"
-                      onClick={() => setSameCourier(option.value)}
-                      className={cn(
-                        "rounded-xl border px-3 py-2 text-left transition-colors",
-                        sameCourier === option.value
-                          ? "border-accent/50 bg-accent/10"
-                          : "border-border/70 hover:border-accent/30",
-                      )}
+
+                <ul className="mt-3 space-y-1.5">
+                  {trips.map((trip) => (
+                    <li
+                      key={trip.index}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-black/20 px-2.5 py-2"
                     >
-                      <span className="block text-xs font-semibold">{option.label}</span>
-                      <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
-                        {option.hint}
-                      </span>
-                    </button>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold">
+                          Entrega {trip.index} · {trip.stops.length}{" "}
+                          {trip.stops.length === 1 ? "tienda" : "tiendas"}
+                        </p>
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          {trip.stops.map((stop) => stop.businessName).join(" + ")}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[11px] font-semibold">{money(trip.fee)}</p>
+                        {trip.stopFee > 0 && (
+                          <p className="text-[10px] text-accent">
+                            recargo {money(trip.stopFee)}
+                          </p>
+                        )}
+                      </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
+
+                {splitInDeliveries && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {[
+                      {
+                        value: true,
+                        label: "El mismo repartidor",
+                        hint: "Hace todas las entregas de esta compra",
+                      },
+                      {
+                        value: false,
+                        label: "Repartidores de turno",
+                        hint: "Las toma quien esté disponible",
+                      },
+                    ].map((option) => (
+                      <button
+                        key={String(option.value)}
+                        type="button"
+                        onClick={() => setSameCourier(option.value)}
+                        className={cn(
+                          "rounded-xl border px-3 py-2 text-left transition-colors",
+                          sameCourier === option.value
+                            ? "border-accent/50 bg-accent/10"
+                            : "border-border/70 hover:border-accent/30",
+                        )}
+                      >
+                        <span className="block text-xs font-semibold">
+                          {option.label}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                          {option.hint}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

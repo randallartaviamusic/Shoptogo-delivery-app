@@ -28,6 +28,8 @@ export const DELIVERY_RULES = {
   businessAreaKm: 15,
   /** Las calles de un pueblo suman ~25% sobre la distancia en línea recta. */
   roadFactor: 1.25,
+  /** Recargo por cada tienda extra que el repartidor retira en la misma entrega. */
+  extraStopFee: 600,
 } as const;
 
 /**
@@ -65,6 +67,47 @@ export function splitIntoDeliveries<T extends { quantity: number }>(
 
   if (current.length > 0) deliveries.push(current);
   return deliveries;
+}
+
+export type PlannedTrip = {
+  /** Número de entrega dentro de la compra (1, 2, 3...). */
+  index: number;
+  units: number;
+  /** Tiendas que se retiran en esta entrega, con su tarifa de recorrido. */
+  stops: Array<{ businessId: string; fee: number }>;
+  /** Recargo por retirar en más de una tienda. */
+  stopFee: number;
+  fee: number;
+};
+
+/**
+ * Arma las entregas de una compra: máximo 3 productos cada una, en el orden del
+ * carrito. Una misma entrega puede retirar en varias tiendas y en ese caso
+ * suma la tarifa de cada recorrido más un recargo por tienda adicional.
+ */
+export function planDeliveryTrips(
+  lines: Array<{ businessId: string; quantity: number }>,
+  feeForBusiness: (businessId: string) => number,
+): PlannedTrip[] {
+  return splitIntoDeliveries(lines).map((chunk, index) => {
+    const stores: string[] = [];
+    for (const line of chunk) {
+      if (!stores.includes(line.businessId)) stores.push(line.businessId);
+    }
+    const stops = stores.map((businessId) => ({
+      businessId,
+      fee: feeForBusiness(businessId),
+    }));
+    const stopFee =
+      DELIVERY_RULES.extraStopFee * Math.max(0, stops.length - 1);
+    return {
+      index: index + 1,
+      units: chunk.reduce((acc, line) => acc + line.quantity, 0),
+      stops,
+      stopFee,
+      fee: stops.reduce((acc, stop) => acc + stop.fee, 0) + stopFee,
+    };
+  });
 }
 
 export type DeliveryQuote = {

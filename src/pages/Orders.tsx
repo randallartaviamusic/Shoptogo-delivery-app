@@ -63,6 +63,18 @@ export type OrderView = {
   remainingDeliveries: number;
   reservedDeliveries: number;
   groupEarnings: number;
+  tripStops: number;
+  extraStopFee: number;
+  tripEarnings: number;
+  tripTotal: number;
+  stops: Array<{
+    businessId: string;
+    name: string;
+    address: string;
+    fee: number;
+    extraStopFee: number;
+    itemCount: number;
+  }>;
   createdAt: number;
   acceptedAt: number | null;
   courierAcceptedAt: number | null;
@@ -223,6 +235,23 @@ function OrderDetailDialog({
         <div className="space-y-4">
           <StatusPill status={order.status} />
           <OrderProgress status={order.status} />
+
+          {order.tripStops > 1 && (
+            <div className="rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="font-semibold text-accent">
+                Entrega compartida con {order.tripStops} tiendas
+              </p>
+              <p className="mt-1">
+                El repartidor retira en{" "}
+                {order.stops.map((stop) => stop.name).join(" y ")}. Por cada tienda
+                adicional el envío suma un recargo
+                {order.extraStopFee > 0
+                  ? ` de ${money(order.extraStopFee)}`
+                  : ""}
+                .
+              </p>
+            </div>
+          )}
 
           {order.batchCount && order.batchCount > 1 && (
             <p className="rounded-xl border border-border/70 bg-black/20 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
@@ -460,6 +489,7 @@ export default function OrdersPage() {
                           · Entrega {order.batchIndex} de {order.batchCount}
                         </>
                       )}
+                      {order.tripStops > 1 && <> · {order.tripStops} tiendas</>}
                     </p>
                   </div>
                   <StatusPill status={order.status} />

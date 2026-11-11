@@ -610,6 +610,11 @@ export default function BusinessPage() {
                           Entrega {order.batchIndex} de {order.batchCount}
                         </span>
                       )}
+                      {order.tripStops > 1 && (
+                        <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                          Viaje con {order.tripStops} tiendas
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {order.buyerName}
@@ -660,6 +665,18 @@ export default function BusinessPage() {
                   <MapPin className="mt-0.5 size-3.5 shrink-0 text-accent" />
                   <span>{order.address}</span>
                 </div>
+
+                {order.tripStops > 1 && (
+                  <p className="mt-2 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    El repartidor retira esta entrega también en{" "}
+                    {order.stops
+                      .filter((stop) => stop.businessId !== order.businessId)
+                      .map((stop) => stop.name)
+                      .join(" y ")}
+                    . El cliente paga un recargo de envío por la tienda adicional
+                    {order.extraStopFee > 0 ? ` (${money(order.extraStopFee)})` : ""}.
+                  </p>
+                )}
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
                   <div>

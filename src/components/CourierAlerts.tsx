@@ -12,6 +12,8 @@ type AvailableOrder = {
   deliveryFee: number;
   sameCourier?: boolean;
   remainingDeliveries?: number;
+  tripStops?: number;
+  tripEarnings?: number;
 };
 
 function playChime() {
@@ -74,8 +76,10 @@ export function CourierAlerts({ enabled }: { enabled: boolean }) {
       first.sameCourier && (first.remainingDeliveries ?? 0) > 0
         ? ` · compra de ${(first.remainingDeliveries ?? 0) + 1} entregas para el mismo repartidor`
         : "";
+    const stops =
+      (first.tripStops ?? 1) > 1 ? ` · retirás en ${first.tripStops} tiendas` : "";
     toast("Pedido listo para entregar", {
-      description: `${first.businessName} · ${money(first.deliveryFee)}${multiple}${
+      description: `${first.businessName} · ${money(first.tripEarnings ?? first.deliveryFee)}${stops}${multiple}${
         fresh.length > 1 ? ` · y ${fresh.length - 1} más` : ""
       }`,
       duration: multiple ? 16000 : 12000,
