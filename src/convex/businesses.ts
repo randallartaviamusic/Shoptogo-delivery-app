@@ -6,6 +6,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { geoPointValidator, promoKindValidator } from "./schema";
 import { planTier } from "../lib/subscriptions";
 import { subscriptionAccess } from "./subscriptions";
+import { isAccountVerified } from "./verification";
 import {
   DELIVERY_RULES,
   deliveryQuote,
@@ -191,9 +192,12 @@ export const directory = query({
         accessByBusiness.set(business._id, { allowed: true, tier: 1 });
         continue;
       }
-      const access = await subscriptionAccess(ctx, business.ownerId);
+      const [access, verified] = await Promise.all([
+        subscriptionAccess(ctx, business.ownerId),
+        isAccountVerified(ctx, business.ownerId),
+      ]);
       accessByBusiness.set(business._id, {
-        allowed: access.hasAccess,
+        allowed: access.hasAccess && verified,
         tier: planTier(access.plan),
       });
     }
@@ -212,6 +216,7 @@ export const directory = query({
           category: business.category,
           rating: business.rating,
           reviews: business.reviews,
+          verified: Boolean(business.verifiedAt),
           isOpen: business.isOpen,
           etaMinutes: business.etaMinutes,
           delivery: describeDelivery(business.location, viewer),
@@ -251,7 +256,10 @@ export const storefront = query({
     const viewer = await viewerLocation(ctx);
 
     return {
-      business,
+      business: {
+        ...business,
+        verified: Boolean(business.verifiedAt),
+      },
       delivery: describeDelivery(business.location, viewer),
       products: products
         .filter((product) => product.isAvailable)

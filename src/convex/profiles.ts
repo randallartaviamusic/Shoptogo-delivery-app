@@ -2,6 +2,10 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
+import {
+  isValidCostaRicaPhone,
+  normalizeCostaRicaPhone,
+} from "../lib/trust";
 
 export const updateProfile = mutation({
   args: {
@@ -13,6 +17,8 @@ export const updateProfile = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Necesitás iniciar sesión");
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("Esa cuenta ya no existe");
 
     const patch: Partial<Doc<"users">> = {};
     if (args.name !== undefined) {
@@ -20,9 +26,40 @@ export const updateProfile = mutation({
       if (name.length < 2) throw new Error("Escribí tu nombre completo");
       patch.name = name;
     }
-    if (args.phone !== undefined) patch.phone = args.phone.trim();
+    let phoneChanged = false;
+    if (args.phone !== undefined) {
+      const phone = args.phone.trim();
+      const needsPhone = user.role === "business" || user.role === "courier";
+      if (!phone && needsPhone) {
+        throw new Error("El teléfono es obligatorio para operar en la plataforma");
+      }
+      if (phone && !isValidCostaRicaPhone(phone)) {
+        throw new Error("Escribí un teléfono de Costa Rica de 8 dígitos");
+      }
+      patch.phone = phone ? normalizeCostaRicaPhone(phone) : "";
+      phoneChanged = patch.phone !== (user.phone ?? "");
+    }
     if (args.address !== undefined) patch.address = args.address.trim();
     if (args.city !== undefined) patch.city = args.city.trim();
+
+    // Cambiar el teléfono de una cuenta verificada obliga a revisarlo de nuevo:
+    // es el dato con el que se contacta a la persona en una entrega.
+    if (
+      phoneChanged &&
+      (user.role === "business" || user.role === "courier") &&
+      user.verificationStatus === "verified"
+    ) {
+      patch.verificationStatus = "pending";
+      patch.verifiedAt = undefined;
+      patch.verificationNote = "Actualizaste tu teléfono: queda pendiente de revisión.";
+      const business = await ctx.db
+        .query("businesses")
+        .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+        .first();
+      if (business?.verifiedAt) {
+        await ctx.db.patch(business._id, { verifiedAt: undefined });
+      }
+    }
 
     await ctx.db.patch(userId, patch);
     return null;

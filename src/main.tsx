@@ -25,6 +25,8 @@ const ProfilePage = lazy(() => import("./pages/Profile.tsx"));
 const BusinessPage = lazy(() => import("./pages/Business.tsx"));
 const CourierPage = lazy(() => import("./pages/Courier.tsx"));
 const SubscriptionPage = lazy(() => import("./pages/Subscription.tsx"));
+const HelpPage = lazy(() => import("./pages/Help.tsx"));
+const ReceiptPage = lazy(() => import("./pages/Receipt.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 function RouteLoading() {
@@ -241,6 +243,22 @@ createRoot(document.getElementById("root")!).render(
                       description="La suscripción es para cuentas de negocio y repartidor."
                     >
                       <SubscriptionPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/ayuda"
+                  element={
+                    <RequireAuth redirectImmediately>
+                      <HelpPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/comprobante/:orderId"
+                  element={
+                    <RequireAuth redirectImmediately>
+                      <ReceiptPage />
                     </RequireAuth>
                   }
                 />

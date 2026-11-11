@@ -59,6 +59,35 @@ export type SubscriptionPaymentStatus = Infer<
   typeof subscriptionPaymentStatusValidator
 >;
 
+export const verificationStatusValidator = v.union(
+  v.literal("unverified"),
+  v.literal("pending"),
+  v.literal("verified"),
+  v.literal("rejected"),
+);
+export type VerificationStatus = Infer<typeof verificationStatusValidator>;
+
+export const supportCategoryValidator = v.union(
+  // Problemas con el pago en efectivo o una diferencia de monto.
+  v.literal("payment"),
+  // Producto faltante, incorrecto o en mal estado.
+  v.literal("product"),
+  // El punto o la dirección de entrega no coincide.
+  v.literal("address"),
+  // El pedido no llegó o el repartidor no pudo entregarlo.
+  v.literal("delivery"),
+  v.literal("account"),
+  v.literal("other"),
+);
+export type SupportCategory = Infer<typeof supportCategoryValidator>;
+
+export const supportStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("in_review"),
+  v.literal("resolved"),
+);
+export type SupportStatus = Infer<typeof supportStatusValidator>;
+
 export const cashIssueKindValidator = v.union(
   // El cliente pagó menos de lo que correspondía.
   v.literal("shortfall"),
@@ -122,6 +151,17 @@ const schema = defineSchema(
       coverImage: v.optional(v.string()),
       // Punto exacto donde el usuario recibe sus pedidos.
       location: v.optional(geoPointValidator),
+      // Verificación básica de negocios y repartidores. La administración
+      // revisa el teléfono, la cédula y los datos del local o del vehículo.
+      verificationStatus: v.optional(verificationStatusValidator),
+      idNumber: v.optional(v.string()),
+      vehicle: v.optional(v.string()),
+      verificationNote: v.optional(v.string()),
+      verificationSubmittedAt: v.optional(v.number()),
+      verifiedAt: v.optional(v.number()),
+      // Calificación que recibe un repartidor (promedio y cantidad).
+      rating: v.optional(v.number()),
+      reviews: v.optional(v.number()),
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
     businesses: defineTable({
@@ -148,6 +188,9 @@ const schema = defineSchema(
       reviews: v.number(),
       isOpen: v.boolean(),
       isDemo: v.optional(v.boolean()),
+      // Se completa cuando la administración verifica al dueño del local.
+      // Sirve para mostrar el sello de confianza sin exponer datos privados.
+      verifiedAt: v.optional(v.number()),
     })
       .index("by_owner", ["ownerId"])
       .index("by_slug", ["slug"]),
@@ -334,6 +377,40 @@ const schema = defineSchema(
       reviewNote: v.optional(v.string()),
     })
       .index("by_owner", ["ownerId"])
+      .index("by_status", ["status"]),
+
+    // Calificación del comprador al negocio y al repartidor, por separado.
+    reviews: defineTable({
+      orderId: v.id("orders"),
+      buyerId: v.id("users"),
+      businessId: v.id("businesses"),
+      courierId: v.optional(v.id("users")),
+      businessRating: v.number(),
+      courierRating: v.optional(v.number()),
+      comment: v.optional(v.string()),
+      createdAt: v.number(),
+    })
+      .index("by_order", ["orderId"])
+      .index("by_business", ["businessId"])
+      .index("by_courier", ["courierId"])
+      .index("by_buyer", ["buyerId"]),
+
+    // Canal de ayuda para pagos, productos, direcciones y entregas. Cada caso
+    // queda con estado y respuesta del administrador.
+    supportTickets: defineTable({
+      userId: v.id("users"),
+      role: v.optional(roleValidator),
+      orderId: v.optional(v.id("orders")),
+      category: supportCategoryValidator,
+      message: v.string(),
+      status: supportStatusValidator,
+      adminNote: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+      resolvedAt: v.optional(v.number()),
+      resolvedBy: v.optional(v.id("users")),
+    })
+      .index("by_user", ["userId"])
       .index("by_status", ["status"]),
 
     // Identidad visual de la plataforma que edita el perfil administrador.

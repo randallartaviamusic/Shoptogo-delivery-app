@@ -16,6 +16,7 @@ import {
 } from "../lib/delivery";
 import { cashIssueKindValidator } from "./schema";
 import { requireSubscriptionAccess } from "./subscriptions";
+import { isAdminEmail } from "./branding";
 
 type OrderViewer = "buyer" | "business" | "courier";
 
@@ -399,6 +400,12 @@ async function decorateOrder(
     courierId: order.courierId ?? null,
     courierName: courier?.name ?? null,
     courierPhone: courier?.phone ?? null,
+    courierRating: courier?.rating ?? null,
+    courierReviews: courier?.reviews ?? 0,
+    courierVerified: courier?.verificationStatus === "verified",
+    businessRating: business?.rating ?? null,
+    businessReviews: business?.reviews ?? null,
+    businessVerified: Boolean(business?.verifiedAt),
     courierLocation:
       order.status === "ready" || order.status === "picked_up"
         ? (order.courierLocation ?? null)
@@ -810,6 +817,11 @@ export const businessUpdateStatus = mutation({
     if (!order || order.businessId !== business._id) {
       throw new Error("Ese pedido no pertenece a tu negocio");
     }
+    if (args.status === "cancelled" && order.status === "preparing") {
+      throw new Error(
+        "El pedido ya está en preparación y no se puede cancelar desde el panel. Si hay un problema, abrí un caso en Ayuda",
+      );
+    }
     const allowed = TRANSITIONS[order.status] ?? [];
     if (!allowed.includes(args.status)) {
       throw new Error("Ese cambio de estado no es válido");
@@ -1003,6 +1015,11 @@ export const courierAccept = mutation({
     const courier = await ctx.db.get(userId);
     if (courier?.role !== "courier") {
       throw new Error("Sólo las cuentas de repartidor pueden tomar pedidos");
+    }
+    if (courier.verificationStatus !== "verified") {
+      throw new Error(
+        "Tu cuenta de repartidor todavía no está verificada. Completá tus datos en Perfil → Verificación y esperá la revisión",
+      );
     }
     await requireSubscriptionAccess(
       ctx,
@@ -1405,8 +1422,15 @@ export const cancel = mutation({
     const order = await ctx.db.get(args.orderId);
     if (!order) throw new Error("Ese pedido no existe");
     if (order.buyerId !== userId) throw new Error("Ese pedido no es tuyo");
+    if (order.status === "picked_up") {
+      throw new Error(
+        "El pedido ya fue retirado y no se puede cancelar. Si hay un problema, abrí un caso en Ayuda",
+      );
+    }
     if (order.status !== "pending") {
-      throw new Error("El negocio ya confirmó tu pedido, escribile para cancelar");
+      throw new Error(
+        "El local ya confirmó tu pedido. Si hay un problema con el producto o la dirección, abrí un caso en Ayuda",
+      );
     }
     await ctx.db.patch(args.orderId, {
       status: "cancelled",
@@ -1446,6 +1470,111 @@ export const autoCancelStaleReady = internalMutation({
       cancelled += 1;
     }
     return { cancelled };
+  },
+});
+
+/** Pedidos recientes de la cuenta, para asociar un caso de ayuda. */
+export const myOrderChoices = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const user = await ctx.db.get(userId);
+    let orders: Doc<"orders">[] = [];
+    if (user?.role === "business") {
+      const business = await myBusiness(ctx, userId);
+      if (business) {
+        orders = await ctx.db
+          .query("orders")
+          .withIndex("by_business", (q) => q.eq("businessId", business._id))
+          .collect();
+      }
+    } else if (user?.role === "courier") {
+      orders = await ctx.db
+        .query("orders")
+        .withIndex("by_courier", (q) => q.eq("courierId", userId))
+        .collect();
+    } else {
+      orders = await ctx.db
+        .query("orders")
+        .withIndex("by_buyer", (q) => q.eq("buyerId", userId))
+        .collect();
+    }
+    return orders
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 24)
+      .map((order) => ({
+        _id: order._id,
+        code: order.code,
+        status: order.status,
+        total: order.total,
+        createdAt: order.createdAt,
+      }));
+  },
+});
+
+/** Comprobante digital del pedido, compartido sólo con sus participantes. */
+export const receipt = query({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const order = await ctx.db.get(args.orderId);
+    if (!order) return null;
+    const business = await ctx.db.get(order.businessId);
+    const buyer = await ctx.db.get(order.buyerId);
+    const courier = order.courierId ? await ctx.db.get(order.courierId) : null;
+    const viewer = await ctx.db.get(userId);
+    const allowed =
+      order.buyerId === userId ||
+      order.courierId === userId ||
+      business?.ownerId === userId ||
+      isAdminEmail(viewer?.email);
+    if (!allowed) return null;
+
+    return {
+      code: order.code,
+      status: order.status,
+      createdAt: order.createdAt,
+      acceptedAt: order.acceptedAt ?? null,
+      readyAt: order.readyAt ?? null,
+      pickedUpAt: order.pickedUpAt ?? null,
+      deliveredAt: order.deliveredAt ?? null,
+      cancelledAt: order.cancelledAt ?? null,
+      cancellationReason: order.cancellationReason ?? null,
+      business: business
+        ? {
+            name: business.name,
+            address: business.address,
+            image: business.image,
+            verified: Boolean(business.verifiedAt),
+          }
+        : null,
+      buyer: buyer ? { name: buyer.name ?? "Cliente", phone: buyer.phone ?? null } : null,
+      courier: courier
+        ? {
+            name: courier.name ?? "Repartidor",
+            phone: courier.phone ?? null,
+            vehicle: courier.vehicle ?? null,
+            verified: courier.verificationStatus === "verified",
+          }
+        : null,
+      items: order.items,
+      subtotal: order.subtotal,
+      deliveryFee: order.deliveryFee,
+      deliveryDiscount: order.deliveryDiscount ?? 0,
+      total: order.total,
+      address: order.address,
+      notes: order.notes ?? null,
+      pickupCode: order.pickupCode ?? null,
+      deliveryPin: order.deliveryPin ?? null,
+      cashCollected: order.cashCollected ?? null,
+      cashCollectedAt: order.cashCollectedAt ?? null,
+      cashHanded: order.cashHanded ?? null,
+      cashHandedAt: order.cashHandedAt ?? null,
+      cashIssue: order.cashIssue ?? null,
+      tripStops: order.tripStops ?? 1,
+    };
   },
 });
 

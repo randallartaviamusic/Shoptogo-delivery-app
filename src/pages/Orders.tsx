@@ -2,6 +2,7 @@ import { EmptyState, PageHeader } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
+import { OrderReview } from "@/components/OrderReview";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,6 +30,7 @@ import {
   MapPin,
   PackageCheck,
   ReceiptText,
+  Star,
   Store,
   Wallet,
   X,
@@ -137,6 +139,12 @@ export type OrderView = {
   courierId: string | null;
   courierName: string | null;
   courierPhone: string | null;
+  courierRating: number | null;
+  courierReviews: number;
+  courierVerified: boolean;
+  businessRating: number | null;
+  businessReviews: number | null;
+  businessVerified: boolean;
 };
 
 const STEPS = [
@@ -278,9 +286,15 @@ function OrderDetailDialog({
           <OrderProgress status={order.status} />
 
           {order.status === "cancelled" && order.cancellationReason && (
-            <p className="rounded-xl border border-border/70 bg-secondary/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
-              {order.cancellationReason}
-            </p>
+            <div className="rounded-xl border border-border/70 bg-secondary/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
+              <p>{order.cancellationReason}</p>
+              <Link
+                to={`/ayuda?order=${order._id}`}
+                className="mt-1 inline-flex items-center gap-1 font-semibold text-accent hover:underline"
+              >
+                Abrir un caso en Ayuda
+              </Link>
+            </div>
           )}
 
           {order.status === "ready" && !order.courierId && (
@@ -465,6 +479,14 @@ function OrderDetailDialog({
 
           {order.cashIssue && <CashIssueNote issue={order.cashIssue} />}
 
+          {order.status === "delivered" && (
+            <OrderReview
+              orderId={order._id}
+              businessName={order.businessName}
+              courierName={order.courierName}
+            />
+          )}
+
           <div className="space-y-2 text-sm">
             <p className="flex items-start gap-2 text-muted-foreground">
               <MapPin className="mt-0.5 size-4 shrink-0 text-accent" />
@@ -484,10 +506,21 @@ function OrderDetailDialog({
               </p>
             )}
             {order.courierName && (
-              <p className="flex items-center gap-2 text-muted-foreground">
+              <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
                 <Bike className="size-4 text-accent" />
                 {order.courierName}
                 {order.courierPhone ? ` · ${order.courierPhone}` : ""}
+                {order.courierVerified && (
+                  <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
+                    Verificado
+                  </span>
+                )}
+                {order.courierRating !== null && (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] text-accent">
+                    <Star className="size-3 fill-current" />
+                    {order.courierRating.toFixed(1)} ({order.courierReviews})
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -507,6 +540,17 @@ function OrderDetailDialog({
                 </li>
               ))}
             </ul>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button asChild variant="outline" className="gap-2 border-border/80">
+              <Link to={`/comprobante/${order._id}`}>
+                <ReceiptText className="size-4" /> Comprobante digital
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" className="gap-2 text-muted-foreground">
+              <Link to={`/ayuda?order=${order._id}`}>Ayuda con este pedido</Link>
+            </Button>
           </div>
 
           {order.status === "pending" && onCancel && (

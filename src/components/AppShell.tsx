@@ -16,6 +16,7 @@ import {
   Flame,
   History,
   LayoutDashboard,
+  LifeBuoy,
   Loader2,
   LogOut,
   Navigation,
@@ -176,9 +177,9 @@ export function AppShell() {
   };
 
   return (
-    <div className="min-h-screen lg:pl-[272px]">
+    <div className="min-h-screen lg:pl-[272px] print:pl-0">
       <CourierAlerts enabled={isCourier} />
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex print:hidden">
         <Link to={home} className="px-1">
           <Wordmark />
         </Link>
@@ -224,6 +225,27 @@ export function AppShell() {
               </Link>
             );
           })}
+          <div className="mt-3 border-t border-border/60 pt-3">
+            <Link
+              to="/ayuda"
+              className={cn(
+                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                location.pathname === "/ayuda"
+                  ? "bg-primary/12 text-foreground"
+                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+              )}
+            >
+              <LifeBuoy
+                className={cn(
+                  "size-[18px]",
+                  location.pathname === "/ayuda"
+                    ? "text-primary"
+                    : "text-muted-foreground",
+                )}
+              />
+              Ayuda y soporte
+            </Link>
+          </div>
         </div>
 
         {role === "buyer" && isGuest && (
@@ -307,7 +329,7 @@ export function AppShell() {
 
       <header
         className={cn(
-          "sticky top-0 z-30 flex items-center justify-between bg-background/85 bg-[linear-gradient(to_bottom,#fff_0%,rgba(255,255,255,0.82)_14%,rgba(255,255,255,0.3)_44%,rgba(255,255,255,0.08)_74%,rgba(255,255,255,0)_100%)] px-4 py-3 backdrop-blur-xl transition-transform duration-300 ease-out lg:hidden",
+          "sticky top-0 z-30 flex items-center justify-between bg-background/85 bg-[linear-gradient(to_bottom,#fff_0%,rgba(255,255,255,0.82)_14%,rgba(255,255,255,0.3)_44%,rgba(255,255,255,0.08)_74%,rgba(255,255,255,0)_100%)] px-4 py-3 backdrop-blur-xl transition-transform duration-300 ease-out lg:hidden print:hidden",
           headerHidden ? "-translate-y-full" : "translate-y-0",
         )}
       >
@@ -319,6 +341,13 @@ export function AppShell() {
           <Wordmark markSize={30} />
         </Link>
         <div className="flex items-center gap-1">
+          {!isGuest && (
+            <Link to="/ayuda" aria-label="Ayuda">
+              <Button variant="ghost" size="icon">
+                <LifeBuoy className="size-5" />
+              </Button>
+            </Link>
+          )}
           {role === "buyer" && (
             <Link to="/cart" className="relative">
               <Button variant="ghost" size="icon" aria-label="Carrito">
@@ -363,7 +392,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-14 lg:pt-10">
+      <main className="mx-auto w-full max-w-6xl px-4 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-14 lg:pt-10 print:max-w-none print:p-0">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={`${location.pathname}${location.search}`}
@@ -377,7 +406,7 @@ export function AppShell() {
         </AnimatePresence>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 bg-background/90 bg-[linear-gradient(to_top,#fff_0%,rgba(255,255,255,0.7)_10%,rgba(255,255,255,0.24)_22%,rgba(255,255,255,0.06)_40%,rgba(255,255,255,0)_62%)] px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 bg-background/90 bg-[linear-gradient(to_top,#fff_0%,rgba(255,255,255,0.7)_10%,rgba(255,255,255,0.24)_22%,rgba(255,255,255,0.06)_40%,rgba(255,255,255,0)_62%)] px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden print:hidden">
         <div className="mx-auto flex max-w-md items-stretch justify-between">
           {nav.map((item) => {
             const active =

@@ -5,6 +5,7 @@ import { DELIVERY_RULES, deliveryQuote, isValidPoint } from "../lib/delivery";
 import type { GeoPoint } from "../lib/delivery";
 import { planTier } from "../lib/subscriptions";
 import { subscriptionAccess } from "./subscriptions";
+import { isAccountVerified } from "./verification";
 
 /** Stable per-user shuffle so the deck feels random but doesn't jump around. */
 function hash(input: string) {
@@ -47,9 +48,12 @@ export const deck = query({
         accessByBusiness.set(business._id, { allowed: true, tier: 1 });
         continue;
       }
-      const access = await subscriptionAccess(ctx, business.ownerId);
+      const [access, verified] = await Promise.all([
+        subscriptionAccess(ctx, business.ownerId),
+        isAccountVerified(ctx, business.ownerId),
+      ]);
       accessByBusiness.set(business._id, {
-        allowed: access.hasAccess,
+        allowed: access.hasAccess && verified,
         tier: planTier(access.plan),
       });
     }

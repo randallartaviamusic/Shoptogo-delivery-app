@@ -5,6 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { geoPointValidator } from "./schema";
 import { requireSubscriptionAccess } from "./subscriptions";
+import { requireVerifiedAccount } from "./verification";
 import {
   DELIVERY_RULES,
   deliveryQuote,
@@ -210,6 +211,11 @@ export const add = mutation({
         business.ownerId,
         `${business.name} no está recibiendo pedidos: su suscripción está vencida`,
       );
+      await requireVerifiedAccount(
+        ctx,
+        business.ownerId,
+        `${business.name} todavía está en verificación: por ahora no recibe pedidos nuevos`,
+      );
     }
 
     const existing = await ctx.db
@@ -337,6 +343,11 @@ export const checkout = mutation({
           ctx,
           business.ownerId,
           `${business.name} no está recibiendo pedidos: su suscripción está vencida`,
+        );
+        await requireVerifiedAccount(
+          ctx,
+          business.ownerId,
+          `${business.name} todavía está en verificación: quitá sus productos para continuar`,
         );
       }
       if (!byBusiness.has(item.businessId)) {

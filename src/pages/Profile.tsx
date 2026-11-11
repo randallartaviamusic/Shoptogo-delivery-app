@@ -2,6 +2,10 @@ import defaultLogo from "@/assets/logo.svg";
 import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
 import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
+import { SupportAdmin } from "@/components/SupportAdmin";
+import { TrustHistory } from "@/components/TrustHistory";
+import { VerificationAdmin } from "@/components/VerificationAdmin";
+import { VerificationCard } from "@/components/VerificationCard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -758,6 +762,10 @@ export default function ProfilePage() {
         </section>
       )}
 
+      <VerificationCard />
+
+      {isAdmin && <VerificationAdmin />}
+      {isAdmin && <SupportAdmin />}
       {isAdmin && <SubscriptionAdmin />}
 
       {isAdmin && (
@@ -968,6 +976,8 @@ export default function ProfilePage() {
           )}
         </Button>
       </section>
+
+      <TrustHistory />
 
       <section className="mt-5">
         <h2 className="mb-3 font-display text-lg font-bold">Tu rol en Capricho Express</h2>
