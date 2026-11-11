@@ -169,15 +169,28 @@ export const directory = query({
     const products = await ctx.db.query("products").collect();
     const viewer = await viewerLocation(ctx);
 
-    const stats = new Map<string, { count: number; minPrice: number }>();
+    const productSearch = new Map<string, Array<{ name: string; category: string; price: number }>>();
     for (const product of products) {
-      if (!product.isAvailable) continue;
+      const items = productSearch.get(product.businessId) ?? [];
+      if (product.isAvailable) {
+        items.push({ name: product.name, category: product.category, price: product.price });
+      }
+      productSearch.set(product.businessId, items);
+    }
+
+    const stats = new Map<string, { count: number; minPrice: number | null }>();
+    for (const product of products) {
       const entry = stats.get(product.businessId) ?? {
         count: 0,
-        minPrice: product.price,
+        minPrice: null,
       };
-      entry.count += 1;
-      entry.minPrice = Math.min(entry.minPrice, product.price);
+      if (product.isAvailable) {
+        entry.count += 1;
+        entry.minPrice =
+          entry.minPrice === null
+            ? product.price
+            : Math.min(entry.minPrice, product.price);
+      }
       stats.set(product.businessId, entry);
     }
 
@@ -225,6 +238,7 @@ export const directory = query({
           location: business.location ?? null,
           productCount: entry?.count ?? 0,
           minPrice: entry?.minPrice ?? null,
+          productSearch: productSearch.get(business._id) ?? [],
         };
       })
       .sort(
@@ -262,7 +276,6 @@ export const storefront = query({
       },
       delivery: describeDelivery(business.location, viewer),
       products: products
-        .filter((product) => product.isAvailable)
         .sort(
           (a, b) =>
             a.category.localeCompare(b.category) ||
@@ -276,6 +289,7 @@ export const storefront = query({
           image: product.image,
           category: product.category,
           tags: product.tags,
+          isAvailable: product.isAvailable,
           promo: business.deliveryPromo ?? null,
         })),
     };

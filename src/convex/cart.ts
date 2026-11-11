@@ -56,6 +56,7 @@ export type CartGroup = {
     price: number;
     quantity: number;
     image: string;
+    isAvailable: boolean;
   }>;
   subtotal: number;
 };
@@ -115,6 +116,7 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
       price: product.price,
       quantity: item.quantity,
       image: product.image,
+      isAvailable: product.isAvailable,
     });
     group.subtotal += product.price * item.quantity;
   }
@@ -200,7 +202,9 @@ export const add = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const product = await ctx.db.get(args.productId);
-    if (!product) throw new Error("Ese producto ya no está disponible");
+    if (!product || !product.isAvailable) {
+      throw new Error("Ese producto está agotado o ya no está disponible");
+    }
     const business = await ctx.db.get(product.businessId);
     if (!business?.isOpen) {
       throw new Error(`${business?.name ?? "El negocio"} está cerrado ahora`);
@@ -330,7 +334,9 @@ export const checkout = mutation({
 
     for (const item of cartItems) {
       const product = await ctx.db.get(item.productId);
-      if (!product) throw new Error("Un producto de tu carrito ya no existe");
+      if (!product || !product.isAvailable) {
+        throw new Error("Un producto de tu carrito está agotado o ya no disponible; quitalo para continuar");
+      }
       const business = await ctx.db.get(item.businessId);
       if (!business) throw new Error("Un negocio de tu carrito ya no existe");
       if (!business.isOpen) {
@@ -507,5 +513,77 @@ export const checkout = mutation({
     await ctx.db.patch(userId, { address, location: dropoff });
 
     return { created: trips.length, orders: created, total };
+  },
+});
+
+/** Copia a un carrito los productos disponibles de un pedido anterior. */
+export const repeatOrder = mutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.buyerId !== userId) {
+      throw new Error("Ese pedido no pertenece a tu cuenta");
+    }
+    const added: string[] = [];
+    const skipped: string[] = [];
+    const siblings = order.groupCode
+      ? await ctx.db
+          .query("orders")
+          .withIndex("by_group", (q) => q.eq("groupCode", order.groupCode!))
+          .collect()
+      : [order];
+    const seenProducts = new Set<string>();
+    for (const sibling of siblings) {
+      if (sibling.buyerId !== userId || sibling.status === "cancelled") continue;
+      const business = await ctx.db.get(sibling.businessId);
+      for (const item of sibling.items) {
+        if (seenProducts.has(item.productId)) continue;
+        seenProducts.add(item.productId);
+        const product = await ctx.db.get(item.productId);
+        if (!product || !product.isAvailable || !business?.isOpen) {
+          skipped.push(item.name);
+          continue;
+        }
+        if (!business.isDemo && business.ownerId) {
+          try {
+            await requireSubscriptionAccess(
+              ctx,
+              business.ownerId,
+              `${business.name} no está recibiendo pedidos ahora`,
+            );
+            await requireVerifiedAccount(
+              ctx,
+              business.ownerId,
+              `${business.name} todavía no puede recibir pedidos`,
+            );
+          } catch {
+            skipped.push(item.name);
+            continue;
+          }
+        }
+        const existing = await ctx.db
+          .query("cartItems")
+          .withIndex("by_user_product", (q) =>
+            q.eq("userId", userId).eq("productId", product._id),
+          )
+          .unique();
+        if (existing) {
+          await ctx.db.patch(existing._id, {
+            quantity: Math.min(20, existing.quantity + item.quantity),
+          });
+        } else {
+          await ctx.db.insert("cartItems", {
+            userId,
+            productId: product._id,
+            businessId: business._id,
+            quantity: Math.min(20, item.quantity),
+            addedAt: Date.now(),
+          });
+        }
+        added.push(item.name);
+      }
+    }
+    return { added, skipped };
   },
 });

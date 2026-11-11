@@ -2,6 +2,13 @@ import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
@@ -14,6 +21,7 @@ import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  BookmarkPlus,
   Loader2,
   Minus,
   PackageCheck,
@@ -37,6 +45,8 @@ export default function CartPage() {
   const clearCart = useMutation(api.cart.clear);
   const checkout = useMutation(api.cart.checkout);
   const saveLocation = useMutation(api.profiles.saveLocation);
+  const addressBook = useQuery(api.profiles.savedAddresses);
+  const removeSavedAddress = useMutation(api.profiles.removeSavedAddress);
 
   const [address, setAddress] = useState(user?.address ?? "");
   const [dropoff, setDropoff] = useState<{ lat: number; lng: number } | null>(
@@ -46,6 +56,8 @@ export default function CartPage() {
   const [placing, setPlacing] = useState(false);
   // Para compras de más de 3 productos: mismo repartidor en todas las entregas.
   const [sameCourier, setSameCourier] = useState(true);
+  const [saveLabel, setSaveLabel] = useState("Casa");
+  const [saveAddressBusy, setSaveAddressBusy] = useState(false);
 
   const groups = cart?.groups ?? [];
   const count = cart?.count ?? 0;
@@ -69,10 +81,34 @@ export default function CartPage() {
 
   const handleDropoffChange = (point: { lat: number; lng: number }) => {
     setDropoff(point);
-    if (!user || user.isAnonymous) return;
-    void saveLocation({ lat: point.lat, lng: point.lng }).catch(() => {
-      toast.error("No pudimos guardar tu punto de entrega");
-    });
+  };
+
+  const saveCurrentAddress = async () => {
+    if (!dropoff || address.trim().length < 6) {
+      toast.error("Completá una dirección y fijá el punto exacto en el mapa");
+      return;
+    }
+    setSaveAddressBusy(true);
+    try {
+      await saveLocation({
+        lat: dropoff.lat,
+        lng: dropoff.lng,
+        address,
+        label: saveLabel,
+      });
+      toast.success("Dirección guardada", { description: saveLabel });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar la dirección");
+    } finally {
+      setSaveAddressBusy(false);
+    }
+  };
+
+  const selectSavedAddress = (id: string) => {
+    const saved = addressBook?.addresses.find((item) => item.id === id);
+    if (!saved) return;
+    setAddress(saved.address);
+    setDropoff(saved.location);
   };
 
   // Volvemos acá después de crear la cuenta o iniciar sesión: llevamos la vista
@@ -219,8 +255,11 @@ export default function CartPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
-                          <p className="text-sm font-semibold leading-tight">
+                          <p className="flex items-center gap-2 text-sm font-semibold leading-tight">
                             {item.name}
+                            {!item.isAvailable && (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">Agotado</span>
+                            )}
                           </p>
                           <button
                             aria-label={`Quitar ${item.name}`}
@@ -318,6 +357,23 @@ export default function CartPage() {
             </p>
 
             <div className="mt-5 space-y-3">
+              {(addressBook?.addresses.length ?? 0) > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Usar una dirección guardada</label>
+                  <Select onValueChange={selectSavedAddress}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Seleccioná Casa, Trabajo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {addressBook?.addresses.map((saved) => (
+                        <SelectItem key={saved.id} value={saved.id}>
+                          {saved.label} · {saved.address}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <LocationField
                 value={dropoff}
                 address={address}
@@ -331,6 +387,42 @@ export default function CartPage() {
                     : "Activá el permiso de ubicación o marcá tu punto en el mapa: sin eso no podemos calcular el envío."
                 }
               />
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-black/20 p-2.5">
+                <Input
+                  value={saveLabel}
+                  onChange={(event) => setSaveLabel(event.target.value)}
+                  maxLength={40}
+                  placeholder="Etiqueta: Casa, Trabajo"
+                  aria-label="Etiqueta de la dirección guardada"
+                  className="h-8 min-w-32 flex-1 text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 border-border/80 text-[11px]"
+                  disabled={!dropoff || saveAddressBusy}
+                  onClick={() => void saveCurrentAddress()}
+                >
+                  {saveAddressBusy ? <Loader2 className="size-3.5 animate-spin" /> : <BookmarkPlus className="size-3.5" />}
+                  Guardar dirección
+                </Button>
+              </div>
+              {(addressBook?.addresses.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {addressBook?.addresses.map((saved) => (
+                    <button
+                      key={saved.id}
+                      type="button"
+                      onClick={() => void removeSavedAddress({ id: saved.id })}
+                      className="rounded-full border border-border/70 px-2 py-1 text-[10px] text-muted-foreground hover:border-primary/40 hover:text-primary"
+                      title={`Quitar dirección ${saved.label}`}
+                    >
+                      Quitar {saved.label} ×
+                    </button>
+                  ))}
+                </div>
+              )}
               <Textarea
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
@@ -452,12 +544,21 @@ export default function CartPage() {
                 </span>
               </div>
               <div className="flex items-end justify-between pt-2">
-                <span className="font-semibold">Total</span>
+                <span className="font-semibold">Efectivo exacto a entregar</span>
                 <span className="font-display text-2xl font-extrabold">
                   {money(cart?.total ?? 0)}
                 </span>
               </div>
+              <p className="text-right text-[10px] leading-relaxed text-muted-foreground">
+                Total de productos y envíos tras descuentos. El repartidor registrará este monto al entregar; si no coincide, la diferencia queda anotada.
+              </p>
             </div>
+
+            {groups.some((group) => group.items.some((item) => !item.isAvailable)) && (
+              <p className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-[11px] leading-relaxed text-primary">
+                Hay productos agotados en tu carrito. Quitalos para poder continuar.
+              </p>
+            )}
 
             {hasClosed && (
               <p className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-[11px] leading-relaxed text-primary">
@@ -475,7 +576,7 @@ export default function CartPage() {
 
             <Button
               className="mt-5 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
-              disabled={placing || !canConfirm || hasClosed}
+              disabled={placing || !canConfirm || hasClosed || groups.some((group) => group.items.some((item) => !item.isAvailable))}
               onClick={handleCheckout}
             >
               {placing ? (

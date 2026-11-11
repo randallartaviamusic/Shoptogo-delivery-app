@@ -51,6 +51,10 @@ function Directory() {
   const [departmentSlug, setDepartmentSlug] = useState("todos");
   const [category, setCategory] = useState("todas");
   const [search, setSearch] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [maxDistance, setMaxDistance] = useState("");
+  const [maxMinutes, setMaxMinutes] = useState("");
+  const [openOnly, setOpenOnly] = useState(false);
 
   const rows = directory ?? [];
   const term = normalize(search.trim());
@@ -73,8 +77,10 @@ function Directory() {
   );
 
   const categories = useMemo(() => {
+    const categoryBusinesses =
+      departmentSlug === "todos" ? rows : departmentBusinesses;
     const counts = new Map<string, number>();
-    for (const business of departmentBusinesses) {
+    for (const business of categoryBusinesses) {
       counts.set(business.category, (counts.get(business.category) ?? 0) + 1);
     }
     const order =
@@ -89,16 +95,43 @@ function Directory() {
       if (second === -1) return -1;
       return first - second;
     });
-  }, [departmentBusinesses, departmentSlug]);
+  }, [rows, departmentBusinesses, departmentSlug]);
 
   const filtered = useMemo(() => {
-    if (searching) {
-      return rows.filter((business) => normalize(business.name).includes(term));
-    }
-    return departmentBusinesses.filter(
-      (business) => category === "todas" || business.category === category,
-    );
-  }, [rows, departmentBusinesses, searching, term, category]);
+    const candidates = departmentBusinesses;
+    return candidates.filter((business) => {
+      if (
+        searching &&
+        !normalize(business.name).includes(term) &&
+        !business.productSearch.some(
+          (product) =>
+            normalize(product.name).includes(term) ||
+            normalize(product.category).includes(term),
+        )
+      ) {
+        return false;
+      }
+      if (
+        maxPrice &&
+        !business.productSearch.some((product) => {
+          const matchesSearch =
+            !searching ||
+            normalize(business.name).includes(term) ||
+            normalize(product.name).includes(term) ||
+            normalize(product.category).includes(term);
+          return matchesSearch && product.price <= Number(maxPrice);
+        })
+      ) return false;
+      if (category !== "todas" && business.category !== category) {
+        return false;
+      }
+      if (openOnly && !business.isOpen) return false;
+      if (maxPrice && (business.minPrice === null || business.minPrice > Number(maxPrice))) return false;
+      if (maxDistance && (business.delivery.distanceKm === null || business.delivery.distanceKm > Number(maxDistance))) return false;
+      if (maxMinutes && business.etaMinutes + (business.delivery.minutes ?? 0) > Number(maxMinutes)) return false;
+      return true;
+    });
+  }, [rows, departmentBusinesses, searching, term, category, openOnly, maxPrice, maxDistance, maxMinutes]);
 
   const groups = useMemo(() => {
     const map = new Map<string, typeof filtered>();
@@ -155,9 +188,9 @@ function Directory() {
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar negocios por nombre..."
+          placeholder="Buscar por negocio o producto..."
           className="h-11 rounded-2xl border-border/80 bg-card/60 pl-9 pr-10"
-          aria-label="Buscar negocios por nombre"
+          aria-label="Buscar negocios o productos"
         />
         {search.length > 0 && (
           <button
@@ -171,9 +204,28 @@ function Directory() {
         )}
       </div>
 
-      {!searching && (
-        <div className="-mx-4 mb-2 flex gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
+      <div className="mb-5 rounded-2xl border border-border/70 bg-card/40 p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filtrar</span>
           <button
+            type="button"
+            onClick={() => setOpenOnly((value) => !value)}
+            className={cn("rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors", openOnly ? "border-accent bg-accent text-accent-foreground" : "border-border/80 text-muted-foreground")}
+          >
+            Abiertos ahora
+          </button>
+          <Input type="number" min="0" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="Precio máx. ₡" aria-label="Precio máximo del producto" className="h-8 w-32 text-[11px]" />
+          <Input type="number" min="0" value={maxDistance} onChange={(event) => setMaxDistance(event.target.value)} placeholder="Distancia máx. km" aria-label="Distancia máxima en kilómetros" className="h-8 w-36 text-[11px]" />
+          <Input type="number" min="0" value={maxMinutes} onChange={(event) => setMaxMinutes(event.target.value)} placeholder="ETA máx. min" aria-label="Tiempo estimado máximo en minutos" className="h-8 w-32 text-[11px]" />
+          {(openOnly || maxPrice || maxDistance || maxMinutes) && (
+            <button type="button" onClick={() => { setOpenOnly(false); setMaxPrice(""); setMaxDistance(""); setMaxMinutes(""); }} className="text-[11px] font-semibold text-accent hover:underline">Limpiar filtros</button>
+          )}
+        </div>
+        <p className="mt-2 text-[10px] text-muted-foreground">Precio usa el producto más económico de cada local; distancia y ETA se calculan cuando guardaste un punto de entrega.</p>
+      </div>
+
+      <div className="-mx-4 mb-2 flex gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
+        <button
             onClick={() => chooseDepartment("todos")}
             className={cn(
               "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors",
@@ -214,11 +266,10 @@ function Directory() {
                 )}
               </button>
             );
-          })}
-        </div>
-      )}
+        })}
+      </div>
 
-      {!searching && departmentSlug !== "todos" && categories.length > 0 && (
+      {categories.length > 0 && (
         <div className="mb-5 flex flex-wrap items-center gap-2">
           <button
             onClick={() => setCategory("todas")}
@@ -256,10 +307,10 @@ function Directory() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Store}
-          title={searching ? "No encontramos ese negocio" : "Todavía no hay locales acá"}
+          title={searching ? "No encontramos resultados" : "Todavía no hay locales acá"}
           description={
             searching
-              ? `Ningún local coincide con “${search.trim()}”. Probá con otro nombre.`
+              ? `Ningún negocio o producto coincide con “${search.trim()}”. Probá con otro término o quitá filtros.`
               : "Cuando un local de esta categoría se publique, va a aparecer en esta lista."
           }
           action={
@@ -293,7 +344,11 @@ function Directory() {
               </div>
               <LoopRow className="-mx-4 px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
                 {group.businesses.map((business) => (
-                  <BusinessCard key={business._id} business={business} />
+                  <BusinessCard
+                    key={business._id}
+                    business={business}
+                    searchTerm={searching ? term : ""}
+                  />
                 ))}
               </LoopRow>
             </section>
@@ -308,6 +363,7 @@ type DeliveryInfo = {
   feeFrom: number;
   fee: number | null;
   distanceKm: number | null;
+  minutes: number | null;
   available: boolean;
 };
 
@@ -322,6 +378,7 @@ function deliveryLabel(delivery: DeliveryInfo, promo?: PromoKind | null) {
 
 function BusinessCard({
   business,
+  searchTerm,
 }: {
   business: {
     name: string;
@@ -331,6 +388,7 @@ function BusinessCard({
     category: string;
     rating: number;
     reviews: number;
+    productSearch: Array<{ name: string; category: string; price: number }>;
     isOpen: boolean;
     etaMinutes: number;
     delivery: DeliveryInfo;
@@ -338,6 +396,7 @@ function BusinessCard({
     productCount: number;
     minPrice: number | null;
   };
+  searchTerm: string;
 }) {
   return (
     <Link
@@ -379,10 +438,20 @@ function BusinessCard({
         <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
           {business.tagline}
         </p>
+        {searchTerm && (() => {
+          const matches = business.productSearch
+            .filter((product) => normalize(product.name).includes(searchTerm) || normalize(product.category).includes(searchTerm))
+            .slice(0, 3);
+          return matches.length > 0 ? (
+            <p className="mt-1 line-clamp-1 text-[10px] text-accent">
+              Encontramos: {matches.map((product) => product.name).join(", ")}
+            </p>
+          ) : null;
+        })()}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-1">
             <Clock className="size-3 text-accent" />
-            {business.etaMinutes} min
+            {business.etaMinutes + (business.delivery.minutes ?? 0)} min aprox.
           </span>
           <span className="flex items-center gap-1">
             <Truck className="size-3 text-accent" />
@@ -521,7 +590,7 @@ function Storefront({ slug }: { slug: string }) {
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="size-3 text-accent" />
-                {business.etaMinutes} min
+                {business.etaMinutes + (delivery.minutes ?? 0)} min aprox.
               </span>
               <span className="flex items-center gap-1">
                 <Truck className="size-3 text-accent" />
@@ -603,7 +672,14 @@ function Storefront({ slug }: { slug: string }) {
                       />
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <p className="truncate text-sm font-semibold">{product.name}</p>
+                      <p className="flex items-center gap-2 text-sm font-semibold">
+                        <span className="truncate">{product.name}</span>
+                        {!product.isAvailable && (
+                          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                            Agotado
+                          </span>
+                        )}
+                      </p>
                       <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
                         {product.description || "Sin descripción"}
                       </p>
@@ -614,7 +690,7 @@ function Storefront({ slug }: { slug: string }) {
                         <Button
                           size="sm"
                           className="h-8 gap-1 bg-ember-gradient px-2.5 text-[11px] text-black"
-                          disabled={!business.isOpen || busy === product._id}
+                          disabled={!business.isOpen || !product.isAvailable || busy === product._id}
                           onClick={() => handleAdd(product._id, product.name)}
                         >
                           {busy === product._id ? (
@@ -622,7 +698,7 @@ function Storefront({ slug }: { slug: string }) {
                           ) : (
                             <Plus className="size-3.5" />
                           )}
-                          Agregar
+                          {product.isAvailable ? "Agregar" : "Agotado"}
                         </Button>
                       </div>
                     </div>

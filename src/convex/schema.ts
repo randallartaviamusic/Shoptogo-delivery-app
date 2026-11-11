@@ -151,6 +151,18 @@ const schema = defineSchema(
       coverImage: v.optional(v.string()),
       // Punto exacto donde el usuario recibe sus pedidos.
       location: v.optional(geoPointValidator),
+      // Direcciones favoritas de entrega del comprador, con punto exacto.
+      savedAddresses: v.optional(
+        v.array(
+          v.object({
+            id: v.string(),
+            label: v.string(),
+            address: v.string(),
+            location: geoPointValidator,
+            createdAt: v.number(),
+          }),
+        ),
+      ),
       // Verificación básica de negocios y repartidores. La administración
       // revisa el teléfono, la cédula y los datos del local o del vehículo.
       verificationStatus: v.optional(verificationStatusValidator),

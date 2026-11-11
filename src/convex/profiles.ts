@@ -1,6 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import {
   isValidCostaRicaPhone,
@@ -76,10 +76,13 @@ export const saveLocation = mutation({
     lat: v.number(),
     lng: v.number(),
     address: v.optional(v.string()),
+    label: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Necesitás iniciar sesión");
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("Esa cuenta ya no existe");
     if (
       !Number.isFinite(args.lat) ||
       !Number.isFinite(args.lng) ||
@@ -95,9 +98,69 @@ export const saveLocation = mutation({
         lng: Math.round(args.lng * 1e5) / 1e5,
       },
     };
-    if (args.address !== undefined) patch.address = args.address.trim();
+    const address = args.address?.trim();
+    const label = args.label?.trim();
+    if (address !== undefined) patch.address = address;
+
+    if (label !== undefined && address !== undefined) {
+      if (label.length < 1 || label.length > 40) {
+        throw new Error("La etiqueta debe tener entre 1 y 40 caracteres");
+      }
+      const savedAddresses = user.savedAddresses ?? [];
+      const existingIndex = savedAddresses.findIndex(
+        (entry) => entry.address.toLowerCase() === address.toLowerCase(),
+      );
+      const entry = {
+        id: existingIndex >= 0 ? savedAddresses[existingIndex].id : crypto.randomUUID(),
+        label,
+        address,
+        location: {
+          lat: Math.round(args.lat * 1e5) / 1e5,
+          lng: Math.round(args.lng * 1e5) / 1e5,
+        },
+        createdAt:
+          existingIndex >= 0
+            ? savedAddresses[existingIndex].createdAt
+            : Date.now(),
+      };
+      const next = [...savedAddresses];
+      if (existingIndex >= 0) next[existingIndex] = entry;
+      else next.unshift(entry);
+      patch.savedAddresses = next.slice(0, 8);
+    }
 
     await ctx.db.patch(userId, patch);
+    return null;
+  },
+});
+
+/** Direcciones favoritas y punto de entrega actual del comprador. */
+export const savedAddresses = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return { addresses: [], current: null };
+    const user = await ctx.db.get(userId);
+    return {
+      addresses: user?.savedAddresses ?? [],
+      current: user?.location ?? null,
+    };
+  },
+});
+
+/** Quita una dirección favorita sin alterar los pedidos anteriores. */
+export const removeSavedAddress = mutation({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const user = await ctx.db.get(userId);
+    if (!user) throw new Error("Esa cuenta ya no existe");
+    await ctx.db.patch(userId, {
+      savedAddresses: (user.savedAddresses ?? []).filter(
+        (address) => address.id !== args.id,
+      ),
+    });
     return null;
   },
 });

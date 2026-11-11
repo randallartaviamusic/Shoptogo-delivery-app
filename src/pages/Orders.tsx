@@ -30,13 +30,14 @@ import {
   MapPin,
   PackageCheck,
   ReceiptText,
+  ShoppingCart,
   Star,
   Store,
   Wallet,
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
 type OrderItem = {
@@ -257,7 +258,34 @@ function OrderDetailDialog({
   onOpenChange: (open: boolean) => void;
   onCancel?: () => void;
 }) {
+  const navigate = useNavigate();
+  const repeatOrder = useMutation(api.cart.repeatOrder);
+  const [repeating, setRepeating] = useState(false);
   if (!order) return null;
+
+  const handleRepeat = async () => {
+    setRepeating(true);
+    try {
+      const result = await repeatOrder({ orderId: order._id as Id<"orders"> });
+      if (result.added.length === 0) {
+        toast.error("No quedan productos disponibles para repetir", {
+          description: result.skipped.length ? `No disponibles: ${result.skipped.join(", ")}` : undefined,
+        });
+        return;
+      }
+      toast.success("Pedido agregado al carrito", {
+        description: result.skipped.length
+          ? `Agregados ${result.added.length}; agotados o cerrados: ${result.skipped.join(", ")}`
+          : `${result.added.length} productos disponibles agregados. Revisá el precio y el envío actuales.`,
+      });
+      onOpenChange(false);
+      navigate("/cart");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos repetir el pedido");
+    } finally {
+      setRepeating(false);
+    }
+  };
   const timeline = [
     { label: "Pedido creado", value: order.createdAt },
     { label: "Aceptado por el local", value: order.acceptedAt },
@@ -546,6 +574,16 @@ function OrderDetailDialog({
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2">
+            {!ACTIVE_STATUSES.includes(order.status) && (
+              <Button
+                className="gap-2 bg-ember-gradient text-black"
+                disabled={repeating}
+                onClick={() => void handleRepeat()}
+              >
+                {repeating ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
+                Repetir pedido
+              </Button>
+            )}
             <Button asChild variant="outline" className="gap-2 border-border/80">
               <Link to={`/comprobante/${order._id}`}>
                 <ReceiptText className="size-4" /> Comprobante digital
