@@ -29,7 +29,7 @@ export const DELIVERY_RULES = {
   /** Las calles de un pueblo suman ~25% sobre la distancia en línea recta. */
   roadFactor: 1.25,
   /** Recargo por cada tienda extra que el repartidor retira en la misma entrega. */
-  extraStopFee: 600,
+  extraStopFee: 350,
 } as const;
 
 /**
