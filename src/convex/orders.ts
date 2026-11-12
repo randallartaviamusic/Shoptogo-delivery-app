@@ -14,6 +14,13 @@ import {
   travelKm,
   travelMinutes,
 } from "../lib/delivery";
+import {
+  autoCancelTargets,
+  businessCashIssue,
+  businessDue,
+  buyerCancelBlocker,
+  courierCashIssue,
+} from "../lib/orders";
 import { cashIssueKindValidator } from "./schema";
 import { requireSubscriptionAccess, subscriptionAccess } from "./subscriptions";
 import { isAdminEmail } from "./branding";
@@ -179,11 +186,6 @@ async function userName(ctx: DbCtx, id?: Id<"users">) {
   if (!id) return null;
   const user = await ctx.db.get(id);
   return user?.name ?? null;
-}
-
-/** Lo que el local recibe en efectivo por sus productos (sin el envío). */
-function businessDue(order: Doc<"orders">) {
-  return order.subtotal - (order.deliveryDiscount ?? 0);
 }
 
 async function decorateOrder(
@@ -1019,16 +1021,10 @@ export const businessConfirmCash = mutation({
 
     const trip = await tripForOrder(ctx, order);
     const leader = tripLeaderOf(trip);
-    if (difference !== 0) {
+    const issue = businessCashIssue(difference);
+    if (issue) {
       await ctx.db.patch(leader._id, {
-        cashIssue: {
-          kind: difference < 0 ? "incomplete" : "claim",
-          amount: Math.abs(difference),
-          note,
-          at: now,
-          by: userId,
-          orderId: order._id,
-        },
+        cashIssue: { ...issue, note, at: now, by: userId, orderId: order._id },
       });
     } else if (
       leader.cashIssue?.orderId === order._id &&
@@ -1510,14 +1506,9 @@ export const courierUpdateStatus = mutation({
         { amount: cashAmount, at: now, by: userId },
       ],
     };
-    if (difference !== 0) {
-      cashPatch.cashIssue = {
-        kind: difference < 0 ? "shortfall" : "claim",
-        amount: Math.abs(difference),
-        note,
-        at: now,
-        by: userId,
-      };
+    const issue = courierCashIssue(difference);
+    if (issue) {
+      cashPatch.cashIssue = { ...issue, note, at: now, by: userId };
     }
     await ctx.db.patch(leader._id, cashPatch);
     return { status: args.status, orders: trip.length, cashDifference: difference };
@@ -1541,17 +1532,10 @@ export const cancel = mutation({
       (member) => member.status !== "cancelled",
     );
     const now = Date.now();
-    for (const member of trip) {
-      if (member.buyerId !== userId) {
-        throw new Error("La entrega agrupada no pertenece a la misma compra");
-      }
-      if (member.status === "picked_up") {
-        throw new Error("Una parte ya fue retirada; abrí un caso en Ayuda para resolver la compra");
-      }
-      if (member.status !== "pending" || member.courierId) {
-        throw new Error("El local ya confirmó una parte; abrí un caso en Ayuda para resolver la compra");
-      }
-    }
+    // La compra se cancela completa: una hermana huérfana seguiría en el panel
+    // del local como un pedido que el comprador ya no quiere.
+    const blocker = buyerCancelBlocker(trip, userId);
+    if (blocker) throw new Error(blocker);
     for (const member of trip) {
       await ctx.db.patch(member._id, {
         status: "cancelled",
@@ -1582,15 +1566,13 @@ export const autoCancelStaleReady = internalMutation({
     for (const order of ready) {
       if (order.courierId) continue;
       const trip = await tripForOrder(ctx, order);
-      // Si cualquier parada ya fue retirada, no se puede cancelar en bloque:
-      // de lo contrario el resto queda perdido aunque el repartidor lleve la carga.
-      if (trip.some((member) => member.status === "picked_up" || member.courierId)) {
-        continue;
-      }
       const readyAt = tripReadyAt(trip) ?? order.readyAt;
       if (!readyAt || readyAt > threshold) continue;
+      // Se cancela el viaje completo y sólo si nadie lo tomó: si una parada ya
+      // salió del local, el resto no se puede abandonar.
+      const targets = new Set(autoCancelTargets(trip));
       for (const member of trip) {
-        if (member.status !== "ready") continue;
+        if (!targets.has(member._id)) continue;
         await ctx.db.patch(member._id, {
           status: "cancelled",
           cancelledAt: now,

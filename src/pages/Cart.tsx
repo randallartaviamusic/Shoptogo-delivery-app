@@ -31,7 +31,7 @@ import {
   Store,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -68,6 +68,23 @@ export default function CartPage() {
   const hasClosed = groups.some((group) => !group.isOpen);
   const allCovered = groups.every((group) => group.deliveryAvailable);
   const canConfirm = Boolean(dropoff) && address.trim().length >= 6 && allCovered;
+
+  // Clave del intento de compra. Se mantiene si la solicitud falla (reintentar
+  // no duplica el pedido) y se renueva cuando cambia el carrito.
+  const requestKey = useRef<string | null>(null);
+  const cartFingerprint = useMemo(
+    () =>
+      groups
+        .flatMap((group) =>
+          group.items.map((item) => `${item.cartItemId}:${item.quantity}`),
+        )
+        .sort()
+        .join("|"),
+    [groups],
+  );
+  useEffect(() => {
+    requestKey.current = null;
+  }, [cartFingerprint]);
 
   // Si el usuario ya tenía un punto guardado (o lo eligió en otra pestaña),
   // lo usamos apenas llega la ficha.
@@ -142,20 +159,33 @@ export default function CartPage() {
 
     setPlacing(true);
     try {
+      requestKey.current ??=
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `ce-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const result = await checkout({
         address,
         location: dropoff,
         notes,
         sameCourier: splitInDeliveries ? sameCourier : undefined,
+        requestKey: requestKey.current,
       });
-      toast.success(
-        result.created === 1
-          ? "Pedido confirmado"
-          : `${result.created} entregas confirmadas`,
-        {
-          description: `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`,
-        },
-      );
+      // La compra quedó registrada: el próximo intento es un pedido nuevo.
+      requestKey.current = null;
+      if (result.replayed) {
+        toast.success("Tu pedido ya estaba confirmado", {
+          description: `No se cobra dos veces. Total ${money(result.total)}.`,
+        });
+      } else {
+        toast.success(
+          result.created === 1
+            ? "Pedido confirmado"
+            : `${result.created} entregas confirmadas`,
+          {
+            description: `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`,
+          },
+        );
+      }
       setNotes("");
       navigate("/orders");
     } catch (error) {

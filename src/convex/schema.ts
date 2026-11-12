@@ -327,6 +327,9 @@ const schema = defineSchema(
       deliveryLocation: v.optional(geoPointValidator),
       distanceKm: v.optional(v.number()),
       notes: v.optional(v.string()),
+      // Clave del intento de compra que creó esta orden. Un reintento de red
+      // con la misma clave devuelve lo ya registrado en vez de duplicarlo.
+      requestKey: v.optional(v.string()),
       createdAt: v.number(),
       acceptedAt: v.optional(v.number()),
       readyAt: v.optional(v.number()),
@@ -341,6 +344,7 @@ const schema = defineSchema(
       .index("by_business", ["businessId"])
       .index("by_group", ["groupCode"])
       .index("by_courier", ["courierId"])
+      .index("by_request_key", ["buyerId", "requestKey"])
       .index("by_status", ["status"]),
 
     meta: defineTable({

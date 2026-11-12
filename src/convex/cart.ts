@@ -15,6 +15,7 @@ import {
   splitIntoDeliveries,
 } from "../lib/delivery";
 import { promoBadge, promoDiscount } from "../lib/promo";
+import { checkoutSummary } from "../lib/orders";
 import type { PromoKind } from "../lib/promo";
 
 type DbCtx = QueryCtx | MutationCtx;
@@ -303,6 +304,8 @@ export const checkout = mutation({
     notes: v.optional(v.string()),
     // El cliente prefiere que el mismo repartidor haga todas las entregas.
     sameCourier: v.optional(v.boolean()),
+    // Clave estable por intento de compra: reintentar no duplica el pedido.
+    requestKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -313,6 +316,25 @@ export const checkout = mutation({
       throw new Error(
         "Creá tu cuenta o iniciá sesión para confirmar el pedido",
       );
+    }
+
+    const requestKey = args.requestKey?.trim() || null;
+    if (requestKey && requestKey.length > 100) {
+      throw new Error("La clave del pedido no es válida");
+    }
+    // Reintento del mismo intento de compra (doble clic o red inestable): se
+    // devuelve lo ya registrado en vez de crear entregas duplicadas. Se revisa
+    // antes del carrito porque el checkout anterior ya lo vació.
+    if (requestKey) {
+      const previous = await ctx.db
+        .query("orders")
+        .withIndex("by_request_key", (q) =>
+          q.eq("buyerId", userId).eq("requestKey", requestKey),
+        )
+        .collect();
+      if (previous.length > 0) {
+        return { ...checkoutSummary(previous), replayed: true };
+      }
     }
 
     const address = args.address.trim();
@@ -505,6 +527,7 @@ export const checkout = mutation({
           deliveryLocation: dropoff,
           distanceKm: store.distanceKm,
           notes: args.notes?.trim() || undefined,
+          requestKey: requestKey ?? undefined,
           createdAt: now,
         });
       }
@@ -513,7 +536,7 @@ export const checkout = mutation({
     for (const item of cartItems) await ctx.db.delete(item._id);
     await ctx.db.patch(userId, { address, location: dropoff });
 
-    return { created: trips.length, orders: created, total };
+    return { created: trips.length, orders: created, total, replayed: false };
   },
 });
 
