@@ -347,6 +347,49 @@ const schema = defineSchema(
       .index("by_request_key", ["buyerId", "requestKey"])
       .index("by_status", ["status"]),
 
+    // Cierre diario de caja de un repartidor: foto de lo que cobró, lo que
+    // entregó a cada local y lo que quedó pendiente, firmado con su nombre.
+    // Es un registro histórico: no se edita, se firma una sola vez por día.
+    cashClosures: defineTable({
+      courierId: v.id("users"),
+      // Medianoche del día civil de Costa Rica (UTC-6) en milisegundos.
+      dayStart: v.number(),
+      // Fecha legible del cierre, por ejemplo "2026-11-12".
+      day: v.string(),
+      orders: v.number(),
+      deliveries: v.number(),
+      expectedToCollect: v.number(),
+      collected: v.number(),
+      collectionDifference: v.number(),
+      earnings: v.number(),
+      dueToBusinesses: v.number(),
+      handedToBusinesses: v.number(),
+      pendingToBusinesses: v.number(),
+      overpaidToBusinesses: v.number(),
+      // Pendiente que venía de días anteriores y seguía en su mano al cerrar.
+      carryOverPending: v.number(),
+      // Total que declaró tener pendiente de entregar a los locales.
+      totalPending: v.number(),
+      businesses: v.array(
+        v.object({
+          businessId: v.id("businesses"),
+          name: v.string(),
+          orders: v.number(),
+          due: v.number(),
+          handed: v.number(),
+          pending: v.number(),
+        }),
+      ),
+      // Firma: nombre de la cuenta escrito por el repartidor, nota y huella.
+      signedName: v.string(),
+      note: v.optional(v.string()),
+      signature: v.string(),
+      signedAt: v.number(),
+      signedBy: v.id("users"),
+    })
+      .index("by_courier", ["courierId", "dayStart"])
+      .index("by_day", ["dayStart"]),
+
     meta: defineTable({
       key: v.string(),
       value: v.string(),
