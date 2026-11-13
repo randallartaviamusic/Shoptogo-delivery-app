@@ -19,8 +19,14 @@ import {
   businessCashIssue,
   businessDue,
   buyerCancelBlocker,
+  cashClosureSignature,
+  costaRicaDayKey,
+  costaRicaDayRange,
   courierCashIssue,
+  signatureNameMatches,
+  summarizeCashDay,
 } from "../lib/orders";
+import type { CashDayRow } from "../lib/orders";
 import { cashIssueKindValidator } from "./schema";
 import { requireSubscriptionAccess, subscriptionAccess } from "./subscriptions";
 import { isAdminEmail } from "./branding";
@@ -884,6 +890,317 @@ export const courierBoard = query({
         ),
       },
     };
+  },
+});
+
+/**
+ * Momento en que la entrega se completó. Los pedidos viejos pueden no tener
+ * `deliveredAt`: en ese caso se usa la mejor marca disponible para no perder su
+ * efectivo en la conciliación del día.
+ */
+function settledAt(order: Doc<"orders">) {
+  return order.deliveredAt ?? order.pickedUpAt ?? order.createdAt;
+}
+
+/**
+ * Filas de caja de un repartidor en un rango de días. Cada fila es una orden
+ * (una tienda de una entrega); la líder del viaje es la única que guarda el
+ * efectivo cobrado al comprador.
+ */
+async function collectCashDay(
+  ctx: DbCtx,
+  courierId: Id<"users">,
+  start: number,
+  end: number,
+) {
+  const mine = await ctx.db
+    .query("orders")
+    .withIndex("by_courier", (q) => q.eq("courierId", courierId))
+    .collect();
+  const delivered = mine.filter(
+    (order) =>
+      order.status === "delivered" &&
+      settledAt(order) >= start &&
+      settledAt(order) < end,
+  );
+
+  const leaderByTrip = new Map<string, { id: string; position: number }>();
+  for (const order of delivered) {
+    const key = tripKey(order);
+    const position = order.tripPosition ?? 0;
+    const best = leaderByTrip.get(key);
+    if (!best || position < best.position) {
+      leaderByTrip.set(key, { id: order._id, position });
+    }
+  }
+  const leaderIds = new Set([...leaderByTrip.values()].map((entry) => entry.id));
+
+  const rows: CashDayRow[] = [];
+  const names = new Map<string, string>();
+  for (const order of delivered) {
+    let name = names.get(order.businessId);
+    if (name === undefined) {
+      name = (await ctx.db.get(order.businessId))?.name ?? "Local";
+      names.set(order.businessId, name);
+    }
+    rows.push({
+      tripKey: tripKey(order),
+      businessId: order.businessId,
+      businessName: name,
+      total: order.total,
+      subtotal: order.subtotal,
+      deliveryDiscount: order.deliveryDiscount ?? null,
+      deliveryFee: order.deliveryFee,
+      extraStopFee: order.extraStopFee ?? null,
+      cashHanded: order.cashHanded ?? null,
+      cashCollected: order.cashCollected ?? null,
+      isLeader: leaderIds.has(order._id),
+    });
+  }
+
+  const openIssues = delivered.filter(
+    (order) => order.cashIssue && !order.cashIssue.resolvedAt,
+  ).length;
+  const activeTrips = mine.filter(
+    (order) => order.status === "ready" || order.status === "picked_up",
+  ).length;
+
+  return {
+    delivered,
+    summary: summarizeCashDay(rows),
+    openIssues,
+    activeTrips,
+  };
+}
+
+/** Pendiente que el repartidor arrastra de días anteriores a este cierre. */
+async function carryOverPending(
+  ctx: DbCtx,
+  courierId: Id<"users">,
+  before: number,
+) {
+  const mine = await ctx.db
+    .query("orders")
+    .withIndex("by_courier", (q) => q.eq("courierId", courierId))
+    .collect();
+  let pending = 0;
+  for (const order of mine) {
+    if (order.status !== "delivered") continue;
+    if (settledAt(order) >= before) continue;
+    pending += Math.max(0, businessDue(order) - (order.cashHanded ?? 0));
+  }
+  return pending;
+}
+
+/**
+ * Conciliación de caja del repartidor para un día: lo cobrado, lo entregado a
+ * cada local, lo pendiente y si el día ya quedó firmado.
+ */
+export const courierCashDay = query({
+  args: { day: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return null;
+    const user = await ctx.db.get(userId);
+    if (user?.role !== "courier") return null;
+
+    const range = costaRicaDayRange(args.day);
+    if (!range) throw new Error("Ese día no es válido");
+
+    const { delivered, summary, openIssues, activeTrips } = await collectCashDay(
+      ctx,
+      userId,
+      range.start,
+      range.end,
+    );
+    const carryOver = await carryOverPending(ctx, userId, range.start);
+    const closing = await ctx.db
+      .query("cashClosings")
+      .withIndex("by_courier_day", (q) =>
+        q.eq("courierId", userId).eq("day", range.day),
+      )
+      .unique();
+
+    const changedSinceClosing = closing
+      ? closing.orders !== summary.orders ||
+        closing.collected !== summary.collected ||
+        closing.handedToBusinesses !== summary.handedToBusinesses ||
+        closing.pendingToBusinesses !== summary.pendingToBusinesses
+      : false;
+
+    const signatureValid = closing
+      ? cashClosureSignature({
+          courierId: userId,
+          day: closing.day,
+          signedName: closing.signedName,
+          summary: {
+            orders: closing.orders,
+            deliveries: closing.deliveries,
+            expectedToCollect: closing.expectedToCollect,
+            collected: closing.collected,
+            collectionDifference: closing.collectionDifference,
+            earnings: closing.earnings,
+            dueToBusinesses: closing.dueToBusinesses,
+            handedToBusinesses: closing.handedToBusinesses,
+            pendingToBusinesses: closing.pendingToBusinesses,
+            overpaidToBusinesses: closing.overpaidToBusinesses,
+            businesses: closing.businesses.map((line) => ({
+              businessId: line.businessId,
+              name: line.name,
+              orders: line.orders,
+              due: line.due,
+              handed: line.handed,
+              pending: line.pending,
+            })),
+          },
+          carryOverPending: closing.carryOverPending,
+        }) === closing.signature
+      : null;
+
+    return {
+      day: range.day,
+      isToday: range.day === costaRicaDayKey(),
+      summary,
+      openIssues,
+      carryOverPending: carryOver,
+      activeTrips,
+      closing: closing
+        ? {
+            signedName: closing.signedName,
+            note: closing.note ?? null,
+            signature: closing.signature,
+            signedAt: closing.signedAt,
+            orders: closing.orders,
+            deliveries: closing.deliveries,
+            collected: closing.collected,
+            handedToBusinesses: closing.handedToBusinesses,
+            pendingToBusinesses: closing.pendingToBusinesses,
+            carryOverPending: closing.carryOverPending,
+            businesses: closing.businesses,
+          }
+        : null,
+      changedSinceClosing,
+      signatureValid,
+    };
+  },
+});
+
+/**
+ * Firma el cierre del día. Queda un snapshot firmado con el nombre completo de
+ * la cuenta: no se puede reescribir, y si algo cambia después la firma deja de
+ * coincidir. Si queda efectivo pendiente o casos abiertos, la nota es
+ * obligatoria para que el local sepa cómo se resuelve.
+ */
+export const signCourierCash = mutation({
+  args: {
+    day: v.optional(v.string()),
+    signedName: v.string(),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const user = await ctx.db.get(userId);
+    if (user?.role !== "courier") {
+      throw new Error("Sólo las cuentas de repartidor firman su cierre de caja");
+    }
+
+    const range = costaRicaDayRange(args.day);
+    if (!range) throw new Error("Ese día no es válido");
+    if (range.start > Date.now()) {
+      throw new Error("Todavía no podés cerrar un día que no empezó");
+    }
+
+    const existing = await ctx.db
+      .query("cashClosings")
+      .withIndex("by_courier_day", (q) =>
+        q.eq("courierId", userId).eq("day", range.day),
+      )
+      .unique();
+    if (existing) {
+      throw new Error(
+        `El cierre del ${range.day} ya está firmado. Cada día se firma una sola vez`,
+      );
+    }
+
+    if (!signatureNameMatches(user.name, args.signedName)) {
+      throw new Error(
+        "Para firmar escribí tu nombre completo tal como figura en tu cuenta",
+      );
+    }
+
+    const { delivered, summary, openIssues, activeTrips } = await collectCashDay(
+      ctx,
+      userId,
+      range.start,
+      range.end,
+    );
+    if (summary.orders === 0) {
+      throw new Error("Todavía no tenés entregas completadas ese día");
+    }
+    if (activeTrips > 0 && range.day === costaRicaDayKey()) {
+      throw new Error(
+        "Tenés entregas en curso: cerralas antes de firmar el cierre del día",
+      );
+    }
+
+    const note = (args.note ?? "").trim();
+    if (note.length > 500) {
+      throw new Error("La nota es demasiado larga (máximo 500 caracteres)");
+    }
+    const needsNote =
+      summary.pendingToBusinesses > 0 ||
+      openIssues > 0 ||
+      summary.collectionDifference !== 0;
+    if (needsNote && note.length < 8) {
+      throw new Error(
+        "Queda efectivo pendiente o una diferencia: escribí una nota de al menos 8 caracteres",
+      );
+    }
+
+    const carryOver = await carryOverPending(ctx, userId, range.start);
+    const signedAt = Date.now();
+    const signature = cashClosureSignature({
+      courierId: userId,
+      day: range.day,
+      signedName: args.signedName,
+      summary,
+      carryOverPending: carryOver,
+    });
+
+    await ctx.db.insert("cashClosings", {
+      courierId: userId,
+      day: range.day,
+      from: range.start,
+      to: range.end,
+      signedName: args.signedName.trim(),
+      note: note || undefined,
+      orders: summary.orders,
+      deliveries: summary.deliveries,
+      expectedToCollect: summary.expectedToCollect,
+      collected: summary.collected,
+      collectionDifference: summary.collectionDifference,
+      earnings: summary.earnings,
+      dueToBusinesses: summary.dueToBusinesses,
+      handedToBusinesses: summary.handedToBusinesses,
+      pendingToBusinesses: summary.pendingToBusinesses,
+      overpaidToBusinesses: summary.overpaidToBusinesses,
+      carryOverPending: carryOver,
+      openIssues,
+      businesses: summary.businesses.map((line) => ({
+        businessId: line.businessId as Id<"businesses">,
+        name: line.name,
+        orders: line.orders,
+        due: line.due,
+        handed: line.handed,
+        pending: line.pending,
+      })),
+      orderIds: delivered.map((order) => order._id),
+      signature,
+      signedAt,
+    });
+
+    return { signature, signedAt, summary, carryOverPending: carryOver };
   },
 });
 

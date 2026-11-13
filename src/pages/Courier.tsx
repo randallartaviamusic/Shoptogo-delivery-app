@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/AppShell";
+import { CashClosing } from "@/components/CashClosing";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import {
   CourierLocationReporter,
@@ -72,6 +73,7 @@ const TABS = [
   { key: "available", label: "Disponibles", to: "/courier" },
   { key: "active", label: "En curso", to: "/courier?tab=active" },
   { key: "history", label: "Historial", to: "/courier?tab=history" },
+  { key: "cash", label: "Caja", to: "/courier?tab=cash" },
 ];
 
 function StatCard({
@@ -1048,6 +1050,15 @@ export default function CourierPage() {
               ))}
             </div>
           )}
+        </motion.div>
+      )}
+
+      {tab === "cash" && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <CashClosing />
         </motion.div>
       )}
 

@@ -280,3 +280,30 @@ export function checkoutSummary(
     total: orders.reduce((acc, order) => acc + order.total, 0),
   };
 }
+
+/** Costa Rica es UTC−6 todo el año: no hay horario de verano. */
+export const COSTA_RICA_OFFSET_MS = 6 * 60 * 60 * 1000;
+
+/** Día civil de Costa Rica de un momento dado, como `2026-11-13`. */
+export function costaRicaDayKey(timestamp = Date.now()) {
+  return new Date(timestamp - COSTA_RICA_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * Rango [inicio, fin) del día civil de Costa Rica. Devuelve null si el día no
+ * tiene el formato esperado.
+ */
+export function costaRicaDayRange(day?: string) {
+  const key = day ?? costaRicaDayKey();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  const start = Date.parse(`${key}T06:00:00.000Z`);
+  if (!Number.isFinite(start)) return null;
+  return { day: key, start, end: start + 86_400_000 };
+}
+
+/** Corre un día civil de Costa Rica hacia adelante o hacia atrás. */
+export function shiftCostaRicaDay(day: string, days: number) {
+  const range = costaRicaDayRange(day);
+  if (!range) return day;
+  return costaRicaDayKey(range.start + days * 86_400_000);
+}

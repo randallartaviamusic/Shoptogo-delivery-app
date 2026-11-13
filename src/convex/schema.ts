@@ -475,6 +475,48 @@ const schema = defineSchema(
       .index("by_user", ["userId"])
       .index("by_status", ["status"]),
 
+    // Cierre de caja diario que firma cada repartidor: cuánto cobró, cuánto
+    // entregó a cada local y qué quedó pendiente. Es un snapshot inmutable:
+    // si algo cambia después, la firma deja de coincidir y la app lo avisa.
+    cashClosings: defineTable({
+      courierId: v.id("users"),
+      // Día civil de Costa Rica, "YYYY-MM-DD".
+      day: v.string(),
+      from: v.number(),
+      to: v.number(),
+      // Nombre completo con el que firmó; debe coincidir con su cuenta.
+      signedName: v.string(),
+      note: v.optional(v.string()),
+      orders: v.number(),
+      deliveries: v.number(),
+      expectedToCollect: v.number(),
+      collected: v.number(),
+      collectionDifference: v.number(),
+      earnings: v.number(),
+      dueToBusinesses: v.number(),
+      handedToBusinesses: v.number(),
+      pendingToBusinesses: v.number(),
+      overpaidToBusinesses: v.number(),
+      // Pendiente que viene de días anteriores a este cierre.
+      carryOverPending: v.number(),
+      openIssues: v.number(),
+      businesses: v.array(
+        v.object({
+          businessId: v.id("businesses"),
+          name: v.string(),
+          orders: v.number(),
+          due: v.number(),
+          handed: v.number(),
+          pending: v.number(),
+        }),
+      ),
+      orderIds: v.array(v.id("orders")),
+      signature: v.string(),
+      signedAt: v.number(),
+    })
+      .index("by_courier_day", ["courierId", "day"])
+      .index("by_day", ["day"]),
+
     // Identidad visual de la plataforma que edita el perfil administrador.
     settings: defineTable({
       key: v.string(),
