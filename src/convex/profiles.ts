@@ -13,6 +13,8 @@ export const updateProfile = mutation({
     phone: v.optional(v.string()),
     address: v.optional(v.string()),
     city: v.optional(v.string()),
+    // Opt-in explícito para recibir avisos del pedido por WhatsApp.
+    notifyWhatsapp: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -41,6 +43,15 @@ export const updateProfile = mutation({
     }
     if (args.address !== undefined) patch.address = args.address.trim();
     if (args.city !== undefined) patch.city = args.city.trim();
+    if (args.notifyWhatsapp !== undefined) {
+      // Sin teléfono no hay a dónde escribir: pedirlo antes de aceptar.
+      if (args.notifyWhatsapp && !(patch.phone ?? user.phone ?? "").trim()) {
+        throw new Error(
+          "Guardá primero tu número de WhatsApp para recibir los avisos",
+        );
+      }
+      patch.notifyWhatsapp = args.notifyWhatsapp;
+    }
 
     // Cambiar el teléfono de una cuenta verificada obliga a revisarlo de nuevo:
     // es el dato con el que se contacta a la persona en una entrega.

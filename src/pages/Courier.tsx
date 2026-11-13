@@ -65,7 +65,7 @@ import {
   Timer,
   Wallet,
 } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -107,7 +107,7 @@ function StatCard({
 
 export default function CourierPage() {
   const { user } = useAuth();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "available";
 
   const board = useQuery(api.orders.courierBoard);
@@ -135,6 +135,58 @@ export default function CourierPage() {
   const pingPresence = useMutation(api.orders.updateCourierPresence);
   const [now, setNow] = useState(Date.now());
   const [locating, setLocating] = useState(false);
+
+  // Ofertas push: cada una tiene un token propio, el mismo del enlace que llega
+  // por WhatsApp. Aceptar desde acá o desde el mensaje es el mismo camino.
+  const offers = useQuery(api.orders.myOffers);
+  const acceptOfferAction = useMutation(api.orders.acceptOffer);
+  const declineOfferAction = useMutation(api.orders.declineOffer);
+  const offerToken = params.get("offer");
+  const warnedMissingOffer = useRef(false);
+
+  useEffect(() => {
+    if (!offerToken || offers === undefined || warnedMissingOffer.current) return;
+    if (offers.some((offer) => offer.token === offerToken)) return;
+    warnedMissingOffer.current = true;
+    toast.error("Esa oferta ya no está disponible", {
+      description:
+        "La puede haber tomado otro repartidor o haber vencido. Mirá las entregas disponibles.",
+    });
+  }, [offerToken, offers]);
+
+  const handleAcceptOffer = async (token: string) => {
+    setBusy(token);
+    try {
+      await acceptOfferAction({ token });
+      toast.success("Entrega aceptada", {
+        description: "Ya podés retirarla en el local y ver la dirección de entrega.",
+      });
+      if (offerToken === token) {
+        params.delete("offer");
+        setParams(params, { replace: true });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos aceptar la oferta",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeclineOffer = async (token: string) => {
+    try {
+      await declineOfferAction({ token });
+      if (offerToken === token) {
+        params.delete("offer");
+        setParams(params, { replace: true });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos descartar la oferta",
+      );
+    }
+  };
 
   // Mantiene vivos los temporizadores de espera sin esperar a la próxima consulta.
   useEffect(() => {
@@ -431,6 +483,73 @@ export default function CourierPage() {
               <ArrowRight className="size-3.5" />
             </Link>
           </Button>
+        </div>
+      )}
+
+      {offers && offers.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {offers.map((offer) => {
+            const secondsLeft = Math.max(
+              0,
+              Math.floor((offer.expiresAt - now) / 1000),
+            );
+            const focused = offerToken === offer.token;
+            return (
+              <div
+                key={offer.token}
+                className={cn(
+                  "rounded-2xl border p-4 transition-colors",
+                  focused
+                    ? "border-accent/70 bg-accent/[0.12]"
+                    : "border-accent/30 bg-accent/[0.06]",
+                )}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                      <Timer className="size-3.5" /> Oferta para vos
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {offer.businessName} · {offer.code}
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      {offer.items}{" "}
+                      {offer.items === 1 ? "producto" : "productos"} ·{" "}
+                      {money(offer.payout)} de ganancia
+                      {offer.distanceKm
+                        ? ` · ${formatKm(offer.distanceKm)} de recorrido`
+                        : ""}{" "}
+                      · quedan {Math.floor(secondsLeft / 60)}:
+                      {String(secondsLeft % 60).padStart(2, "0")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 text-[11px] text-muted-foreground"
+                      onClick={() => void handleDeclineOffer(offer.token)}
+                    >
+                      Ahora no
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-8 gap-1.5 bg-ember-gradient text-[11px] text-black"
+                      disabled={busy === offer.token || !canAccept}
+                      onClick={() => void handleAcceptOffer(offer.token)}
+                    >
+                      {busy === offer.token ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="size-3.5" />
+                      )}
+                      Aceptar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

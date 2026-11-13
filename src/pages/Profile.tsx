@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -190,6 +191,8 @@ export default function ProfilePage() {
     phone: "",
     address: "",
     city: "",
+    // Avisos del pedido por WhatsApp. Se guarda con el resto del perfil.
+    notifyWhatsapp: false,
   });
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
@@ -201,6 +204,7 @@ export default function ProfilePage() {
       phone: user.phone ?? "",
       address: user.address ?? "",
       city: user.city ?? "",
+      notifyWhatsapp: user.notifyWhatsapp ?? false,
     });
   }, [user]);
 
@@ -958,6 +962,30 @@ export default function ProfilePage() {
             />
           </div>
         </div>
+
+        <label
+          htmlFor="notify-whatsapp"
+          className="mt-4 flex items-start gap-3 rounded-2xl border border-border/70 bg-black/20 p-3.5"
+        >
+          <Switch
+            id="notify-whatsapp"
+            checked={form.notifyWhatsapp}
+            onCheckedChange={(checked) =>
+              setForm({ ...form, notifyWhatsapp: checked })
+            }
+            className="mt-0.5"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">
+              Avisos por WhatsApp
+            </span>
+            <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+              Te escribimos al teléfono de arriba cuando tu pedido está listo y
+              cuando el repartidor ya va en camino. Sólo avisos del pedido, sin
+              promociones. Se guarda con el botón de abajo.
+            </span>
+          </span>
+        </label>
         <Button
           className="mt-4 gap-2 bg-ember-gradient text-black"
           disabled={saving}

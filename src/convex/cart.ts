@@ -15,7 +15,9 @@ import {
   splitIntoDeliveries,
 } from "../lib/delivery";
 import { promoBadge, promoDiscount } from "../lib/promo";
-import { checkoutSummary } from "../lib/orders";
+import { businessDue, checkoutSummary } from "../lib/orders";
+import { normalizePhone } from "../lib/notify";
+import { queueNotice } from "./notifications";
 import type { PromoKind } from "../lib/promo";
 
 type DbCtx = QueryCtx | MutationCtx;
@@ -397,6 +399,8 @@ export const checkout = mutation({
       string,
       {
         id: Id<"businesses">;
+        name: string;
+        ownerId: Id<"users"> | null;
         fee: number;
         distanceKm: number;
         promoKind: PromoKind | null;
@@ -419,6 +423,8 @@ export const checkout = mutation({
       }
       stores.set(businessId, {
         id: businessId,
+        name: business.name,
+        ownerId: business.ownerId ?? null,
         fee: quote.fee,
         distanceKm: quote.distanceKm,
         promoKind: business.deliveryPromo ?? null,
@@ -505,7 +511,7 @@ export const checkout = mutation({
             ? `-${trip.index}${tripStops > 1 ? String.fromCharCode(65 + position) : ""}`
             : "";
 
-        await ctx.db.insert("orders", {
+        const orderId = await ctx.db.insert("orders", {
           code: `${groupCode}${suffix}`,
           groupCode,
           batchIndex: trip.index,
@@ -530,6 +536,28 @@ export const checkout = mutation({
           requestKey: requestKey ?? undefined,
           createdAt: now,
         });
+
+        // Aviso fuera de la app: el local se entera aunque nadie tenga el panel
+        // abierto. Sin opt-in ni teléfono queda encolado y el despacho lo marca
+        // como omitido, sin frenar la compra.
+        if (store.ownerId) {
+          const owner = await ctx.db.get(store.ownerId);
+          await queueNotice(ctx, {
+            order: (await ctx.db.get(orderId))!,
+            tripKey: `${groupCode}#${trip.index}`,
+            recipientId: store.ownerId,
+            recipientRole: "business",
+            phone: normalizePhone(owner?.phone),
+            link: "/business?tab=orders",
+            draft: {
+              kind: "new_order",
+              tripNumber: `${groupCode}${suffix}`,
+              itemCount: items.reduce((acc, item) => acc + item.quantity, 0),
+              businessAmount: businessDue({ subtotal, deliveryDiscount }),
+              dropAddress: address,
+            },
+          });
+        }
       }
     }
 

@@ -6,10 +6,14 @@ import { reverseGeocode } from "@/lib/geocode";
 import { cn } from "@/lib/utils";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Crosshair, Loader2, MapPin, RefreshCw } from "lucide-react";
+import { Crosshair, Loader2, MapPin, RefreshCw, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
+
+type AddressMatch = { label: string; lat: number; lng: number };
 
 const pinIcon = L.divIcon({
   className: "capricho-pin",
@@ -61,7 +65,10 @@ export function LocationField({
 }: LocationFieldProps) {
   const [locating, setLocating] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [matches, setMatches] = useState<AddressMatch[]>([]);
   const [flyToken, setFlyToken] = useState(0);
+  const geocode = useAction(api.maps.geocode);
   const suggested = useRef("");
   // Evita que una respuesta vieja de geocodificación pise lo que se escribe.
   const addressRef = useRef(address);
@@ -112,6 +119,37 @@ export function LocationField({
     );
   };
 
+  /** Busca la dirección escrita y deja elegir entre los resultados. */
+  const searchAddress = async () => {
+    const query = address.trim();
+    if (query.length < 5) {
+      toast.error("Escribí la dirección o un punto de referencia de Tilarán");
+      return;
+    }
+    setSearching(true);
+    try {
+      const results = await geocode({ query });
+      setMatches(results);
+      if (results.length === 0) {
+        toast.error(
+          "No encontramos esa dirección. Probá con una referencia más conocida o marcá el punto en el mapa.",
+        );
+      }
+    } catch {
+      toast.error("No pudimos buscar la dirección ahora. Marcá el punto en el mapa.");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const pickMatch = (match: AddressMatch) => {
+    setMatches([]);
+    suggested.current = match.label;
+    onAddressChange(match.label);
+    onChange({ lat: match.lat, lng: match.lng });
+    setFlyToken((token) => token + 1);
+  };
+
   const suggestAgain = async () => {
     if (!isValidPoint(value)) {
       toast.error("Primero marcá un punto en el mapa");
@@ -151,10 +189,31 @@ export function LocationField({
           <Input
             value={address}
             onChange={(event) => onAddressChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void searchAddress();
+              }
+            }}
             placeholder="Calle, número, barrio o referencia"
             className="pl-9"
           />
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Buscar la dirección escrita"
+          onClick={() => void searchAddress()}
+          disabled={searching}
+          className="shrink-0 border-border/80"
+        >
+          {searching ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Search className="size-4" />
+          )}
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -171,6 +230,23 @@ export function LocationField({
           )}
         </Button>
       </div>
+
+      {matches.length > 0 && (
+        <ul className="space-y-1 rounded-xl border border-border/60 bg-black/25 p-1.5">
+          {matches.map((match) => (
+            <li key={`${match.lat},${match.lng}`}>
+              <button
+                type="button"
+                onClick={() => pickMatch(match)}
+                className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] leading-snug transition hover:bg-accent/10"
+              >
+                <MapPin className="mt-0.5 size-3.5 shrink-0 text-accent" />
+                <span>{match.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div
         className={cn(

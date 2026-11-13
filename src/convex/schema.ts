@@ -100,6 +100,45 @@ export const cashIssueKindValidator = v.union(
 );
 export type CashIssueKind = Infer<typeof cashIssueKindValidator>;
 
+export const notificationKindValidator = v.union(
+  v.literal("new_order"),
+  v.literal("order_ready"),
+  v.literal("courier_assigned"),
+  v.literal("order_update"),
+);
+export type NotificationKind = Infer<typeof notificationKindValidator>;
+
+export const notificationChannelValidator = v.union(
+  v.literal("whatsapp"),
+  v.literal("webhook"),
+);
+export type NotificationChannel = Infer<
+  typeof notificationChannelValidator
+>;
+
+export const notificationRoleValidator = v.union(
+  v.literal("buyer"),
+  v.literal("business"),
+  v.literal("courier"),
+);
+export type NotificationRole = Infer<typeof notificationRoleValidator>;
+
+export const notificationStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("sent"),
+  v.literal("skipped"),
+  v.literal("failed"),
+);
+export type NotificationStatus = Infer<typeof notificationStatusValidator>;
+
+export const offerStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("accepted"),
+  v.literal("expired"),
+  v.literal("declined"),
+);
+export type OfferStatus = Infer<typeof offerStatusValidator>;
+
 export const orderStatusValidator = v.union(
   v.literal("pending"),
   v.literal("accepted"),
@@ -141,6 +180,9 @@ const schema = defineSchema(
 
       role: v.optional(roleValidator), // role of the user. do not remove
       phone: v.optional(v.string()),
+      // El usuario aceptó recibir avisos del pedido por WhatsApp. Se pide
+      // explícitamente en el perfil: sin esto no se le escribe.
+      notifyWhatsapp: v.optional(v.boolean()),
       address: v.optional(v.string()),
       city: v.optional(v.string()),
       onboarded: v.optional(v.boolean()),
@@ -516,6 +558,73 @@ const schema = defineSchema(
     })
       .index("by_courier_day", ["courierId", "day"])
       .index("by_day", ["day"]),
+
+    // Bandeja de avisos externos (WhatsApp o webhook). Cada evento del pedido
+    // deja una fila con el texto ya armado: la acción de despacho sólo envía y
+    // anota el resultado, así un fallo del proveedor no bloquea el pedido.
+    notifications: defineTable({
+      kind: notificationKindValidator,
+      orderId: v.id("orders"),
+      tripKey: v.string(),
+      recipientId: v.id("users"),
+      recipientRole: notificationRoleValidator,
+      phone: v.optional(v.string()),
+      title: v.string(),
+      body: v.string(),
+      // Enlace de aceptación en un toque (ofertas) o al pedido.
+      link: v.optional(v.string()),
+      channel: notificationChannelValidator,
+      status: notificationStatusValidator,
+      attempts: v.number(),
+      lastError: v.optional(v.string()),
+      createdAt: v.number(),
+      sentAt: v.optional(v.number()),
+    })
+      .index("by_status", ["status", "createdAt"])
+      .index("by_recipient", ["recipientId", "createdAt"])
+      .index("by_order", ["orderId"]),
+
+    // Oferta directa de una entrega lista a un repartidor concreto. El token va
+    // en el aviso de WhatsApp: abrirlo permite aceptar con un toque.
+    deliveryOffers: defineTable({
+      token: v.string(),
+      courierId: v.id("users"),
+      orderId: v.id("orders"),
+      tripKey: v.string(),
+      status: offerStatusValidator,
+      expiresAt: v.number(),
+      createdAt: v.number(),
+      acceptedAt: v.optional(v.number()),
+    })
+      .index("by_token", ["token"])
+      .index("by_courier", ["courierId", "status"])
+      .index("by_trip", ["tripKey"])
+      .index("by_status", ["status", "expiresAt"]),
+
+    // Caché de rutas y geocodificación. Evita repetir consultas al proveedor y
+    // respeta los límites de uso de los servicios públicos.
+    routeCache: defineTable({
+      key: v.string(),
+      km: v.number(),
+      minutes: v.number(),
+      geometry: v.array(
+        v.object({ lat: v.number(), lng: v.number() }),
+      ),
+      source: v.string(),
+      createdAt: v.number(),
+    }).index("by_key", ["key"]),
+
+    geocodeCache: defineTable({
+      key: v.string(),
+      results: v.array(
+        v.object({
+          label: v.string(),
+          lat: v.number(),
+          lng: v.number(),
+        }),
+      ),
+      createdAt: v.number(),
+    }).index("by_key", ["key"]),
 
     // Identidad visual de la plataforma que edita el perfil administrador.
     settings: defineTable({

@@ -1,4 +1,4 @@
-import type { OrderStatus } from "@/convex/schema";
+import type { OrderStatus } from "../convex/schema";
 
 // Costa Rica: colones con separador de miles con punto (₡12.500).
 const amount = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 });

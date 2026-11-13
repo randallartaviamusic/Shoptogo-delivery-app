@@ -30,6 +30,8 @@ import type { CashDayRow } from "../lib/orders";
 import { cashIssueKindValidator } from "./schema";
 import { requireSubscriptionAccess, subscriptionAccess } from "./subscriptions";
 import { isAdminEmail } from "./branding";
+import { normalizePhone } from "../lib/notify";
+import { queueNotice } from "./notifications";
 
 type OrderViewer = "buyer" | "business" | "courier";
 
@@ -1285,6 +1287,14 @@ export const businessUpdateStatus = mutation({
           : "El local canceló el pedido.");
     }
     await ctx.db.patch(args.orderId, patch);
+
+    // Recién cuando la entrega está completa se ofrece: antes nadie podría
+    // retirarla. Se lee el pedido ya actualizado para no ofrecer algo viejo.
+    if (args.status === "ready") {
+      const updated = await ctx.db.get(args.orderId);
+      if (updated) await offerTripToCouriers(ctx, updated);
+    }
+
     return { status: args.status };
   },
 });
@@ -1429,11 +1439,232 @@ export const resolveCashIssue = mutation({
   },
 });
 
+/** Minutos que una oferta queda abierta antes de pasar al siguiente. */
+const OFFER_WINDOW_MS = 10 * 60_000;
+/** Tope de avisos por entrega: escribirle a 30 personas es spam, no oferta. */
+const MAX_OFFERS_PER_TRIP = 6;
+
+function newOfferToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+/** Cierra las ofertas abiertas de un viaje: lo tomó alguien o venció. */
+async function closeOffersForTrip(
+  ctx: MutationCtx,
+  trip: Doc<"orders">[],
+  winnerId?: Id<"users">,
+) {
+  const seen = new Set<string>();
+  for (const member of trip) {
+    const key = tripKey(member);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const offers = await ctx.db
+      .query("deliveryOffers")
+      .withIndex("by_trip", (q) => q.eq("tripKey", key))
+      .collect();
+    for (const offer of offers) {
+      if (offer.status !== "open") continue;
+      if (winnerId && offer.courierId === winnerId) {
+        await ctx.db.patch(offer._id, {
+          status: "accepted",
+          acceptedAt: Date.now(),
+        });
+      } else {
+        await ctx.db.patch(offer._id, { status: "declined" });
+      }
+    }
+  }
+}
+
+/**
+ * Ofertas push: cuando una entrega queda lista se le avisa a los repartidores
+ * verificados que están cerca, en orden de cercanía. Cada uno recibe un token
+ * propio, así el enlace de WhatsApp acepta en un toque sin exponer el pedido a
+ * quien no fue invitado.
+ */
+async function offerTripToCouriers(ctx: MutationCtx, order: Doc<"orders">) {
+  const trip = (await tripOrders(ctx, order)).filter(
+    (member) => member.status !== "cancelled",
+  );
+  if (trip.length === 0) return 0;
+  // Una entrega con varias tiendas se ofrece cuando está completa: ofrecer una
+  // parte sería invitar a algo que el repartidor no puede aceptar.
+  if (trip.some((member) => member.status !== "ready" || member.courierId)) {
+    return 0;
+  }
+
+  const key = tripKey(order);
+  const now = Date.now();
+  const expiresAt = now + OFFER_WINDOW_MS;
+  const existing = await ctx.db
+    .query("deliveryOffers")
+    .withIndex("by_trip", (q) => q.eq("tripKey", key))
+    .collect();
+  const invited = new Set(
+    existing
+      .filter((offer) => offer.status === "open" && offer.expiresAt > now)
+      .map((offer) => String(offer.courierId)),
+  );
+
+  const pickupPoints: Array<{ lat: number; lng: number }> = [];
+  let payout = 0;
+  for (const member of trip) {
+    payout += member.deliveryFee + (member.extraStopFee ?? 0);
+    const business = await ctx.db.get(member.businessId);
+    if (isValidPoint(business?.location)) pickupPoints.push(business.location);
+  }
+
+  const presences = await ctx.db.query("courierPresence").collect();
+  const candidates: Array<{ userId: Id<"users">; pickupKm: number }> = [];
+  for (const presence of presences) {
+    if (now - presence.updatedAt > LOCATION_FRESH_MS) continue;
+    if (invited.has(String(presence.ownerId))) continue;
+    const courier = await ctx.db.get(presence.ownerId);
+    if (courier?.role !== "courier") continue;
+    if (courier.verificationStatus !== "verified") continue;
+    // Con "mismo repartidor", la entrega sólo se le ofrece a quien ya hizo la
+    // anterior: los demás quedarían invitados a algo que no pueden tomar.
+    if (
+      trip.some(
+        (member) =>
+          member.reservedCourierId &&
+          member.reservedCourierId !== presence.ownerId,
+      )
+    ) {
+      continue;
+    }
+    let farthest = 0;
+    for (const point of pickupPoints) {
+      farthest = Math.max(farthest, travelKm(presence.location, point));
+    }
+    if (pickupPoints.length > 0 && farthest > ASSIGNMENT_RULES.maxPickupKm) {
+      continue;
+    }
+    const mine = await ctx.db
+      .query("orders")
+      .withIndex("by_courier", (q) => q.eq("courierId", presence.ownerId))
+      .collect();
+    if (activeTripLeaders(mine).length >= ASSIGNMENT_RULES.maxActiveTrips) {
+      continue;
+    }
+    candidates.push({ userId: presence.ownerId, pickupKm: farthest });
+  }
+
+  candidates.sort((a, b) => a.pickupKm - b.pickupKm);
+  let created = 0;
+  for (const candidate of candidates.slice(0, MAX_OFFERS_PER_TRIP)) {
+    const token = newOfferToken();
+    await ctx.db.insert("deliveryOffers", {
+      token,
+      courierId: candidate.userId,
+      orderId: order._id,
+      tripKey: key,
+      status: "open",
+      expiresAt,
+      createdAt: now,
+    });
+    const courier = await ctx.db.get(candidate.userId);
+    await queueNotice(ctx, {
+      order,
+      tripKey: key,
+      recipientId: candidate.userId,
+      recipientRole: "courier",
+      phone: normalizePhone(courier?.phone),
+      link: `/courier?offer=${token}`,
+      draft: {
+        kind: "order_ready",
+        orderNumber: order.code,
+        pickups: trip.length,
+        km: order.distanceKm ?? null,
+        payout,
+        expiresInMin: Math.round(OFFER_WINDOW_MS / 60_000),
+      },
+    });
+    created += 1;
+  }
+  return created;
+}
+
+/**
+ * Avisos de "repartidor asignado": el local necesita saber quién va a retirar
+ * el efectivo, y el comprador que pidió avisos recibe el contacto.
+ */
+async function notifyAssignment(ctx: MutationCtx, trip: Doc<"orders">[]) {
+  const leader = trip[0];
+  const courierId = leader.courierId;
+  if (!courierId) return;
+  const courier = await ctx.db.get(courierId);
+  const courierName = courier?.name ?? "Un repartidor";
+
+  // Todos los locales del viaje necesitan saber quién va a retirar el efectivo,
+  // no sólo el primero: cada uno le entrega su parte.
+  const notified = new Set<string>();
+  for (const member of trip) {
+    const business = await ctx.db.get(member.businessId);
+    if (!business?.ownerId || notified.has(String(business.ownerId))) continue;
+    notified.add(String(business.ownerId));
+    const owner = await ctx.db.get(business.ownerId);
+    await queueNotice(ctx, {
+      order: member,
+      tripKey: tripKey(member),
+      recipientId: business.ownerId,
+      recipientRole: "business",
+      phone: normalizePhone(owner?.phone),
+      link: "/business?tab=orders",
+      draft: {
+        kind: "courier_assigned",
+        orderNumber: member.code,
+        courierName,
+        courierPhone: courier?.phone ?? null,
+      },
+    });
+  }
+
+  // El comprador sólo recibe nada si él mismo pidió los avisos en su perfil.
+  const buyer = await ctx.db.get(leader.buyerId);
+  if (buyer?.notifyWhatsapp && normalizePhone(buyer.phone)) {
+    await queueNotice(ctx, {
+      order: leader,
+      tripKey: tripKey(leader),
+      recipientId: leader.buyerId,
+      recipientRole: "buyer",
+      phone: normalizePhone(buyer.phone),
+      link: `/orders/${leader._id}`,
+      draft: {
+        kind: "courier_assigned",
+        orderNumber: leader.code,
+        courierName,
+        courierPhone: courier?.phone ?? null,
+      },
+    });
+  }
+}
+
 export const courierAccept = mutation({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Necesitás iniciar sesión");
+    return await acceptTripForCourier(ctx, userId, args.orderId);
+  },
+});
+
+/**
+ * Aceptar una entrega. El tablero y la oferta de un toque entran por acá: las
+ * reglas tienen que ser idénticas, si no una de las dos puertas sería un atajo
+ * para saltarse la verificación, la suscripción o la distancia máxima.
+ */
+async function acceptTripForCourier(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  orderId: Id<"orders">,
+  options?: { allowRecentLocation?: boolean },
+) {
+  {
     const courier = await ctx.db.get(userId);
     if (courier?.role !== "courier") {
       throw new Error("Sólo las cuentas de repartidor pueden tomar pedidos");
@@ -1449,13 +1680,21 @@ export const courierAccept = mutation({
       "Tu suscripción de repartidor está vencida o sin activar. Activala en Suscripción para tomar entregas",
     );
     const presence = await presenceFor(ctx, userId);
-    const courierPoint = freshPresence(presence);
+    // Con una oferta reciente la distancia ya se validó al ofrecerla. Si el GPS
+    // se enfrió mientras leía el WhatsApp, usamos la última posición conocida
+    // (hasta 30 min) en vez de hacerle perder la entrega por abrir el enlace.
+    const recentEnough =
+      options?.allowRecentLocation &&
+      presence !== null &&
+      Date.now() - presence.updatedAt <= 30 * 60_000;
+    const courierPoint =
+      freshPresence(presence) ?? (recentEnough ? presence.location : null);
     if (!courierPoint) {
       throw new Error(
         "Activá tu ubicación para tomar pedidos: así comprobamos que el local esté cerca",
       );
     }
-    const order = await ctx.db.get(args.orderId);
+    const order = await ctx.db.get(orderId);
     if (!order) throw new Error("Ese pedido no existe");
     // Una entrega puede retirar en varias tiendas: se toma el viaje completo.
     const trip = (await tripOrders(ctx, order)).filter(
@@ -1599,7 +1838,126 @@ export const courierAccept = mutation({
       }
     }
 
+    // El viaje ya tiene dueño: las ofertas de los demás quedan cerradas y los
+    // avisos de asignación salen para el local y el comprador.
+    await closeOffersForTrip(ctx, trip, userId);
+    await notifyAssignment(ctx, trip);
+
     return { accepted: true, grouped };
+  }
+}
+
+/**
+ * Ofertas abiertas del repartidor. Se muestran arriba del tablero y son las
+ * mismas que llegan por WhatsApp: el token permite aceptar en un toque.
+ */
+export const myOffers = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const now = Date.now();
+    const offers = await ctx.db
+      .query("deliveryOffers")
+      .withIndex("by_courier", (q) =>
+        q.eq("courierId", userId).eq("status", "open"),
+      )
+      .collect();
+    const open: Array<{
+      token: string;
+      orderId: Id<"orders">;
+      code: string;
+      businessName: string;
+      items: number;
+      payout: number;
+      distanceKm: number | null;
+      expiresAt: number;
+    }> = [];
+    for (const offer of offers) {
+      if (offer.expiresAt <= now) continue;
+      const order = await ctx.db.get(offer.orderId);
+      if (!order || order.courierId || order.status !== "ready") continue;
+      const business = await ctx.db.get(order.businessId);
+      open.push({
+        token: offer.token,
+        orderId: order._id,
+        code: order.code,
+        businessName: business?.name ?? "Local",
+        items: order.items.reduce((acc, item) => acc + item.quantity, 0),
+        payout: order.deliveryFee + (order.extraStopFee ?? 0),
+        distanceKm: order.distanceKm ?? null,
+        expiresAt: offer.expiresAt,
+      });
+    }
+    return open.sort((a, b) => a.expiresAt - b.expiresAt);
+  },
+});
+
+/** Aceptar desde el enlace de WhatsApp: mismo camino que el tablero. */
+export const acceptOffer = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const offer = await ctx.db
+      .query("deliveryOffers")
+      .withIndex("by_token", (q) => q.eq("token", args.token.trim()))
+      .unique();
+    if (!offer) throw new Error("Esa oferta no existe o ya venció");
+    if (offer.courierId !== userId) {
+      throw new Error("Esta oferta es para otra cuenta de repartidor");
+    }
+    if (offer.status !== "open") {
+      throw new Error("Esa oferta ya no está disponible");
+    }
+    if (offer.expiresAt <= Date.now()) {
+      await ctx.db.patch(offer._id, { status: "expired" });
+      throw new Error(
+        "La oferta venció. Mirá las entregas disponibles para tomar otra",
+      );
+    }
+    return await acceptTripForCourier(ctx, userId, offer.orderId, {
+      allowRecentLocation: true,
+    });
+  },
+});
+
+/** "Ahora no": la oferta se cierra para este repartidor sin tocar el pedido. */
+export const declineOffer = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const offer = await ctx.db
+      .query("deliveryOffers")
+      .withIndex("by_token", (q) => q.eq("token", args.token.trim()))
+      .unique();
+    if (!offer || offer.courierId !== userId) {
+      throw new Error("Esa oferta no es tuya");
+    }
+    if (offer.status === "open") {
+      await ctx.db.patch(offer._id, { status: "declined" });
+    }
+    return { declined: true };
+  },
+});
+
+/** Cierra ofertas vencidas. La ventana es corta: el pedido no puede esperar. */
+export const expireOffers = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const open = await ctx.db
+      .query("deliveryOffers")
+      .withIndex("by_status", (q) => q.eq("status", "open"))
+      .collect();
+    let expired = 0;
+    for (const offer of open) {
+      if (offer.status !== "open" || offer.expiresAt > now) continue;
+      await ctx.db.patch(offer._id, { status: "expired" });
+      expired += 1;
+    }
+    return { expired };
   },
 });
 

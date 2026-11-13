@@ -11,4 +11,31 @@ crons.interval(
   internal.orders.autoCancelStaleReady,
 );
 
+// Avisos fuera de la app: la cola se vacía cada minuto para que el WhatsApp
+// llegue mientras el pedido todavía está caliente.
+crons.interval(
+  "despachar avisos de WhatsApp",
+  { minutes: 1 },
+  internal.notifications.dispatch,
+  { limit: 20 },
+);
+
+// Las ofertas duran pocos minutos: se cierran solas para que el tablero no
+// muestre entregas que ya no están disponibles.
+crons.interval(
+  "cerrar ofertas vencidas",
+  { minutes: 2 },
+  internal.orders.expireOffers,
+  {},
+);
+
+// La bandeja de avisos se poda a los 30 días: sirve para revisar un reclamo,
+// no para guardar mensajes para siempre.
+crons.daily(
+  "podar avisos enviados",
+  { hourUTC: 8, minuteUTC: 20 },
+  internal.notifications.prune,
+  { days: 30 },
+);
+
 export default crons;

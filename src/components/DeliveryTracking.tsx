@@ -8,8 +8,16 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Bike, Check, MapPin, Store } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { MapContainer, Marker, TileLayer, Tooltip, useMap } from "react-leaflet";
-import { useMutation } from "convex/react";
+import {
+  MapContainer,
+  Marker,
+  Polyline,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from "react-leaflet";
+import { useAction, useMutation } from "convex/react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 type TrackingProps = {
@@ -38,6 +46,61 @@ function markerIcon(color: string, glyph: string) {
 const storeIcon = markerIcon("#d99c27", "S");
 const buyerIcon = markerIcon("#e84343", "C");
 const courierIcon = markerIcon("#161616", "🚴");
+
+type RouteSummary = { km: number; minutes: number; source: string };
+
+/**
+ * Traza la ruta real del repartidor sobre el mapa. Si el motor de rutas no
+ * responde no se dibuja nada: preferimos no mostrar una línea recta que mienta
+ * sobre por dónde va el pedido.
+ */
+function RouteLayer({
+  from,
+  to,
+  onResolved,
+}: {
+  from: GeoPoint;
+  to: GeoPoint;
+  onResolved: (summary: RouteSummary | null) => void;
+}) {
+  const route = useAction(api.maps.route);
+  const [positions, setPositions] = useState<Array<[number, number]> | null>(null);
+  const key = `${from.lat},${from.lng}>${to.lat},${to.lng}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    setPositions(null);
+    route({ from, to })
+      .then((result) => {
+        if (cancelled) return;
+        if (!result || result.geometry.length < 2) {
+          onResolved(null);
+          return;
+        }
+        setPositions(result.geometry.map((point) => [point.lat, point.lng]));
+        onResolved({
+          km: result.km,
+          minutes: result.minutes,
+          source: result.source,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) onResolved(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, route, onResolved]);
+
+  if (!positions) return null;
+  return (
+    <Polyline
+      positions={positions}
+      pathOptions={{ color: "#d99c27", weight: 4, opacity: 0.85 }}
+    />
+  );
+}
 
 function FitTrackingBounds({
   businessLocation,
@@ -84,6 +147,7 @@ export function DeliveryTrackingMap(props: TrackingProps) {
     lateMinutes,
   } = props;
   const late = (lateMinutes ?? 0) > 0;
+  const [routeInfo, setRouteInfo] = useState<RouteSummary | null>(null);
   const center = businessLocation ?? deliveryLocation ?? { lat: 10.47093, lng: -84.96745 };
   const steps = [
     { label: "Repartidor asignado", at: courierAcceptedAt, icon: Check },
@@ -149,6 +213,13 @@ export function DeliveryTrackingMap(props: TrackingProps) {
             businessLocation={businessLocation}
             deliveryLocation={deliveryLocation}
           />
+          {businessLocation && deliveryLocation && (
+            <RouteLayer
+              from={businessLocation}
+              to={deliveryLocation}
+              onResolved={setRouteInfo}
+            />
+          )}
           {businessLocation && (
             <Marker position={[businessLocation.lat, businessLocation.lng]} icon={storeIcon}>
               <Tooltip>Negocio · punto de retiro</Tooltip>
@@ -166,6 +237,12 @@ export function DeliveryTrackingMap(props: TrackingProps) {
           )}
         </MapContainer>
       </div>
+
+      <p className="text-[10px] text-muted-foreground">
+        {routeInfo
+          ? `Ruta real: ${routeInfo.km.toFixed(1)} km · ${routeInfo.minutes} min · ${routeInfo.source}`
+          : "Calculando la ruta real del repartidor…"}
+      </p>
 
       <ol className="grid gap-2 sm:grid-cols-3">
         {steps.map((step) => {
