@@ -205,6 +205,20 @@
       rgb(0 0 0 / 26%) 72%,
       transparent 100%
     );
+    /* El desenfoque se apaga poco a poco para que no se vea el borde
+       del panel de cristal de la barra. */
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 58%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 58%,
+      transparent 100%
+    );
   }
 
   .text-gradient-whim {
