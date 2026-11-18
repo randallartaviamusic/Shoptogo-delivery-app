@@ -211,7 +211,7 @@ export default function Landing() {
     <div className="min-h-screen overflow-x-hidden">
       <header
         className={cn(
-          "sticky top-0 z-50 border-b border-border/50 bg-[#050505] bg-[linear-gradient(to_bottom,#fff_0%,#050505_25%,#050505_100%)] backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out",
+          "sticky top-0 z-50 border-b border-border/50 header-atmosphere backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out",
           headerHidden
             ? "-translate-y-full border-transparent"
             : "translate-y-0 border-border/50",

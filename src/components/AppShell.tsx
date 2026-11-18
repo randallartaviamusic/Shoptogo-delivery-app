@@ -332,7 +332,7 @@ export function AppShell() {
 
       <header
         className={cn(
-          "sticky top-0 z-30 flex items-center justify-between bg-[#050505] bg-[linear-gradient(to_bottom,#fff_0%,#050505_25%,#050505_100%)] px-4 py-3 backdrop-blur-xl transition-transform duration-300 ease-out lg:hidden print:hidden",
+          "sticky top-0 z-30 flex items-center justify-between header-atmosphere px-4 py-3 backdrop-blur-xl transition-transform duration-300 ease-out lg:hidden print:hidden",
           headerHidden ? "-translate-y-full" : "translate-y-0",
         )}
       >
