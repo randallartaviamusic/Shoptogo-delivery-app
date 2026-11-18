@@ -165,7 +165,7 @@
         rgb(0 0 0 / 45%) 100%
       );
     background-attachment: fixed;
-    background-repeat: no-repeat;
+    background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
     background-size: auto, auto, auto, 220px 220px, auto, auto, auto, auto;
   }
 
