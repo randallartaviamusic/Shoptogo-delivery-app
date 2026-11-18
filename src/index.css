@@ -124,9 +124,9 @@
     font-family: var(--font-sans);
     background-color: var(--background);
     background-image:
-      radial-gradient(ellipse 34rem 28rem at 14% 52%, oklch(0.42 0.13 52 / 12%) 0%, transparent 72%),
-      radial-gradient(ellipse 36rem 30rem at 50% 38%, oklch(0.38 0.12 48 / 9%) 0%, transparent 74%),
-      radial-gradient(ellipse 34rem 28rem at 88% 54%, oklch(0.42 0.13 52 / 12%) 0%, transparent 72%),
+      radial-gradient(ellipse 34rem 28rem at 14% 52%, oklch(0.42 0.13 52 / 15%) 0%, transparent 72%),
+      radial-gradient(ellipse 36rem 30rem at 50% 38%, oklch(0.38 0.12 48 / 11%) 0%, transparent 74%),
+      radial-gradient(ellipse 34rem 28rem at 88% 54%, oklch(0.42 0.13 52 / 15%) 0%, transparent 72%),
       radial-gradient(ellipse at 12% 0%, oklch(0.32 0.12 25 / 18%) 0%, transparent 56%),
       radial-gradient(ellipse at 88% 8%, oklch(0.38 0.1 55 / 8%) 0%, transparent 52%);
     background-attachment: fixed;
@@ -161,8 +161,8 @@
     background-color: #050505;
     background-image:
       linear-gradient(to bottom, #fff 0%, #050505 25%, rgb(5 5 5 / 45%) 100%),
-      radial-gradient(ellipse 150% 500% at 12% 0%, oklch(0.32 0.12 25 / 30%) 0%, transparent 72%),
-      radial-gradient(ellipse 150% 500% at 88% 8%, oklch(0.38 0.1 55 / 24%) 0%, transparent 72%);
+      radial-gradient(ellipse 150% 500% at 12% 0%, oklch(0.32 0.12 25 / 34%) 0%, transparent 72%),
+      radial-gradient(ellipse 150% 500% at 88% 8%, oklch(0.38 0.1 55 / 28%) 0%, transparent 72%);
   }
 
   .text-gradient-whim {
