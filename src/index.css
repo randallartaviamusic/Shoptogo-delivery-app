@@ -124,9 +124,19 @@
     font-family: var(--font-sans);
     background-color: #000;
     background-image:
-      radial-gradient(ellipse 19rem 16rem at 12% 56%, oklch(0.42 0.16 28 / 15%) 0%, transparent 62%),
-      radial-gradient(ellipse 21rem 17rem at 50% 36%, oklch(0.76 0.25 42 / 34%) 0%, transparent 66%),
-      radial-gradient(ellipse 19rem 16rem at 90% 58%, oklch(0.7 0.23 36 / 30%) 0%, transparent 64%);
+      radial-gradient(ellipse 15rem 12rem at 10% 56%, oklch(0.5 0.19 26 / 26%) 0%, transparent 58%),
+      radial-gradient(
+        ellipse 17rem 13rem at 50% 34%,
+        oklch(0.8 0.26 40 / 62%) 0%,
+        oklch(0.72 0.24 38 / 30%) 32%,
+        transparent 64%
+      ),
+      radial-gradient(
+        ellipse 15rem 12rem at 90% 58%,
+        oklch(0.74 0.24 34 / 54%) 0%,
+        oklch(0.66 0.22 32 / 24%) 32%,
+        transparent 60%
+      );
     background-attachment: fixed;
     background-repeat: no-repeat;
   }
