@@ -143,11 +143,11 @@
       linear-gradient(
         135deg,
         transparent 0%,
-        oklch(1 0 0 / 1.5%) 20%,
-        oklch(1 0 0 / 5%) 38%,
-        oklch(1 0 0 / 8%) 50%,
-        oklch(1 0 0 / 5%) 62%,
-        oklch(1 0 0 / 1.5%) 80%,
+        oklch(1 0 0 / 0.8%) 20%,
+        oklch(1 0 0 / 3%) 38%,
+        oklch(1 0 0 / 4.5%) 50%,
+        oklch(1 0 0 / 3%) 62%,
+        oklch(1 0 0 / 0.8%) 80%,
         transparent 100%
       ),
       /* vidrio: luz difusa que atraviesa el cristal (sin bordes rectos) */
