@@ -125,8 +125,8 @@
     background-color: #000;
     background-image:
       radial-gradient(ellipse 24rem 20rem at 14% 52%, oklch(0.42 0.16 28 / 18%) 0%, transparent 70%),
-      radial-gradient(ellipse 27rem 23rem at 50% 38%, oklch(0.72 0.24 52 / 34%) 0%, transparent 74%),
-      radial-gradient(ellipse 25rem 21rem at 88% 54%, oklch(0.64 0.2 55 / 28%) 0%, transparent 72%);
+      radial-gradient(ellipse 27rem 23rem at 50% 38%, oklch(0.76 0.25 42 / 42%) 0%, transparent 74%),
+      radial-gradient(ellipse 25rem 21rem at 88% 54%, oklch(0.7 0.23 36 / 36%) 0%, transparent 72%);
     background-attachment: fixed;
     background-repeat: no-repeat;
   }
