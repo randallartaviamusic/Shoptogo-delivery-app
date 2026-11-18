@@ -124,34 +124,24 @@
     font-family: var(--font-sans);
     background-color: #000;
     background-image:
-      /* vidrio: reflejo especular principal */
-      linear-gradient(
-        112deg,
-        transparent 26%,
-        oklch(1 0 0 / 5%) 42%,
-        oklch(1 0 0 / 9%) 46.5%,
-        oklch(1 0 0 / 3%) 50%,
-        transparent 60%
-      ),
-      /* vidrio: reflejo secundario tenue */
-      linear-gradient(
-        112deg,
-        transparent 62%,
-        oklch(1 0 0 / 3.5%) 71%,
-        transparent 80%
-      ),
-      /* vidrio: velo de luz que atraviesa el cristal */
+      /* vidrio: luz difusa que atraviesa el cristal (sin bordes rectos) */
       radial-gradient(
-        ellipse 105% 72% at 16% -10%,
-        oklch(1 0 0 / 9%) 0%,
-        oklch(1 0 0 / 3%) 38%,
-        transparent 62%
+        ellipse 150% 130% at 18% -25%,
+        oklch(1 0 0 / 8%) 0%,
+        oklch(1 0 0 / 3%) 45%,
+        transparent 78%
       ),
-      /* vidrio: tinte frío en la esquina opuesta */
+      /* vidrio: brillo suave en el centro alto */
       radial-gradient(
-        ellipse 80% 70% at 102% 104%,
-        oklch(0.72 0.05 240 / 9%) 0%,
-        transparent 58%
+        ellipse 95% 85% at 52% 8%,
+        oklch(1 0 0 / 4%) 0%,
+        transparent 72%
+      ),
+      /* vidrio: tinte frío muy difuso en la esquina opuesta */
+      radial-gradient(
+        ellipse 130% 120% at 108% 112%,
+        oklch(0.72 0.05 240 / 7%) 0%,
+        transparent 76%
       ),
       /* vidrio: esmerilado fino */
       url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E"),
@@ -168,15 +158,15 @@
         oklch(0.66 0.22 32 / 24%) 32%,
         transparent 60%
       ),
-      /* vidrio: viñeteado de los bordes */
+      /* vidrio: oscurecido perimetral muy difuso, sin corte visible */
       radial-gradient(
-        ellipse 90% 80% at 50% 45%,
-        transparent 55%,
-        rgb(0 0 0 / 60%) 100%
+        ellipse 135% 120% at 50% 45%,
+        transparent 62%,
+        rgb(0 0 0 / 45%) 100%
       );
     background-attachment: fixed;
     background-repeat: no-repeat;
-    background-size: auto, auto, auto, auto, 220px 220px, auto, auto, auto, auto;
+    background-size: auto, auto, auto, 220px 220px, auto, auto, auto, auto;
   }
 
   h1,
