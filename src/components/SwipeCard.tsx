@@ -260,7 +260,7 @@ export function DeckActions({
         aria-label="Deshacer"
         disabled={!canUndo || disabled}
         onClick={onUndo}
-        className="size-11 rounded-full border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground"
+        className="glass-sheen size-11 rounded-full border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground"
       >
         <svg viewBox="0 0 24 24" fill="none" className="size-5">
           <path
@@ -277,7 +277,7 @@ export function DeckActions({
         aria-label="Pasar"
         disabled={disabled}
         onClick={onPass}
-        className="size-16 rounded-full border border-primary/40 bg-primary/10 text-primary transition-transform hover:scale-105 hover:bg-primary/20"
+        className="glass-sheen size-16 rounded-full border border-primary/40 bg-primary/10 text-primary transition-transform hover:scale-105 hover:bg-primary/20"
       >
         <svg viewBox="0 0 24 24" fill="none" className="size-7">
           <path
@@ -293,7 +293,7 @@ export function DeckActions({
         aria-label="Súper antojo"
         disabled={disabled}
         onClick={onSave}
-        className="flex size-12 flex-col items-center justify-center gap-0 rounded-full border border-accent/40 bg-accent/10 text-accent transition-transform hover:scale-105 hover:bg-accent/20"
+        className="glass-sheen flex size-12 flex-col items-center justify-center gap-0 rounded-full border border-accent/40 bg-accent/10 text-accent transition-transform hover:scale-105 hover:bg-accent/20"
       >
         <Star className="size-5" />
       </Button>
@@ -302,8 +302,12 @@ export function DeckActions({
         aria-label="Lo quiero"
         disabled={disabled}
         onClick={onLike}
-        className="size-16 rounded-full bg-ember-gradient text-black transition-transform hover:scale-105"
+        className="relative isolate size-16 overflow-hidden rounded-full bg-ember-gradient text-black transition-transform hover:scale-105"
       >
+        <span
+          aria-hidden
+          className="glass-sheen pointer-events-none absolute inset-0 rounded-full"
+        />
         <svg viewBox="0 0 24 24" fill="none" className="size-7">
           <path
             d="M12 20s-7-4.35-7-9.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 7 3.5C19 15.65 12 20 12 20Z"
