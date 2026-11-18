@@ -50,7 +50,7 @@
 /* CHANGE VALUES FOR THEME */
 :root {
   --radius: 1rem;
-  --background: #050505;
+  --background: #000;
   --foreground: oklch(0.97 0.004 80);
   --card: oklch(0.19 0.006 20);
   --card-foreground: oklch(0.97 0.004 80);
@@ -89,7 +89,7 @@
 }
 
 .dark {
-  --background: #050505;
+  --background: #000;
   --foreground: oklch(0.97 0.004 80);
   --card: oklch(0.19 0.006 20);
   --card-foreground: oklch(0.97 0.004 80);
@@ -122,11 +122,11 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
-    background-color: #030303;
+    background-color: #000;
     background-image:
-      radial-gradient(ellipse 30rem 25rem at 14% 52%, oklch(0.42 0.16 28 / 24%) 0%, transparent 72%),
-      radial-gradient(ellipse 32rem 27rem at 50% 38%, oklch(0.86 0.16 88 / 18%) 0%, transparent 74%),
-      radial-gradient(ellipse 30rem 25rem at 88% 54%, oklch(0.58 0.16 52 / 23%) 0%, transparent 72%);
+      radial-gradient(ellipse 24rem 20rem at 14% 52%, oklch(0.42 0.16 28 / 18%) 0%, transparent 70%),
+      radial-gradient(ellipse 26rem 22rem at 50% 38%, oklch(0.86 0.16 88 / 13%) 0%, transparent 72%),
+      radial-gradient(ellipse 24rem 20rem at 88% 54%, oklch(0.58 0.16 52 / 17%) 0%, transparent 70%);
     background-attachment: fixed;
     background-repeat: no-repeat;
   }
@@ -162,9 +162,9 @@
     background-image: linear-gradient(
       to bottom,
       #fff 0%,
-      #030303 25%,
-      rgb(3 3 3 / 72%) 45%,
-      rgb(3 3 3 / 26%) 72%,
+      #000 25%,
+      rgb(0 0 0 / 74%) 45%,
+      rgb(0 0 0 / 26%) 72%,
       transparent 100%
     );
   }
