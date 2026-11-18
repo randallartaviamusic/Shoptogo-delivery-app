@@ -369,7 +369,6 @@
 
   /* Reflejo para tarjetas que muestran una foto encima del fondo. */
   .glass-sheen {
-    border-radius: inherit;
     background-image: linear-gradient(
       115deg,
       transparent 45%,

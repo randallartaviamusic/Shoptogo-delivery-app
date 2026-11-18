@@ -353,7 +353,7 @@ export default function Landing() {
             <span
               key={department.slug}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium",
+                "glass-sheen flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium",
                 department.slug === DEFAULT_DEPARTMENT
                   ? "border-accent/35 bg-accent/[0.08] text-accent"
                   : "border-border/70 bg-card/50 text-muted-foreground",
@@ -429,7 +429,7 @@ export default function Landing() {
                 <Link
                   to="/swipe"
                   className={cn(
-                    "group flex h-full items-start gap-3 rounded-2xl border p-4 transition-colors",
+                    "glass-sheen group flex h-full items-start gap-3 rounded-2xl border p-4 transition-colors",
                     department.slug === DEFAULT_DEPARTMENT
                       ? "border-accent/30 bg-accent/[0.06] hover:bg-accent/10"
                       : "border-border/70 bg-card/50 hover:border-accent/30",

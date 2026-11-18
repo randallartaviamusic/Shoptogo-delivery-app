@@ -313,7 +313,7 @@ export default function SwipePage() {
               key={item.slug}
               onClick={() => chooseDepartment(item.slug)}
               className={cn(
-                "flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors",
+                "glass-sheen flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors",
                 active
                   ? "border-transparent bg-accent text-accent-foreground"
                   : "border-border/80 bg-secondary/40 text-muted-foreground hover:border-accent/30 hover:text-foreground",
