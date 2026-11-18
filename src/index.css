@@ -124,14 +124,20 @@
     font-family: var(--font-sans);
     background-color: #000;
     background-image:
-      /* brillo animado que recorre la diagonal */
+      /* reflejo plateado animado: cruza en diagonal de izquierda a derecha */
       linear-gradient(
         135deg,
-        transparent 44%,
-        oklch(1 0 0 / 6%) 48%,
-        oklch(1 0 0 / 11%) 50%,
-        oklch(1 0 0 / 6%) 52%,
-        transparent 56%
+        transparent 30%,
+        oklch(0.98 0.004 250 / 6%) 38%,
+        transparent 40%,
+        oklch(0.98 0.004 250 / 5%) 44%,
+        oklch(1 0 0 / 13%) 48%,
+        oklch(1 0 0 / 21%) 50%,
+        oklch(1 0 0 / 13%) 52%,
+        oklch(0.98 0.004 250 / 5%) 56%,
+        transparent 60%,
+        oklch(0.98 0.004 250 / 4%) 66%,
+        transparent 70%
       ),
       /* brillo diagonal fijo de esquina superior izquierda a inferior derecha */
       linear-gradient(
@@ -188,7 +194,7 @@
     background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
     background-size: 300% 300%, auto, auto, auto, auto, 220px 220px, auto, auto, auto, auto;
     background-position:
-      -60% 0%,
+      78% 0%,
       0 0,
       0 0,
       0 0,
@@ -198,7 +204,7 @@
       0 0,
       0 0,
       0 0;
-    animation: bg-shine-sweep 9s linear infinite;
+    animation: bg-shine-sweep 7s linear infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -210,7 +216,7 @@
   @keyframes bg-shine-sweep {
     0% {
       background-position:
-        -60% 0%,
+        78% 0%,
         0 0,
         0 0,
         0 0,
@@ -223,7 +229,7 @@
     }
     100% {
       background-position:
-        160% 0%,
+        22% 0%,
         0 0,
         0 0,
         0 0,
