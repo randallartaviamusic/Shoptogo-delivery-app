@@ -211,10 +211,8 @@ export default function Landing() {
     <div className="min-h-screen overflow-x-hidden">
       <header
         className={cn(
-          "sticky top-0 z-50 border-b border-border/50 header-atmosphere backdrop-blur-xl transition-[transform,border-color] duration-300 ease-out",
-          headerHidden
-            ? "-translate-y-full border-transparent"
-            : "translate-y-0 border-border/50",
+          "sticky top-0 z-50 header-atmosphere backdrop-blur-xl transition-transform duration-300 ease-out",
+          headerHidden ? "-translate-y-full" : "translate-y-0",
         )}
       >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
