@@ -453,6 +453,7 @@ export function AppShell() {
             );
           })}
         </div>
+        <div aria-hidden className="glass-sheen pointer-events-none absolute inset-0" />
       </nav>
     </div>
   );

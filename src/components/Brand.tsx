@@ -34,12 +34,21 @@ export function BrandMark({
   const px = brand?.logoSize ?? size;
 
   return (
-    <img
-      src={src}
-      alt="Capricho Express"
-      style={{ height: px, maxWidth: px * 2.6, width: "auto" }}
-      className={cn("shrink-0 rounded-2xl object-contain", className)}
-    />
+    <span
+      className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-2xl"
+      style={{ height: px, maxWidth: px * 2.6 }}
+    >
+      <img
+        src={src}
+        alt="Capricho Express"
+        style={{ height: px, maxWidth: px * 2.6, width: "auto" }}
+        className={cn("shrink-0 rounded-2xl object-contain", className)}
+      />
+      <span
+        aria-hidden
+        className="glass-sheen pointer-events-none absolute inset-0 rounded-2xl"
+      />
+    </span>
   );
 }
 

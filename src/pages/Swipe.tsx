@@ -291,7 +291,7 @@ export default function SwipePage() {
           <Button
             variant="outline"
             onClick={() => setFiltersOpen(true)}
-            className="gap-2 border-border/80"
+            className="glass-sheen gap-2 border-border/80"
           >
             <SlidersHorizontal className="size-4 text-accent" />
             Filtros
@@ -343,7 +343,7 @@ export default function SwipePage() {
               <button
                 key={`${facetKey}:${value}`}
                 onClick={() => toggleFilter(facetKey, value)}
-                className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/[0.08] px-2.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/15"
+                className="glass-sheen flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/[0.08] px-2.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/15"
               >
                 {value}
                 <X className="size-3" />
