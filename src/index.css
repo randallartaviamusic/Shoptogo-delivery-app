@@ -124,7 +124,16 @@
     font-family: var(--font-sans);
     background-color: #000;
     background-image:
-      /* brillo diagonal de esquina superior izquierda a inferior derecha */
+      /* brillo animado que recorre la diagonal */
+      linear-gradient(
+        135deg,
+        transparent 44%,
+        oklch(1 0 0 / 6%) 48%,
+        oklch(1 0 0 / 11%) 50%,
+        oklch(1 0 0 / 6%) 52%,
+        transparent 56%
+      ),
+      /* brillo diagonal fijo de esquina superior izquierda a inferior derecha */
       linear-gradient(
         135deg,
         transparent 0%,
@@ -176,8 +185,55 @@
         rgb(0 0 0 / 45%) 100%
       );
     background-attachment: fixed;
-    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
-    background-size: auto, auto, auto, auto, 220px 220px, auto, auto, auto, auto;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+    background-size: 300% 300%, auto, auto, auto, auto, 220px 220px, auto, auto, auto, auto;
+    background-position:
+      -60% 0%,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0,
+      0 0;
+    animation: bg-shine-sweep 9s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body {
+      animation: none;
+    }
+  }
+
+  @keyframes bg-shine-sweep {
+    0% {
+      background-position:
+        -60% 0%,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0;
+    }
+    100% {
+      background-position:
+        160% 0%,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0,
+        0 0;
+    }
   }
 
   h1,
