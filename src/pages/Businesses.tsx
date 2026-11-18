@@ -271,7 +271,7 @@ function Directory() {
         })}
       </div>
 
-      {categories.length > 0 && (
+      {departmentSlug !== "todos" && categories.length > 0 && (
         <div className="-mx-4 mb-5 flex items-center gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
           <button
             onClick={() => setCategory("todas")}
