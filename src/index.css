@@ -50,7 +50,7 @@
 /* CHANGE VALUES FOR THEME */
 :root {
   --radius: 1rem;
-  --background: oklch(0.145 0.004 20);
+  --background: #050505;
   --foreground: oklch(0.97 0.004 80);
   --card: oklch(0.19 0.006 20);
   --card-foreground: oklch(0.97 0.004 80);
@@ -89,7 +89,7 @@
 }
 
 .dark {
-  --background: oklch(0.145 0.004 20);
+  --background: #050505;
   --foreground: oklch(0.97 0.004 80);
   --card: oklch(0.19 0.006 20);
   --card-foreground: oklch(0.97 0.004 80);
@@ -122,17 +122,8 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
-    background-image:
-      radial-gradient(
-        ellipse 80% 55% at 12% -10%,
-        oklch(0.62 0.232 26 / 14%),
-        transparent 70%
-      ),
-      radial-gradient(
-        ellipse 70% 50% at 92% 0%,
-        oklch(0.86 0.163 88 / 10%),
-        transparent 65%
-      );
+    background-color: var(--background);
+    background-image: none;
     background-attachment: fixed;
     background-repeat: no-repeat;
   }
