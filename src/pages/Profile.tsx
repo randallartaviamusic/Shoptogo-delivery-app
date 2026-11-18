@@ -1,6 +1,7 @@
 import defaultLogo from "@/assets/logo.svg";
 import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
+import { AdminMetrics } from "@/components/AdminMetrics";
 import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
 import { SupportAdmin } from "@/components/SupportAdmin";
 import { TrustHistory } from "@/components/TrustHistory";
@@ -768,6 +769,7 @@ export default function ProfilePage() {
 
       <VerificationCard />
 
+      {isAdmin && <AdminMetrics />}
       {isAdmin && <VerificationAdmin />}
       {isAdmin && <SupportAdmin />}
       {isAdmin && <SubscriptionAdmin />}

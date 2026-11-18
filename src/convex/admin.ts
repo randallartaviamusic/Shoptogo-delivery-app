@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { isAdminEmail } from "./branding";
+import { ASSIGNMENT_RULES, deliveryQuote } from "../lib/delivery";
+import { hasSubscriptionAccess, subscriptionStatus } from "../lib/subscriptions";
 
 /**
  * Gestión de cuentas para el perfil administrador: revisar, filtrar y borrar
@@ -92,6 +94,127 @@ export const users = query({
       anonymous: all.filter((user) => user.isAnonymous).length,
       duplicates: Array.from(emailCount.values()).filter((count) => count > 1)
         .length,
+    };
+  },
+});
+
+/** Tendencias globales para el panel privado de administración. */
+export const analytics = query({
+  args: { days: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const now = Date.now();
+    const days = args.days === 7 ? 7 : 30;
+    const start = now - days * 86_400_000;
+    const localOffset = 6 * 60 * 60 * 1000;
+    const localToday = new Date(now - localOffset);
+    localToday.setUTCHours(0, 0, 0, 0);
+    const todayStart = localToday.getTime() + localOffset;
+    const orders = await ctx.db.query("orders").collect();
+    const businesses = await ctx.db.query("businesses").collect();
+    const users = await ctx.db.query("users").collect();
+    const subscriptions = await ctx.db.query("subscriptions").collect();
+    const presences = await ctx.db.query("courierPresence").collect();
+
+    const selectedOrders = orders.filter((order) => order.createdAt >= start);
+    const delivered = orders.filter(
+      (order) => order.status === "delivered" && (order.deliveredAt ?? 0) >= start,
+    );
+    const cancelled = selectedOrders.filter((order) => order.status === "cancelled");
+    const businessById = new Map(businesses.map((business) => [business._id, business]));
+    const userById = new Map(users.map((user) => [user._id, user]));
+
+    const orderHours = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      label: `${String(hour).padStart(2, "0")}:00`,
+      orders: 0,
+    }));
+    for (const order of orders) {
+      if (order.createdAt < todayStart || order.createdAt >= todayStart + 86_400_000) continue;
+      const hour = new Date(order.createdAt - localOffset).getUTCHours();
+      orderHours[hour].orders += 1;
+    }
+
+    let measured = 0;
+    let onTime = 0;
+    let totalPromisedMinutes = 0;
+    let totalActualMinutes = 0;
+    let totalDelayMinutes = 0;
+    for (const order of delivered) {
+      const business = businessById.get(order.businessId);
+      const promisedMinutes = deliveryQuote(
+        business?.location,
+        order.deliveryLocation,
+      )?.minutes;
+      const deliveredAt = order.deliveredAt;
+      if (promisedMinutes === undefined || promisedMinutes === null || !deliveredAt) continue;
+      const startsAt = order.pickedUpAt ?? order.readyAt ?? order.acceptedAt ?? order.createdAt;
+      const actualMinutes = Math.max(0, (deliveredAt - startsAt) / 60_000);
+      const delayMinutes = actualMinutes - promisedMinutes;
+      measured += 1;
+      totalPromisedMinutes += promisedMinutes;
+      totalActualMinutes += actualMinutes;
+      totalDelayMinutes += delayMinutes;
+      if (delayMinutes <= ASSIGNMENT_RULES.delayToleranceMinutes) onTime += 1;
+    }
+
+    const activeUntil = now + 7 * 86_400_000;
+    const subscriptionsByOwner = new Map(
+      subscriptions.map((subscription) => [subscription.ownerId, subscription]),
+    );
+    const expiringBusinesses = businesses
+      .filter((business) => business.ownerId)
+      .flatMap((business) => {
+        const owner = userById.get(business.ownerId!);
+        if (!owner) return [];
+        const subscription = subscriptionsByOwner.get(owner._id);
+        const until = subscription?.activeUntil;
+        if (until === undefined || until <= now || until > activeUntil) return [];
+        return [{
+          businessId: business._id,
+          name: business.name,
+          ownerName: owner.name ?? owner.email ?? "Cuenta",
+          activeUntil: until,
+          daysLeft: Math.ceil((until - now) / 86_400_000),
+        }];
+      })
+      .sort((a, b) => a.activeUntil - b.activeUntil);
+
+    const usersById = new Map(users.map((user) => [user._id, user]));
+    const activeCouriers = [];
+    for (const presence of presences) {
+      if (now - presence.updatedAt > ASSIGNMENT_RULES.maxLocationAgeMinutes * 60_000) continue;
+      const courier = usersById.get(presence.ownerId);
+      if (courier?.role !== "courier" || courier.verificationStatus !== "verified") continue;
+      const subscription = subscriptionsByOwner.get(courier._id);
+      if (!hasSubscriptionAccess(subscriptionStatus(subscription?.activeUntil))) continue;
+      activeCouriers.push({
+        userId: courier._id,
+        name: courier.name ?? "Repartidor",
+        lastSeenAt: presence.updatedAt,
+      });
+    }
+
+    return {
+      days,
+      generatedAt: now,
+      metrics: {
+        gmv: delivered.reduce((sum, order) => sum + order.total, 0),
+        completedOrders: delivered.length,
+        orders: selectedOrders.length,
+        cancellations: cancelled.length,
+        cancellationRate: selectedOrders.length ? cancelled.length / selectedOrders.length : 0,
+        averagePromisedMinutes: measured ? totalPromisedMinutes / measured : null,
+        averageActualMinutes: measured ? totalActualMinutes / measured : null,
+        averageDelayMinutes: measured ? totalDelayMinutes / measured : null,
+        onTimeRate: measured ? onTime / measured : null,
+        measuredDeliveries: measured,
+        activeCourierCount: activeCouriers.length,
+        expiringBusinessCount: expiringBusinesses.length,
+      },
+      ordersByHour: orderHours,
+      activeCouriers: activeCouriers.sort((a, b) => a.name.localeCompare(b.name)),
+      expiringBusinesses,
     };
   },
 });
