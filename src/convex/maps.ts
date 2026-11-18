@@ -55,7 +55,7 @@ function geocodeBase() {
 function userAgent() {
   return (
     process.env.GEOCODE_USER_AGENT?.trim() ||
-    "CaprichoExpress/1.0 (operacion@caprichoexpress.cr)"
+    "ShopToGo/1.0 (operacion@shoptogo.cr)"
   );
 }
 

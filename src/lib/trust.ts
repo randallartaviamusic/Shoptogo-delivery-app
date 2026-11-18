@@ -1,5 +1,5 @@
 /**
- * Reglas de confianza de Capricho Express: verificación de cuentas, canal de
+ * Reglas de confianza de Shop To Go: verificación de cuentas, canal de
  * ayuda y reglas de cancelación. Se comparten entre el backend y la interfaz.
  */
 export type VerificationStatus =

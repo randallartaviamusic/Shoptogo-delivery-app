@@ -59,7 +59,7 @@ export default function HelpPage() {
   const whatsappLink = whatsapp
     ? whatsappHref(
         whatsapp,
-        "Hola, necesito ayuda con un pedido de Capricho Express. Mi caso es:",
+        "Hola, necesito ayuda con un pedido de Shop To Go. Mi caso es:",
       )
     : null;
 

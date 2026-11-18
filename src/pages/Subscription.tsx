@@ -216,7 +216,7 @@ export default function SubscriptionPage() {
     <div>
       <PageHeader
         eyebrow="Suscripción"
-        title="Tu plan de Capricho Express"
+        title="Tu plan de Shop To Go"
         description="Tarifa fija mensual, sin comisión por venta. Elegís el plan, reportás el pago y la administración lo verifica."
       />
 

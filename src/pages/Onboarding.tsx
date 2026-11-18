@@ -79,7 +79,7 @@ export default function OnboardingPage() {
         etaMinutes: Number(form.etaMinutes) || 30,
         addStarterMenu: form.addStarterMenu,
       });
-      toast.success("Tu negocio ya está en Capricho Express", {
+      toast.success("Tu negocio ya está en Shop To Go", {
         description: "Cargá productos para que aparezcan en el mazo.",
       });
       navigate("/business");
@@ -97,7 +97,7 @@ export default function OnboardingPage() {
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-25 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
       <div className="relative mx-auto w-full max-w-2xl">
         <div className="flex items-center justify-between">
-          <Link to="/bienvenida" aria-label="Capricho Express">
+          <Link to="/bienvenida" aria-label="Shop To Go">
             <span className="sm:hidden">
               <BrandMark size={32} />
             </span>

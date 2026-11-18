@@ -40,7 +40,7 @@ export function BrandMark({
     >
       <img
         src={src}
-        alt="Capricho Express"
+        alt="Shop To Go"
         style={{ height: px, maxWidth: px * 2.6, width: "auto" }}
         className={cn("shrink-0 rounded-2xl object-contain", className)}
       />
@@ -68,7 +68,7 @@ export function BrandHeadline({ className }: { className?: string }) {
         fontSize: headline?.size ?? 18,
       }}
     >
-      {headline?.title ?? "Capricho Express"}
+      {headline?.title ?? "Shop To Go"}
     </span>
   );
 }

@@ -4,7 +4,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 
 /**
  * Perfil administrador de la plataforma. Con este correo se puede cambiar el
- * logo de Capricho Express y su tamaño.
+ * logo de Shop To Go y su tamaño.
  */
 export const ADMIN_EMAILS = ["rartavia42@gmail.com"];
 
@@ -13,7 +13,7 @@ export const DEFAULT_LOGO_SIZE = 40;
 export const MIN_LOGO_SIZE = 20;
 export const MAX_LOGO_SIZE = 88;
 
-export const DEFAULT_BRAND_TITLE = "Capricho Express";
+export const DEFAULT_BRAND_TITLE = "Shop To Go";
 export const DEFAULT_BRAND_TITLE_COLOR = "#f7f5f0";
 export const DEFAULT_BRAND_TITLE_FONT = "sora";
 export const DEFAULT_BRAND_TITLE_SIZE = 18;
@@ -64,8 +64,13 @@ export const brandHeadline = query({
     const doc = await brandDoc(ctx);
     const size = doc?.brandTitleSize ?? DEFAULT_BRAND_TITLE_SIZE;
     const font = doc?.brandTitleFont ?? DEFAULT_BRAND_TITLE_FONT;
+    const stored = doc?.brandTitle?.trim();
     return {
-      title: doc?.brandTitle ?? DEFAULT_BRAND_TITLE,
+      // El nombre viejo quedaba guardado en el perfil administrador: se ignora.
+      title:
+        !stored || stored.toLowerCase() === "capricho express"
+          ? DEFAULT_BRAND_TITLE
+          : stored,
       color: doc?.brandTitleColor ?? DEFAULT_BRAND_TITLE_COLOR,
       font: BRAND_TITLE_FONTS.includes(font) ? font : DEFAULT_BRAND_TITLE_FONT,
       size: Math.min(
@@ -214,7 +219,7 @@ export const resetBrandHeadline = mutation({
   },
 });
 
-/** Vuelve al logo original de Capricho Express. */
+/** Vuelve al logo original de Shop To Go. */
 export const resetLogo = mutation({
   args: {},
   handler: async (ctx) => {

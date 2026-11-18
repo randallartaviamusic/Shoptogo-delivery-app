@@ -589,7 +589,7 @@ export default function BusinessPage() {
                     : "la mitad"}{" "}
                   de la parte de envío de tu tienda en cada entrega. Hoy sumás{" "}
                   {money(stats?.promoSpendToday ?? 0)} de gasto promocional. Tus
-                  productos se te pagan completos: no es una comisión de Capricho.
+                  productos se te pagan completos: no es una comisión de Shop To Go.
                 </p>
               </div>
               <Button
@@ -1599,7 +1599,7 @@ export default function BusinessPage() {
                 setSettingsForm({ ...settingsForm, address })
               }
               label="Ubicación del local en el mapa"
-              hint="El envío lo calcula Capricho Express con la distancia entre este punto y el cliente."
+              hint="El envío lo calcula Shop To Go con la distancia entre este punto y el cliente."
               mapHeight="h-44"
             />
             <div className="space-y-1.5">
@@ -1614,7 +1614,7 @@ export default function BusinessPage() {
                 }
               />
               <p className="text-[10px] text-muted-foreground">
-                El costo de envío lo calcula Capricho Express según la distancia
+                El costo de envío lo calcula Shop To Go según la distancia
                 entre tu local y el punto de entrega del cliente.
               </p>
             </div>
@@ -1625,7 +1625,7 @@ export default function BusinessPage() {
                 value={settingsForm.pickupInstructions}
                 onChange={(event) => setSettingsForm({ ...settingsForm, pickupInstructions: event.target.value })}
                 maxLength={500}
-                placeholder="Ej.: tocar timbre lateral; preguntar en caja por el pedido Capricho Express."
+                placeholder="Ej.: tocar timbre lateral; preguntar en caja por el pedido Shop To Go."
                 className="min-h-16 resize-none text-xs"
               />
               <p className="text-[10px] text-muted-foreground">Se muestra al repartidor. Incluí por dónde entrar o dónde esperar.</p>
@@ -1665,7 +1665,7 @@ export default function BusinessPage() {
                   activás, cubrís la parte que le corresponde a tu tienda en cada
                   entrega (en compras con varias tiendas, cada local cubre la
                   suya). Es un gasto promocional tuyo, no una comisión de
-                  Capricho: seguís recibiendo el 100% del valor de tus productos.
+                  Shop To Go: seguís recibiendo el 100% del valor de tus productos.
                 </p>
               </div>
               <div className="space-y-2">

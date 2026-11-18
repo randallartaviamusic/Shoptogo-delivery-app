@@ -181,7 +181,7 @@ export default function ProfilePage() {
   const [savingLogoSize, setSavingLogoSize] = useState(false);
   const [logoSizeDraft, setLogoSizeDraft] = useState(40);
 
-  const [titleDraft, setTitleDraft] = useState("Capricho Express");
+  const [titleDraft, setTitleDraft] = useState("Shop To Go");
   const [titleColorDraft, setTitleColorDraft] = useState("#f7f5f0");
   const [titleFontDraft, setTitleFontDraft] = useState("sora");
   const [titleSizeDraft, setTitleSizeDraft] = useState(18);
@@ -383,7 +383,7 @@ export default function ProfilePage() {
         eyebrow="Tu cuenta"
         title="Perfil"
         description={
-          "Tus datos de entrega, tu rol en Capricho Express y tus números de antojos."
+          "Tus datos de entrega, tu rol en Shop To Go y tus números de antojos."
         }
       />
 
@@ -550,7 +550,7 @@ export default function ProfilePage() {
           <div className="mt-4 flex min-h-[148px] items-center justify-center rounded-2xl border border-border/70 bg-black/30 p-6">
             <img
               src={brand?.logoUrl ?? defaultLogo}
-              alt="Logo de Capricho Express"
+              alt="Logo de Shop To Go"
               style={{
                 height: logoSizeDraft,
                 maxWidth: logoSizeDraft * 2.6,
@@ -658,7 +658,7 @@ export default function ProfilePage() {
           <div className="mt-4 flex min-h-[92px] items-center justify-center gap-2.5 overflow-hidden rounded-2xl border border-border/70 bg-black/30 px-4 py-5">
             <img
               src={brand?.logoUrl ?? defaultLogo}
-              alt="Logo de Capricho Express"
+              alt="Logo de Shop To Go"
               style={{ height: 34, maxWidth: 34 * 2.6, width: "auto" }}
               className="shrink-0 rounded-2xl object-contain"
             />
@@ -670,7 +670,7 @@ export default function ProfilePage() {
                 fontSize: titleSizeDraft,
               }}
             >
-              {titleDraft.trim() || "Capricho Express"}
+              {titleDraft.trim() || "Shop To Go"}
             </span>
           </div>
 
@@ -681,7 +681,7 @@ export default function ProfilePage() {
                 id="brand-title"
                 value={titleDraft}
                 maxLength={40}
-                placeholder="Capricho Express"
+                placeholder="Shop To Go"
                 onChange={(event) => setTitleDraft(event.target.value)}
               />
             </div>
@@ -1010,7 +1010,7 @@ export default function ProfilePage() {
       <TrustHistory />
 
       <section className="mt-5">
-        <h2 className="mb-3 font-display text-lg font-bold">Tu rol en Capricho Express</h2>
+        <h2 className="mb-3 font-display text-lg font-bold">Tu rol en Shop To Go</h2>
         <div className="grid gap-3 sm:grid-cols-3">
           {ROLES.map((option) => {
             const active = role === option.value;

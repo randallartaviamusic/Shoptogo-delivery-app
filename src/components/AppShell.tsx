@@ -338,7 +338,7 @@ export function AppShell() {
       >
         <Link
           to={home}
-          aria-label="Capricho Express"
+          aria-label="Shop To Go"
           className="flex min-w-0 max-w-[58%] items-center"
         >
           <Wordmark markSize={30} />

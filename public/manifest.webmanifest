@@ -1,6 +1,6 @@
 {
-  "name": "Capricho Express — Deslizá tu capricho",
-  "short_name": "Capricho",
+  "name": "Shop To Go — Deslizá tu antojo",
+  "short_name": "Shop To Go",
   "description": "El marketplace que se desliza. Comprá sin cuenta en trece rubros y pedí con un swipe.",
   "start_url": "/",
   "display": "standalone",

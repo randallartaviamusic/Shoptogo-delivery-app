@@ -90,7 +90,7 @@ export default function ReceiptPage() {
             </span>
             <div>
               <p className="font-display text-lg font-extrabold tracking-tight">
-                Capricho Express
+                Shop To Go
               </p>
               <p className="text-[11px] text-[#6d5f4d]">
                 Tilarán, Guanacaste · Pago contra entrega
@@ -289,7 +289,7 @@ export default function ReceiptPage() {
         <footer className="border-t border-[#d9cbb4] bg-[#efe5d4] px-6 py-4 text-[10px] leading-relaxed text-[#6d5f4d] sm:px-8">
           <p className="flex items-center gap-1.5 font-semibold text-[#201a14]">
             <CheckCircle2 className="size-3.5 text-[#2f7a52]" />
-            Comprobante generado por Capricho Express
+            Comprobante generado por Shop To Go
           </p>
           <p className="mt-1">
             Conservá este comprobante para reclamos de pago, producto o entrega.

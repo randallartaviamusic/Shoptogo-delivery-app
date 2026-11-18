@@ -92,7 +92,7 @@ export function buildNotifyDraft(input: NotifyInput): NotifyDraft {
           `Pedido ${input.tripNumber}: ${items}.`,
           `Cobrás ${money(input.businessAmount)} en efectivo.`,
           `Entrega en ${input.dropAddress}.`,
-          "Confirmalo en Capricho Express para arrancar la cocina.",
+          "Confirmalo en Shop To Go para arrancar la cocina.",
         ].join("\n"),
       };
     }
@@ -129,7 +129,7 @@ export function buildNotifyDraft(input: NotifyInput): NotifyDraft {
           `Pedido ${input.orderNumber}: lo lleva ${input.courierName}.`,
           phone ? `Contacto: ${phone}.` : null,
           eta,
-          "Seguí la entrega en Capricho Express.",
+          "Seguí la entrega en Shop To Go.",
         ]
           .filter(Boolean)
           .join("\n"),

@@ -1,5 +1,5 @@
 /**
- * Capricho Express marketplace taxonomy.
+ * Shop To Go marketplace taxonomy.
  *
  * Every product belongs to a department (Comida by default) and carries a set
  * of facet values. The deck filters products by these facets, so each vertical

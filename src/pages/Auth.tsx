@@ -175,7 +175,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-30" />
       <div className="mx-auto flex max-w-lg flex-col gap-8">
         <div className="flex items-center justify-between">
-          <Link to="/bienvenida" aria-label="Capricho Express">
+          <Link to="/bienvenida" aria-label="Shop To Go">
             <Wordmark markSize={30} />
           </Link>
           <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">

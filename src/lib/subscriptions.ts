@@ -1,5 +1,5 @@
 /**
- * Suscripciones de Capricho Express.
+ * Suscripciones de Shop To Go.
  *
  * Tarifas fijas y visibles: nunca un porcentaje de los pedidos. Cada plan
  * cambia por beneficios definidos (visibilidad y herramientas), no por una
@@ -329,7 +329,7 @@ export function paymentWhatsappMessage(input: {
 }) {
   const plan = planOf(input.plan);
   return [
-    `Hola, soy ${input.name || "una cuenta de Capricho Express"}.`,
+    `Hola, soy ${input.name || "una cuenta de Shop To Go"}.`,
     `Reporto el pago de mi suscripción de ${input.audience === "business" ? "negocio" : "repartidor"}.`,
     `Plan: ${plan.name} (${money(input.amount)} por mes).`,
     `Método: ${METHOD_LABEL[input.method]}.`,

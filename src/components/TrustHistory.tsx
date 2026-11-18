@@ -49,7 +49,7 @@ export function TrustHistory() {
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-display text-lg font-bold">
-              Tu actividad en Capricho Express
+              Tu actividad en Shop To Go
             </h2>
             <span
               className={cn(

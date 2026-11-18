@@ -339,7 +339,7 @@ export const onvoRequestState = internalQuery({
     return {
       ownerId: user._id,
       role: user.role,
-      name: user.name ?? "Cuenta Capricho",
+      name: user.name ?? "Cuenta Shop To Go",
       email: user.email ?? undefined,
       activeUntil: subscription?.activeUntil ?? null,
       pending: Boolean(pending),
@@ -496,7 +496,7 @@ export const requestOnvoPayment = action({
         body: JSON.stringify({
           amount: plan.price * 100,
           currency: "CRC",
-          description: `Suscripción Capricho Express ${plan.name} ${reference}`,
+          description: `Suscripción Shop To Go ${plan.name} ${reference}`,
           metadata: { paymentReference: reference, accountId: String(ownerId) },
         }),
       });

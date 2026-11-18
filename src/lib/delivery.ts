@@ -1,5 +1,5 @@
 /**
- * Reglas de reparto de Capricho Express.
+ * Reglas de reparto de Shop To Go.
  *
  * La plataforma fija el precio del envío: los negocios no lo eligen. Se calcula
  * con la distancia real entre el local y el punto de entrega del cliente, que

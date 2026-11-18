@@ -2,7 +2,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
 
-// Capricho Express roles. Buyers swipe and order, businesses cook, couriers deliver.
+// Shop To Go roles. Buyers swipe and order, businesses cook, couriers deliver.
 export const ROLES = {
   BUYER: "buyer",
   BUSINESS: "business",

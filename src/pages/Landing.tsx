@@ -104,7 +104,7 @@ function PhoneMockup() {
         <div className="relative overflow-hidden rounded-[34px] border border-white/8 bg-black">
           <div className="flex items-center justify-between px-4 pb-2 pt-7">
             <span className="font-display text-sm font-extrabold">
-              Capricho <span className="text-accent">Express</span>
+              Shop To <span className="text-accent">Go</span>
             </span>
             <span className="flex items-center gap-1 text-[9px] text-white/50">
               <MapPin className="size-2.5" /> Palermo
@@ -216,7 +216,7 @@ export default function Landing() {
         )}
       >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3.5 sm:px-6">
-          <Link to="/bienvenida" aria-label="Capricho Express">
+          <Link to="/bienvenida" aria-label="Shop To Go">
             <span className="sm:hidden">
               <BrandMark size={32} />
             </span>
@@ -285,7 +285,7 @@ export default function Landing() {
               transition={{ duration: 0.6, delay: 0.16 }}
               className="mt-6 max-w-lg text-base leading-relaxed text-muted-foreground sm:text-lg"
             >
-              Capricho Express mezcla el marketplace con el gesto más adictivo
+              Shop To Go mezcla el marketplace con el gesto más adictivo
               del mundo. Productos al azar de los mejores locales de tu ciudad
               —comida, ropa, tecnología, farmacia y más—: a la derecha si te
               gusta, a la izquierda si no. Creá tu cuenta con correo y
@@ -476,7 +476,7 @@ export default function Landing() {
               Un solo lugar, tres roles
             </p>
             <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Capricho Express funciona para todos los que hacen posible el antojo
+              Shop To Go funciona para todos los que hacen posible el antojo
             </h2>
           </motion.div>
 
@@ -670,7 +670,7 @@ export default function Landing() {
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
           <Wordmark markSize={28} />
           <p className="text-xs text-muted-foreground">
-            Capricho Express · el marketplace que se desliza. Del antojo al sillón.
+            Shop To Go · el marketplace que se desliza. Del antojo al sillón.
           </p>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <Link to="/auth" className="hover:text-foreground">
