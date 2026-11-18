@@ -175,6 +175,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
     return (
       <div className="pointer-events-none absolute inset-0 select-none overflow-hidden rounded-[30px] border border-white/10">
         <CardBody dish={dish} dimmed />
+        <div aria-hidden className="glass-sheen absolute inset-0" />
       </div>
     );
   }
@@ -207,6 +208,8 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
       }}
     >
       <CardBody dish={dish} />
+
+      <div aria-hidden className="glass-sheen pointer-events-none absolute inset-0" />
 
       <motion.div
         style={{ opacity: likeOpacity, scale: stampScale }}
