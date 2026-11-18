@@ -81,7 +81,7 @@ export default function SwipePage() {
     department: departmentSlug,
     filters,
   });
-  const cart = useQuery(api.cart.myCart);
+  const cart = useQuery(api.cart.myCart, {});
   const stats = useQuery(api.catalog.myStats);
   const swipe = useMutation(api.catalog.swipe);
   const resetDeck = useMutation(api.catalog.resetDeck);

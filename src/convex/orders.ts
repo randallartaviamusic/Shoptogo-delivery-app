@@ -29,6 +29,8 @@ import {
 import type { CashDayRow } from "../lib/orders";
 import { cashIssueKindValidator } from "./schema";
 import { requireSubscriptionAccess, subscriptionAccess } from "./subscriptions";
+import { cancellationStanding } from "../lib/trust";
+import { scheduleNotReadyYet } from "../lib/scheduling";
 import { isAdminEmail } from "./branding";
 import { normalizePhone } from "../lib/notify";
 import { queueNotice } from "./notifications";
@@ -312,6 +314,9 @@ async function decorateOrder(
     subtotal: order.subtotal,
     deliveryFee: order.deliveryFee,
     deliveryDiscount: order.deliveryDiscount ?? 0,
+    couponCode: order.couponCode ?? null,
+    couponDiscount: order.couponDiscount ?? 0,
+    scheduledFor: order.scheduledFor ?? null,
     total: order.total,
     address: order.address,
     distanceKm: order.distanceKm ?? null,
@@ -389,7 +394,16 @@ async function decorateOrder(
     readyAt: order.readyAt ?? null,
     pickedUpAt: order.pickedUpAt ?? null,
     deliveredAt: order.deliveredAt ?? null,
+    // Evidencia de entrega: foto del pedido entregado, si el repartidor la subió.
+    deliveryProof: leader.deliveryProof
+      ? {
+          url: leader.deliveryProof.url,
+          at: leader.deliveryProof.at,
+          byName: await userName(ctx, leader.deliveryProof.by),
+        }
+      : null,
     cancelledAt: order.cancelledAt ?? null,
+    cancelledBy: order.cancelledBy ?? null,
     cancellationReason: order.cancellationReason ?? null,
     // Temporizador para pedidos listos que todavía no tienen repartidor.
     waitStartedAt: unassignedReady ? effectiveReadyAt : null,
@@ -1276,10 +1290,19 @@ export const businessUpdateStatus = mutation({
       }
     }
 
+    // Un pedido programado no puede quedar listo una hora antes: se enfría y el
+    // comprador recibe la comida a destiempo.
+    if (args.status === "ready" && scheduleNotReadyYet(order.scheduledFor)) {
+      throw new Error(
+        "Es un pedido programado: marcalo listo cuando falten 45 minutos o menos para la hora elegida",
+      );
+    }
+
     const patch: Partial<Doc<"orders">> = { status: args.status };
     const stamp = TIMESTAMP[args.status];
     if (stamp) patch[stamp] = Date.now();
     if (args.status === "cancelled") {
+      patch.cancelledBy = "business";
       patch.cancellationReason =
         args.reason?.trim() ||
         (order.status === "ready"
@@ -1526,6 +1549,8 @@ async function offerTripToCouriers(ctx: MutationCtx, order: Doc<"orders">) {
     const courier = await ctx.db.get(presence.ownerId);
     if (courier?.role !== "courier") continue;
     if (courier.verificationStatus !== "verified") continue;
+    // No se ofrece una entrega que la cuenta no va a poder aceptar.
+    if ((await courierStandingFor(ctx, presence.ownerId)).restricted) continue;
     // Con "mismo repartidor", la entrega sólo se le ofrece a quien ya hizo la
     // anterior: los demás quedarían invitados a algo que no pueden tomar.
     if (
@@ -1644,6 +1669,31 @@ async function notifyAssignment(ctx: MutationCtx, trip: Doc<"orders">[]) {
   }
 }
 
+/**
+ * Posición del repartidor según sus propias faltas: incidencias de efectivo
+ * abiertas y entregas que soltó en los últimos 30 días. Las cancelaciones del
+ * local o del sistema no cuentan.
+ */
+async function courierStandingFor(ctx: DbCtx, userId: Id<"users">) {
+  const courier = await ctx.db.get(userId);
+  const now = Date.now();
+  const renouncements = (courier?.courierRenouncements ?? []).filter(
+    (at) => now - at <= 30 * 86_400_000,
+  ).length;
+  const mine = await ctx.db
+    .query("orders")
+    .withIndex("by_courier", (q) => q.eq("courierId", userId))
+    .collect();
+  const openCashIssues = mine.filter(
+    (order) => order.cashIssue && !order.cashIssue.resolvedAt,
+  ).length;
+  return cancellationStanding({
+    role: "courier",
+    cancellations30d: renouncements,
+    openCashIssues,
+  });
+}
+
 export const courierAccept = mutation({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args) => {
@@ -1673,6 +1723,12 @@ async function acceptTripForCourier(
       throw new Error(
         "Tu cuenta de repartidor todavía no está verificada. Completá tus datos en Perfil → Verificación y esperá la revisión",
       );
+    }
+    // Penalizaciones: el efectivo sin resolver y las entregas que soltó pesan
+    // antes de aceptar una entrega nueva.
+    const standing = await courierStandingFor(ctx, userId);
+    if (standing.restricted) {
+      throw new Error(standing.hint);
     }
     await requireSubscriptionAccess(
       ctx,
@@ -2062,6 +2118,16 @@ export const courierRenounceRemaining = mutation({
       await ctx.db.patch(sibling._id, { reservedCourierId: undefined });
       released += 1;
     }
+    if (released > 0) {
+      const courier = await ctx.db.get(userId);
+      // Se guardan sólo las últimas 30 fechas: es la ventana de la regla.
+      const recent = (courier?.courierRenouncements ?? []).filter(
+        (at) => Date.now() - at <= 30 * 86_400_000,
+      );
+      await ctx.db.patch(userId, {
+        courierRenouncements: [...recent, Date.now()].slice(-30),
+      });
+    }
     return { released };
   },
 });
@@ -2078,6 +2144,8 @@ export const courierUpdateStatus = mutation({
     cashAmount: v.optional(v.number()),
     // Nota obligatoria si el monto no coincide con el total del pedido.
     cashNote: v.optional(v.string()),
+    // Foto del pedido entregado (opcional): queda como evidencia de respaldo.
+    proofStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -2185,8 +2253,32 @@ export const courierUpdateStatus = mutation({
     if (issue) {
       cashPatch.cashIssue = { ...issue, note, at: now, by: userId };
     }
+    if (args.proofStorageId) {
+      const url = await ctx.storage.getUrl(args.proofStorageId);
+      if (!url) throw new Error("No pudimos guardar la foto de entrega");
+      cashPatch.deliveryProof = {
+        storageId: args.proofStorageId,
+        url,
+        at: now,
+        by: userId,
+      };
+    }
     await ctx.db.patch(leader._id, cashPatch);
     return { status: args.status, orders: trip.length, cashDifference: difference };
+  },
+});
+
+/** URL firmada para subir la foto de entrega desde el teléfono del repartidor. */
+export const generateDeliveryProofUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const user = await ctx.db.get(userId);
+    if (user?.role !== "courier") {
+      throw new Error("Sólo las cuentas de repartidor pueden subir evidencia de entrega");
+    }
+    return await ctx.storage.generateUploadUrl();
   },
 });
 
@@ -2215,6 +2307,7 @@ export const cancel = mutation({
       await ctx.db.patch(member._id, {
         status: "cancelled",
         cancelledAt: now,
+        cancelledBy: "buyer",
         cancellationReason: "Cancelaste la compra antes de que los locales la confirmaran.",
       });
     }
@@ -2251,6 +2344,7 @@ export const autoCancelStaleReady = internalMutation({
         await ctx.db.patch(member._id, {
           status: "cancelled",
           cancelledAt: now,
+          cancelledBy: "system",
           cancellationReason: `Nadie tomó la entrega en ${ASSIGNMENT_RULES.autoCancelAfterMinutes} minutos. Se canceló automáticamente y no se cobra nada.`,
         });
         cancelled += 1;

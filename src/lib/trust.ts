@@ -24,7 +24,7 @@ export const VERIFICATION_META: Record<
   },
   verified: {
     label: "Verificado",
-    hint: "Tus datos fueron revisados por la administración.",
+    hint: "Tu teléfono y tu cédula quedaron confirmados.",
     tone: "green",
   },
   rejected: {
@@ -82,6 +82,131 @@ export const COURIER_VEHICLES = [
   "Carro",
   "A pie",
 ] as const;
+
+/** Reglas de convivencia cuando hay cancelaciones o efectivo sin resolver. */
+export const STANDING_RULES = {
+  /** Cancelaciones propias en 30 días que encienden la alerta. */
+  watchCancellations: 2,
+  /** Cancelaciones propias en 30 días que restringen al repartidor. */
+  restrictCancellations: 3,
+  /** Incidencias de efectivo abiertas que restringen al repartidor. */
+  restrictCashIssues: 2,
+} as const;
+
+export type StandingLevel = "ok" | "watch" | "restricted";
+
+export type Standing = {
+  level: StandingLevel;
+  label: string;
+  hint: string;
+  /** Sólo el repartidor queda restringido automáticamente. */
+  restricted: boolean;
+};
+
+/**
+ * Posición de una cuenta según sus propias cancelaciones y sus incidencias de
+ * efectivo. Las cancelaciones del sistema (nadie tomó el pedido) y las del
+ * local no se cuentan: no son una falta del comprador ni del repartidor.
+ *
+ * Al repartidor se le restringe tomar entregas nuevas con dos incidencias de
+ * efectivo abiertas o tres cancelaciones propias en 30 días. El negocio queda
+ * marcado para revisión de la administración, sin bloquear la operación desde
+ * el código: suspender un local es una decisión humana.
+ */
+export function cancellationStanding(input: {
+  role: "buyer" | "business" | "courier";
+  cancellations30d: number;
+  openCashIssues: number;
+}): Standing {
+  const cancellations = Math.max(0, input.cancellations30d);
+  const issues = Math.max(0, input.openCashIssues);
+
+  if (input.role === "courier") {
+    if (
+      cancellations >= STANDING_RULES.restrictCancellations ||
+      issues >= STANDING_RULES.restrictCashIssues
+    ) {
+      return {
+        level: "restricted",
+        label: "Entregas restringidas",
+        hint:
+          issues >= STANDING_RULES.restrictCashIssues
+            ? `Tenés ${issues} incidencias de efectivo abiertas: resolvelas con la administración para volver a tomar entregas.`
+            : `Tenés ${cancellations} cancelaciones propias en 30 días. La administración tiene que habilitarte de nuevo.`,
+        restricted: true,
+      };
+    }
+    if (cancellations >= STANDING_RULES.watchCancellations || issues >= 1) {
+      return {
+        level: "watch",
+        label: "En observación",
+        hint:
+          issues >= 1
+            ? "Tenés una incidencia de efectivo sin resolver. Cerrá el caso antes de que se sume otra."
+            : "Sumaste cancelaciones propias este mes. Cuidá las entregas que aceptás.",
+        restricted: false,
+      };
+    }
+    return {
+      level: "ok",
+      label: "Buen historial",
+      hint: "Sin cancelaciones propias ni efectivo pendiente.",
+      restricted: false,
+    };
+  }
+
+  if (input.role === "business") {
+    if (cancellations >= 5) {
+      return {
+        level: "restricted",
+        label: "Revisión de la administración",
+        hint: `Tenés ${cancellations} cancelaciones en 30 días. La administración revisa la cuenta antes de tomar medidas.`,
+        restricted: false,
+      };
+    }
+    if (cancellations >= STANDING_RULES.watchCancellations) {
+      return {
+        level: "watch",
+        label: "En observación",
+        hint: "Hubo varias cancelaciones este mes. El historial queda visible en tu cuenta.",
+        restricted: false,
+      };
+    }
+    return {
+      level: "ok",
+      label: "Buen historial",
+      hint: "Sin cancelaciones propias este mes.",
+      restricted: false,
+    };
+  }
+
+  // Comprador: cancelar antes de que el local confirme es parte del flujo y no
+  // tiene costo. Sólo se avisa cuando se repite mucho.
+  if (cancellations >= 5) {
+    return {
+      level: "watch",
+      label: "Cancelaciones frecuentes",
+      hint: `Cancelaste ${cancellations} pedidos en 30 días antes de que el local los confirmara.`,
+      restricted: false,
+    };
+  }
+  return {
+    level: "ok",
+    label: "Buen historial",
+    hint: "Tus cancelaciones fueron sólo antes de la confirmación del local.",
+    restricted: false,
+  };
+}
+
+export const CANCELLATION_ACTOR_LABEL: Record<
+  "buyer" | "business" | "system" | "unknown",
+  string
+> = {
+  buyer: "Cancelado por el comprador",
+  business: "Cancelado por el local",
+  system: "Cancelado automáticamente",
+  unknown: "Cancelación sin responsable registrado",
+};
 
 export type SupportCategory =
   | "payment"
@@ -170,6 +295,8 @@ export const CANCELLATION_RULES = [
       "No se puede marcar una entrega como completada sin el PIN del comprador y el registro del efectivo.",
       "Si el cliente no aparece o la dirección es incorrecta, se registra la incidencia antes de cerrar.",
       "Las diferencias de efectivo quedan asentadas y las revisa la administración.",
+      "Con dos incidencias de efectivo abiertas no se pueden tomar entregas nuevas hasta resolverlas.",
+      "Las cancelaciones propias cuentan: con tres en 30 días la administración revisa la cuenta.",
     ],
   },
 ] as const;

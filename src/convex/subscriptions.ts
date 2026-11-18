@@ -1,6 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isAdminEmail } from "./branding";
@@ -141,6 +141,22 @@ export async function requireSubscriptionAccess(
   return access;
 }
 
+function normalizeReference(value: string) {
+  return value.replace(/[\s-]+/g, "").toUpperCase();
+}
+
+/** Busca un comprobante ya usado (pendiente, aprobado o rechazado). */
+async function findReference(ctx: DbCtx, reference: string) {
+  const target = normalizeReference(reference);
+  if (!target) return null;
+  const payments = await ctx.db.query("subscriptionPayments").collect();
+  return (
+    payments.find(
+      (payment) => normalizeReference(payment.reference) === target,
+    ) ?? null
+  );
+}
+
 async function pendingPaymentFor(ctx: DbCtx, ownerId: Id<"users">) {
   const payments = await ctx.db
     .query("subscriptionPayments")
@@ -256,6 +272,14 @@ export const requestPayment = mutation({
     if (await pendingPaymentFor(ctx, userId)) {
       throw new Error(
         "Ya tenés un pago en revisión. Esperá la verificación del administrador",
+      );
+    }
+    // Un mismo comprobante no puede sostener dos pagos ni dos cuentas: es la
+    // primera defensa contra reenviar la misma transferencia.
+    const duplicate = await findReference(ctx, reference);
+    if (duplicate) {
+      throw new Error(
+        "Ese comprobante ya fue registrado. Revisá la referencia o escribinos por WhatsApp",
       );
     }
 
@@ -479,6 +503,68 @@ export const adminReviewPayment = mutation({
       activeUntil,
     });
     return { approved: true, activeUntil };
+  },
+});
+
+/**
+ * Confirmación automática desde el proveedor de pagos. La llama el webhook
+ * firmado: busca el comprobante pendiente por referencia y monto exacto y, si
+ * coincide, activa o renueva la suscripción sin intervención humana.
+ */
+export const confirmProviderPayment = internalMutation({
+  args: {
+    reference: v.string(),
+    amount: v.number(),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const target = normalizeReference(args.reference);
+    const amount = Math.round(args.amount);
+    if (!target || !Number.isFinite(amount) || amount <= 0) {
+      return { matched: false, reason: "Datos del pago incompletos" };
+    }
+
+    const payments = await ctx.db.query("subscriptionPayments").collect();
+    const sameReference = payments.filter(
+      (payment) => normalizeReference(payment.reference) === target,
+    );
+    if (sameReference.some((payment) => payment.status === "approved")) {
+      return { matched: true, alreadyApproved: true };
+    }
+    const payment = sameReference
+      .filter((candidate) => candidate.status === "pending")
+      .sort((a, b) => b.reportedAt - a.reportedAt)[0];
+    if (!payment) return { matched: false, reason: "No hay un pago pendiente con esa referencia" };
+    if (payment.price !== amount) {
+      return {
+        matched: false,
+        reason: `El monto confirmado no coincide con el pago reportado (${payment.price})`,
+      };
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(payment._id, {
+      status: "approved",
+      reviewedAt: now,
+      reviewNote:
+        args.note?.trim() ||
+        "Confirmado automáticamente por el proveedor de pagos",
+    });
+
+    const existing = await subscriptionDoc(ctx, payment.ownerId);
+    const plan = planOf(payment.plan);
+    const activeUntil = Math.max(
+      payment.expiryAt,
+      existing?.activeUntil ?? 0,
+      now + DAY_MS,
+    );
+    await upsertSubscription(ctx, payment.ownerId, payment.role, {
+      plan: plan.id,
+      price: plan.price,
+      activeSince: existing?.activeSince ?? now,
+      activeUntil,
+    });
+    return { matched: true, approved: true, activeUntil };
   },
 });
 

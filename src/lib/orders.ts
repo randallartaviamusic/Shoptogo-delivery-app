@@ -6,12 +6,21 @@ import type { CashIssueKind, OrderStatus } from "../convex/schema";
  * datos: son las que deciden cuánto dinero se espera y qué se puede cancelar.
  */
 
-/** Lo que el local recibe en efectivo por sus productos (sin el envío). */
+/**
+ * Lo que el local recibe en efectivo por sus productos (sin el envío). El
+ * cupón que ofrece el propio local se descuenta de su liquidación: lo paga él,
+ * igual que la promoción de envío.
+ */
 export function businessDue(order: {
   subtotal: number;
   deliveryDiscount?: number | null;
+  couponDiscount?: number | null;
 }) {
-  return order.subtotal - (order.deliveryDiscount ?? 0);
+  return (
+    order.subtotal -
+    (order.deliveryDiscount ?? 0) -
+    (order.couponDiscount ?? 0)
+  );
 }
 
 export type CashIssueDraft = { kind: CashIssueKind; amount: number };

@@ -139,6 +139,28 @@ export const offerStatusValidator = v.union(
 );
 export type OfferStatus = Infer<typeof offerStatusValidator>;
 
+/** Quién canceló un pedido: sirve para separar faltas propias de las ajenas. */
+export const cancellationActorValidator = v.union(
+  v.literal("buyer"),
+  v.literal("business"),
+  v.literal("system"),
+);
+export type CancellationActor = Infer<typeof cancellationActorValidator>;
+
+/** Cupón que financia el local: nunca es una comisión de la plataforma. */
+export const couponKindValidator = v.union(
+  v.literal("percent"),
+  v.literal("amount"),
+);
+export type CouponKind = Infer<typeof couponKindValidator>;
+
+export const deliveryProofValidator = v.object({
+  storageId: v.id("_storage"),
+  url: v.string(),
+  at: v.number(),
+  by: v.id("users"),
+});
+
 export const orderStatusValidator = v.union(
   v.literal("pending"),
   v.literal("accepted"),
@@ -205,14 +227,28 @@ const schema = defineSchema(
           }),
         ),
       ),
-      // Verificación básica de negocios y repartidores. La administración
-      // revisa el teléfono, la cédula y los datos del local o del vehículo.
+      // Verificación de negocios y repartidores. El teléfono se confirma con
+      // un código (Twilio Verify) y la cédula contra el registro del TSE
+      // (Didit); si no hay proveedores configurados queda la revisión manual.
       verificationStatus: v.optional(verificationStatusValidator),
       idNumber: v.optional(v.string()),
       vehicle: v.optional(v.string()),
       verificationNote: v.optional(v.string()),
       verificationSubmittedAt: v.optional(v.number()),
       verifiedAt: v.optional(v.number()),
+      // Teléfono que se está confirmando por código, antes de reemplazar el
+      // número de contacto de la cuenta.
+      pendingVerificationPhone: v.optional(v.string()),
+      phoneVerificationSentAt: v.optional(v.number()),
+      phoneVerifiedAt: v.optional(v.number()),
+      // Cédula confirmada contra el registro y nombre devuelto por la fuente.
+      idVerifiedAt: v.optional(v.number()),
+      idVerifiedName: v.optional(v.string()),
+      // Fechas en las que el repartidor soltó entregas ya aceptadas. Se usan
+      // para las reglas de penalización, con ventana de 30 días.
+      courierRenouncements: v.optional(v.array(v.number())),
+      // Se aprueba sin intervención humana cuando ambos controles coinciden.
+      verifiedAutomatically: v.optional(v.boolean()),
       // Calificación que recibe un repartidor (promedio y cantidad).
       rating: v.optional(v.number()),
       reviews: v.optional(v.number()),
@@ -378,9 +414,21 @@ const schema = defineSchema(
       pickedUpAt: v.optional(v.number()),
       deliveredAt: v.optional(v.number()),
       cancelledAt: v.optional(v.number()),
+      // Quién canceló: una cancelación automática o del local no puede contar
+      // como falta del comprador.
+      cancelledBy: v.optional(cancellationActorValidator),
       // Motivo visible para el comprador cuando se cancela, por ejemplo un
       // pedido listo que nadie tomó después de la ventana de asignación.
       cancellationReason: v.optional(v.string()),
+      // Pedido programado: el local lo prepara para esa hora, no antes.
+      scheduledFor: v.optional(v.number()),
+      // Cupón del local aplicado a esta tienda dentro de la entrega.
+      couponCode: v.optional(v.string()),
+      couponDiscount: v.optional(v.number()),
+      // Evidencia de entrega: foto del pedido entregado, subida por el
+      // repartidor al cerrar el viaje. El PIN del comprador sigue siendo la
+      // confirmación principal; la foto queda como respaldo verificable.
+      deliveryProof: v.optional(deliveryProofValidator),
     })
       .index("by_buyer", ["buyerId"])
       .index("by_business", ["businessId"])
@@ -600,6 +648,28 @@ const schema = defineSchema(
       .index("by_courier", ["courierId", "status"])
       .index("by_trip", ["tripKey"])
       .index("by_status", ["status", "expiresAt"]),
+
+    // Cupones que crea cada local desde sus ajustes. El descuento lo financia
+    // el propio negocio y se descuenta de su liquidación, nunca del envío ni
+    // como comisión de la plataforma. El código es único en toda la app.
+    coupons: defineTable({
+      businessId: v.id("businesses"),
+      code: v.string(),
+      kind: couponKindValidator,
+      // Porcentaje (1-50) o monto fijo en colones.
+      value: v.number(),
+      minSubtotal: v.number(),
+      // Tope del descuento para cupones de porcentaje.
+      maxDiscount: v.optional(v.number()),
+      active: v.boolean(),
+      expiresAt: v.optional(v.number()),
+      maxRedemptions: v.optional(v.number()),
+      redemptions: v.number(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_business", ["businessId"])
+      .index("by_code", ["code"]),
 
     // Caché de rutas y geocodificación. Evita repetir consultas al proveedor y
     // respeta los límites de uso de los servicios públicos.

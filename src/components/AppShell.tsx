@@ -81,7 +81,7 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const outlet = useOutlet();
-  const cart = useQuery(api.cart.myCart);
+  const cart = useQuery(api.cart.myCart, {});
   const isCourier = user?.role === "courier";
   const isBusiness = user?.role === "business";
   const courierBoard = useQuery(

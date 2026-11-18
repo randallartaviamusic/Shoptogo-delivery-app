@@ -57,18 +57,24 @@ export const updateProfile = mutation({
     // es el dato con el que se contacta a la persona en una entrega.
     if (
       phoneChanged &&
-      (user.role === "business" || user.role === "courier") &&
-      user.verificationStatus === "verified"
+      (user.role === "business" || user.role === "courier")
     ) {
-      patch.verificationStatus = "pending";
-      patch.verifiedAt = undefined;
-      patch.verificationNote = "Actualizaste tu teléfono: queda pendiente de revisión.";
-      const business = await ctx.db
-        .query("businesses")
-        .withIndex("by_owner", (q) => q.eq("ownerId", userId))
-        .first();
-      if (business?.verifiedAt) {
-        await ctx.db.patch(business._id, { verifiedAt: undefined });
+      // La confirmación anterior del teléfono deja de valer, aunque la cuenta
+      // hubiera quedado aprobada de forma automática.
+      patch.phoneVerifiedAt = undefined;
+      patch.verifiedAutomatically = false;
+      if (user.verificationStatus === "verified") {
+        patch.verificationStatus = "pending";
+        patch.verifiedAt = undefined;
+        patch.verificationNote =
+          "Actualizaste tu teléfono: confirmá el número nuevo para recuperar el sello de confianza.";
+        const business = await ctx.db
+          .query("businesses")
+          .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+          .first();
+        if (business?.verifiedAt) {
+          await ctx.db.patch(business._id, { verifiedAt: undefined });
+        }
       }
     }
 

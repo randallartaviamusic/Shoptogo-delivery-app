@@ -2,7 +2,11 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { verificationOf } from "../lib/trust";
+import {
+  CANCELLATION_ACTOR_LABEL,
+  cancellationStanding,
+  verificationOf,
+} from "../lib/trust";
 
 async function ordersFor(ctx: QueryCtx, userId: Id<"users">, role: string) {
   if (role === "business") {
@@ -48,6 +52,26 @@ export const overview = query({
     const delivered = sorted.filter((order) => order.status === "delivered");
     const cancelled = sorted.filter((order) => order.status === "cancelled");
     const incidents = sorted.filter((order) => Boolean(order.cashIssue));
+    const monthAgo = Date.now() - 30 * 86_400_000;
+    const cancellations30d = cancelled.filter(
+      (order) => (order.cancelledAt ?? order.createdAt) >= monthAgo,
+    );
+    const ownCancellations30d =
+      role === "courier"
+        ? (user.courierRenouncements ?? []).filter((at) => at >= monthAgo).length
+        : cancellations30d.filter(
+            (order) =>
+              order.cancelledBy === (role === "business" ? "business" : "buyer"),
+          ).length;
+    const openCashIssues = incidents.filter(
+      (order) => !order.cashIssue!.resolvedAt,
+    ).length;
+    const standing = cancellationStanding({
+      role: role === "business" || role === "courier" ? role : "buyer",
+      cancellations30d: ownCancellations30d,
+      openCashIssues,
+    });
+    const proofs = sorted.filter((order) => Boolean(order.deliveryProof)).length;
 
     const tickets = await ctx.db
       .query("supportTickets")
@@ -81,11 +105,26 @@ export const overview = query({
             ? (user.rating ?? null)
             : null,
       reviews: reviewsReceived,
+      standing,
+      proofs,
       totals: {
         orders: sorted.length,
         delivered: delivered.length,
         cancelled: cancelled.length,
+        cancelledByBuyer: cancellations30d.filter(
+          (order) => order.cancelledBy === "buyer",
+        ).length,
+        cancelledByBusiness: cancellations30d.filter(
+          (order) => order.cancelledBy === "business",
+        ).length,
+        cancelledBySystem: cancellations30d.filter(
+          (order) =>
+            order.cancelledBy === "system" || !order.cancelledBy,
+        ).length,
+        cancellations30d: cancellations30d.length,
+        ownCancellations30d,
         incidents: incidents.length,
+        openCashIssues,
         openTickets: tickets.filter((ticket) => ticket.status !== "resolved")
           .length,
       },
@@ -103,6 +142,9 @@ export const overview = query({
         code: order.code,
         total: order.total,
         reason: order.cancellationReason ?? "Sin motivo registrado",
+        actor: order.cancelledBy ?? "unknown",
+        actorLabel:
+          CANCELLATION_ACTOR_LABEL[order.cancelledBy ?? "unknown"],
         cancelledAt: order.cancelledAt ?? order.createdAt,
       })),
       recentIncidents: incidents.slice(0, 6).map((order) => ({

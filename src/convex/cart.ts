@@ -1,7 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { geoPointValidator } from "./schema";
 import { requireSubscriptionAccess } from "./subscriptions";
@@ -17,6 +17,8 @@ import {
 import { promoBadge, promoDiscount } from "../lib/promo";
 import { businessDue, checkoutSummary } from "../lib/orders";
 import { normalizePhone } from "../lib/notify";
+import { scheduleBlocker } from "../lib/scheduling";
+import { discountFor, findCoupon } from "./coupons";
 import { queueNotice } from "./notifications";
 import type { PromoKind } from "../lib/promo";
 
@@ -45,6 +47,9 @@ export type CartGroup = {
   /** Parte de los envíos del carrito que cubre el local con su promoción. */
   deliveryDiscount: number;
   promo: { kind: PromoKind; label: string } | null;
+  /** Cupón del local aplicado a esta tienda, si el código sirve. */
+  coupon: { code: string; label: string } | null;
+  couponDiscount: number;
   feeFrom: number;
   distanceKm: number | null;
   deliveryMinutes: number | null;
@@ -64,7 +69,11 @@ export type CartGroup = {
   subtotal: number;
 };
 
-async function buildCart(ctx: DbCtx, userId: Id<"users">) {
+async function buildCart(
+  ctx: DbCtx,
+  userId: Id<"users">,
+  couponCode?: string | null,
+) {
   const buyer = await ctx.db.get(userId);
   const dropoff = isValidPoint(buyer?.location) ? buyer.location : null;
   const cartItems = await ctx.db
@@ -76,6 +85,7 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
   const groups: CartGroup[] = [];
   const promoByBusiness = new Map<string, PromoKind | null>();
   const routeFeeByBusiness = new Map<string, number>();
+  const couponByBusiness = new Map<string, Doc<"coupons"> | null>();
 
   for (const item of cartItems) {
     const product = await ctx.db.get(item.productId);
@@ -97,6 +107,8 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
         promo: promoKind
           ? { kind: promoKind, label: promoBadge(promoKind) }
           : null,
+        coupon: null,
+        couponDiscount: 0,
         feeFrom: DELIVERY_RULES.baseFee,
         distanceKm: quote?.distanceKm ?? null,
         deliveryMinutes: quote?.minutes ?? null,
@@ -111,6 +123,8 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
       groups.push(group);
       promoByBusiness.set(item.businessId, promoKind);
       routeFeeByBusiness.set(item.businessId, quote?.fee ?? 0);
+      const coupon = await findCoupon(ctx, item.businessId, couponCode);
+      couponByBusiness.set(item.businessId, coupon);
     }
     group.items.push({
       cartItemId: item._id,
@@ -160,8 +174,26 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
     }
   }
 
+  // El cupón es de un local concreto: descuenta sólo los productos de esa
+  // tienda y nunca toca el envío ni la parte de los demás locales.
+  for (const group of groups) {
+    const coupon = couponByBusiness.get(group.businessId) ?? null;
+    const discount = discountFor(coupon, group.subtotal);
+    group.couponDiscount = discount;
+    group.coupon = coupon
+      ? {
+          code: coupon.code,
+          label:
+            coupon.kind === "percent"
+              ? `${coupon.value}% de descuento`
+              : `₡${coupon.value.toLocaleString("es-CR")} de descuento`,
+        }
+      : null;
+  }
+
   const subtotal = groups.reduce((acc, g) => acc + g.subtotal, 0);
   const discountTotal = trips.reduce((acc, trip) => acc + trip.discount, 0);
+  const couponTotal = groups.reduce((acc, g) => acc + g.couponDiscount, 0);
   const deliveryTotal = trips.reduce((acc, trip) => acc + trip.clientFee, 0);
   const count = groups.reduce(
     (acc, g) => acc + g.items.reduce((a, i) => a + i.quantity, 0),
@@ -176,13 +208,23 @@ async function buildCart(ctx: DbCtx, userId: Id<"users">) {
     subtotal,
     deliveryTotal,
     deliverySaved: discountTotal,
-    total: subtotal + deliveryTotal,
+    couponTotal,
+    couponCode:
+      couponTotal > 0
+        ? (groups.find((group) => group.coupon)?.coupon?.code ?? null)
+        : null,
+    // El código se cargó pero ningún local del carrito lo acepta.
+    couponMessage:
+      couponCode && couponTotal === 0
+        ? "Ese cupón no aplica a los productos de tu carrito"
+        : null,
+    total: subtotal + deliveryTotal - couponTotal,
   };
 }
 
 export const myCart = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { couponCode: v.optional(v.string()) },
+  handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       return {
@@ -193,10 +235,13 @@ export const myCart = query({
         subtotal: 0,
         deliveryTotal: 0,
         deliverySaved: 0,
+        couponTotal: 0,
+        couponCode: null,
+        couponMessage: null,
         total: 0,
       };
     }
-    return await buildCart(ctx, userId);
+    return await buildCart(ctx, userId, args.couponCode);
   },
 });
 
@@ -308,6 +353,10 @@ export const checkout = mutation({
     sameCourier: v.optional(v.boolean()),
     // Clave estable por intento de compra: reintentar no duplica el pedido.
     requestKey: v.optional(v.string()),
+    // Cupón de un local del carrito. El descuento lo financia ese local.
+    couponCode: v.optional(v.string()),
+    // Pedido programado: hora exacta en la que el local debe prepararlo.
+    scheduledFor: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -347,6 +396,13 @@ export const checkout = mutation({
       throw new Error("Marcá en el mapa el punto donde querés recibir el pedido");
     }
     const dropoff = normalizePoint(args.location);
+    const scheduledFor = args.scheduledFor
+      ? Math.round(args.scheduledFor)
+      : null;
+    if (scheduledFor !== null) {
+      const blocker = scheduleBlocker(scheduledFor);
+      if (blocker) throw new Error(blocker);
+    }
 
     const cartItems = await ctx.db
       .query("cartItems")
@@ -502,7 +558,11 @@ export const checkout = mutation({
             )
           : 0;
 
-        const orderTotal = subtotal + tripStop.fee - deliveryDiscount;
+        // El cupón del local descuenta sus productos, no el envío.
+        const coupon = await findCoupon(ctx, store.id, args.couponCode);
+        const couponDiscount = discountFor(coupon, subtotal);
+        const orderTotal =
+          subtotal + tripStop.fee - deliveryDiscount - couponDiscount;
         total += orderTotal;
         created += 1;
 
@@ -527,6 +587,8 @@ export const checkout = mutation({
           subtotal,
           deliveryFee: tripStop.fee,
           deliveryDiscount: deliveryDiscount || undefined,
+          couponCode: couponDiscount > 0 ? coupon?.code : undefined,
+          couponDiscount: couponDiscount || undefined,
           total: orderTotal,
           status: "pending",
           address,
@@ -534,8 +596,16 @@ export const checkout = mutation({
           distanceKm: store.distanceKm,
           notes: args.notes?.trim() || undefined,
           requestKey: requestKey ?? undefined,
+          scheduledFor: scheduledFor ?? undefined,
           createdAt: now,
         });
+
+        if (coupon && couponDiscount > 0) {
+          await ctx.db.patch(coupon._id, {
+            redemptions: coupon.redemptions + 1,
+            updatedAt: now,
+          });
+        }
 
         // Aviso fuera de la app: el local se entera aunque nadie tenga el panel
         // abierto. Sin opt-in ni teléfono queda encolado y el despacho lo marca
@@ -553,7 +623,11 @@ export const checkout = mutation({
               kind: "new_order",
               tripNumber: `${groupCode}${suffix}`,
               itemCount: items.reduce((acc, item) => acc + item.quantity, 0),
-              businessAmount: businessDue({ subtotal, deliveryDiscount }),
+              businessAmount: businessDue({
+                subtotal,
+                deliveryDiscount,
+                couponDiscount,
+              }),
               dropAddress: address,
             },
           });

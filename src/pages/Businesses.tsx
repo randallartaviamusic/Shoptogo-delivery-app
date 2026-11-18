@@ -487,7 +487,7 @@ function Storefront({ slug }: { slug: string }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const data = useQuery(api.businesses.storefront, { slug });
-  const cart = useQuery(api.cart.myCart);
+  const cart = useQuery(api.cart.myCart, {});
   const addToCart = useMutation(api.cart.add);
   const [busy, setBusy] = useState<string | null>(null);
 
