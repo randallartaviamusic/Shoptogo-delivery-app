@@ -131,6 +131,10 @@ export default function BusinessPage() {
   const addProduct = useMutation(api.businesses.addProduct);
   const updateProduct = useMutation(api.businesses.updateProduct);
   const removeProduct = useMutation(api.businesses.removeProduct);
+  const coupons = useQuery(api.coupons.mine);
+  const createCoupon = useMutation(api.coupons.create);
+  const setCouponActive = useMutation(api.coupons.setActive);
+  const removeCoupon = useMutation(api.coupons.remove);
   const confirmCash = useMutation(api.orders.businessConfirmCash);
   const reportIssue = useMutation(api.orders.reportCashIssue);
   const resolveIssue = useMutation(api.orders.resolveCashIssue);
@@ -157,6 +161,15 @@ export default function BusinessPage() {
   const [savingIssue, setSavingIssue] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
+  const [couponForm, setCouponForm] = useState({
+    code: "",
+    kind: "percent" as "percent" | "amount",
+    value: "10",
+    minSubtotal: "0",
+    expiresInDays: "",
+    maxRedemptions: "",
+  });
+  const [couponBusy, setCouponBusy] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
   const [deleting, setDeleting] = useState<Doc<"products"> | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
@@ -338,6 +351,32 @@ export default function BusinessPage() {
       packagingInstructions: business.packagingInstructions ?? "",
     });
     setSettingsDialog(true);
+  };
+
+  const handleCreateCoupon = async () => {
+    setCouponBusy(true);
+    try {
+      await createCoupon({
+        code: couponForm.code,
+        kind: couponForm.kind,
+        value: Number(couponForm.value),
+        minSubtotal: Number(couponForm.minSubtotal) || 0,
+        expiresInDays: couponForm.expiresInDays
+          ? Number(couponForm.expiresInDays)
+          : undefined,
+        maxRedemptions: couponForm.maxRedemptions
+          ? Number(couponForm.maxRedemptions)
+          : undefined,
+      });
+      toast.success("Cupón creado", {
+        description: "El descuento se aplica a tus productos y lo cubre tu local.",
+      });
+      setCouponForm({ ...couponForm, code: "" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos crear el cupón");
+    } finally {
+      setCouponBusy(false);
+    }
   };
 
   const handleSettingsSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -647,7 +686,7 @@ export default function BusinessPage() {
                 </p>
                 <h2 className="mt-1 font-display text-lg font-bold">Ventas y caja de hoy</h2>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  El efectivo esperado corresponde a productos entregados, menos los descuentos promocionales cubiertos por el local.
+                  El efectivo esperado corresponde a productos entregados, menos las promociones de envío y los cupones financiados por el local.
                 </p>
               </div>
               <Button asChild size="sm" variant="outline" className="border-border/80">
@@ -657,7 +696,8 @@ export default function BusinessPage() {
             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               <StatCard label="Pedidos creados" value={String(stats?.ordersToday ?? 0)} hint={`${stats?.deliveredToday ?? 0} entregados`} />
               <StatCard label="Ventas de productos" value={money(stats?.productSalesToday ?? 0)} hint="pedidos entregados" />
-              <StatCard label="Promos financiadas" value={money(stats?.promoSpendToday ?? 0)} hint={`${board?.dailyReport.promoOrders.length ?? 0} pedidos con promo`} />
+              <StatCard label="Promos de envío" value={money(stats?.promoSpendToday ?? 0)} hint={`${board?.dailyReport.promoOrders.length ?? 0} pedidos con promo`} />
+              <StatCard label="Cupones del local" value={money(stats?.couponSpendToday ?? 0)} hint={`${board?.dailyReport.couponOrders.length ?? 0} pedidos con cupón`} />
               <StatCard label="Efectivo esperado" value={money(stats?.cashDueToday ?? 0)} hint="a recibir por productos" accent="ember" />
               <StatCard label="Efectivo recibido" value={money(stats?.cashReceivedToday ?? 0)} hint={stats?.cashPendingToday ? `pendiente ${money(stats.cashPendingToday)}` : "cuentas al día"} />
               <StatCard label="Cancelados" value={String(stats?.cancelledToday ?? 0)} hint="hoy" accent="chili" />
@@ -672,6 +712,10 @@ export default function BusinessPage() {
               <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Descuentos promocionales ({board?.dailyReport.promoOrders.length ?? 0})</p>
                 {(board?.dailyReport.promoOrders.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin descuentos de envío hoy.</p> : <ul className="mt-2 space-y-1">{board?.dailyReport.promoOrders.map((order) => <li key={order.code} className="flex justify-between gap-2 text-[10px]"><span>{order.code}</span><span className="font-semibold">−{money(order.amount)}</span></li>)}</ul>}
+              </div>
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Cupones aplicados ({board?.dailyReport.couponOrders.length ?? 0})</p>
+                {(board?.dailyReport.couponOrders.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin cupones usados hoy.</p> : <ul className="mt-2 space-y-1">{board?.dailyReport.couponOrders.map((order) => <li key={order.code} className="flex justify-between gap-2 text-[10px]"><span>{order.code} · {order.couponCode}</span><span className="font-semibold">−{money(order.amount)}</span></li>)}</ul>}
               </div>
               <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Diferencias de caja ({board?.dailyReport.cashDifferences.length ?? 0})</p>
@@ -1668,6 +1712,103 @@ export default function BusinessPage() {
               </div>
             </div>
 
+            <div className="space-y-3 rounded-2xl border border-border/70 bg-black/20 p-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                  <TicketPercent className="size-3.5" /> Cupones del local
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                  El descuento sale de tus productos y de tu liquidación. No cambia el envío ni genera comisión. Un código puede ser porcentaje (máx. 50%) o monto fijo en colones.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  value={couponForm.code}
+                  onChange={(event) => setCouponForm({ ...couponForm, code: event.target.value.toUpperCase() })}
+                  placeholder="Código, ej. ANTOJO10"
+                  maxLength={16}
+                  aria-label="Código del cupón"
+                  className="h-9 text-xs uppercase"
+                />
+                <Select
+                  value={couponForm.kind}
+                  onValueChange={(value) => setCouponForm({ ...couponForm, kind: value as "percent" | "amount" })}
+                >
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percent">Porcentaje</SelectItem>
+                    <SelectItem value="amount">Monto en colones</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  min={couponForm.kind === "percent" ? 1 : 100}
+                  max={couponForm.kind === "percent" ? 50 : 25000}
+                  value={couponForm.value}
+                  onChange={(event) => setCouponForm({ ...couponForm, value: event.target.value })}
+                  placeholder={couponForm.kind === "percent" ? "% descuento" : "₡ descuento"}
+                  aria-label="Descuento del cupón"
+                  className="h-9 text-xs"
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  value={couponForm.minSubtotal}
+                  onChange={(event) => setCouponForm({ ...couponForm, minSubtotal: event.target.value })}
+                  placeholder="Compra mínima ₡"
+                  aria-label="Compra mínima"
+                  className="h-9 text-xs"
+                />
+                <Input
+                  type="number"
+                  min={1}
+                  value={couponForm.expiresInDays}
+                  onChange={(event) => setCouponForm({ ...couponForm, expiresInDays: event.target.value })}
+                  placeholder="Vence en días (opcional)"
+                  aria-label="Vigencia en días"
+                  className="h-9 text-xs"
+                />
+                <Input
+                  type="number"
+                  min={1}
+                  value={couponForm.maxRedemptions}
+                  onChange={(event) => setCouponForm({ ...couponForm, maxRedemptions: event.target.value })}
+                  placeholder="Usos máximos (opcional)"
+                  aria-label="Límite de usos"
+                  className="h-9 text-xs"
+                />
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5 bg-accent text-accent-foreground"
+                disabled={couponBusy || !couponForm.code.trim() || !couponForm.value}
+                onClick={() => void handleCreateCoupon()}
+              >
+                {couponBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                Crear cupón
+              </Button>
+              <ul className="space-y-1.5">
+                {(coupons ?? []).map((coupon) => (
+                  <li key={coupon._id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 px-2.5 py-2 text-[10px]">
+                    <span className="min-w-0">
+                      <strong className="text-xs">{coupon.code}</strong>
+                      <span className="ml-2 text-muted-foreground">
+                        {coupon.kind === "percent" ? `${coupon.value}%` : money(coupon.value)} · {coupon.redemptions}{coupon.maxRedemptions ? `/${coupon.maxRedemptions}` : ""} usos
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]" onClick={() => void setCouponActive({ couponId: coupon._id, active: !coupon.active })}>
+                        {coupon.active ? "Pausar" : "Activar"}
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[10px] text-primary" onClick={() => void removeCoupon({ couponId: coupon._id })}>
+                        Quitar
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
             <Button type="submit" className="h-11 w-full gap-2 bg-ember-gradient text-black">
               <DollarSign className="size-4" />
               Guardar local

@@ -56,6 +56,16 @@ export type OrderView = {
   subtotal: number;
   deliveryFee: number;
   deliveryDiscount?: number;
+  couponCode: string | null;
+  couponDiscount: number;
+  scheduledFor: number | null;
+  deliveryProof: { url: string; at: number; byName: string | null } | null;
+  deliveryConfirmation: {
+    buyerPinVerifiedAt: number;
+    courierConfirmedAt: number;
+    courierId: string;
+  } | null;
+  cancelledBy: "buyer" | "business" | "system" | null;
   total: number;
   address: string;
   distanceKm: number | null;
@@ -337,6 +347,12 @@ function OrderDetailDialog({
             </p>
           )}
 
+          {order.scheduledFor && order.status !== "delivered" && order.status !== "cancelled" && (
+            <p className="rounded-xl border border-accent/25 bg-accent/[0.06] p-3 text-[11px] leading-relaxed text-accent">
+              Pedido programado para {new Intl.DateTimeFormat("es-CR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Costa_Rica" }).format(order.scheduledFor)}.
+            </p>
+          )}
+
           {order.deliveryPin &&
             (order.status === "ready" || order.status === "picked_up") && (
               <div className="rounded-xl border border-accent/40 bg-accent/[0.08] p-3 text-center">
@@ -436,6 +452,12 @@ function OrderDetailDialog({
                 <span>−{money(order.deliveryDiscount ?? 0)}</span>
               </div>
             )}
+            {(order.couponDiscount ?? 0) > 0 && (
+              <div className="flex justify-between text-accent">
+                <span>Cupón del local{order.couponCode ? ` · ${order.couponCode}` : ""}</span>
+                <span>−{money(order.couponDiscount ?? 0)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-border/60 pt-1.5 font-bold">
               <span>
                 {order.tripStops > 1 ? "Total de esta tienda" : "Total"}
@@ -509,6 +531,25 @@ function OrderDetailDialog({
           </div>
 
           {order.cashIssue && <CashIssueNote issue={order.cashIssue} />}
+
+          {order.status === "delivered" && (
+            <div className="rounded-xl border border-accent/30 bg-accent/[0.06] p-3 text-[11px]">
+              <p className="font-semibold text-accent">Entrega confirmada por ambas partes</p>
+              <p className="mt-1 text-muted-foreground">
+                PIN del comprador y cierre del repartidor · {order.deliveryConfirmation ? clockTime(order.deliveryConfirmation.courierConfirmedAt) : clockTime(order.deliveredAt ?? order.createdAt)}
+              </p>
+              {order.deliveryProof && (
+                <a
+                  href={order.deliveryProof.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 font-semibold text-accent hover:underline"
+                >
+                  <PackageCheck className="size-3.5" /> Ver foto de entrega
+                </a>
+              )}
+            </div>
+          )}
 
           {order.status === "delivered" && (
             <OrderReview
@@ -613,6 +654,9 @@ function OrderDetailDialog({
 export default function OrdersPage() {
   const orders = useQuery(api.orders.myOrders);
   const cancelOrder = useMutation(api.orders.cancel);
+  const repeatOrder = useMutation(api.cart.repeatOrder);
+  const navigate = useNavigate();
+  const [quickRepeating, setQuickRepeating] = useState(false);
   const [tab, setTab] = useState<"active" | "history">("active");
   const [selected, setSelected] = useState<OrderView | null>(null);
 
@@ -628,6 +672,35 @@ export default function OrdersPage() {
   const active = typed.filter((order) => ACTIVE_STATUSES.includes(order.status));
   const history = typed.filter((order) => !ACTIVE_STATUSES.includes(order.status));
   const list = tab === "active" ? active : history;
+  const recentDelivered = history.find((order) => order.status === "delivered");
+
+  const handleQuickRepeat = async () => {
+    if (!recentDelivered) return;
+    setQuickRepeating(true);
+    try {
+      const result = await repeatOrder({
+        orderId: recentDelivered._id as Id<"orders">,
+      });
+      if (result.added.length === 0) {
+        toast.error("No quedan productos disponibles para repetir", {
+          description: result.skipped.length
+            ? `No disponibles: ${result.skipped.join(", ")}`
+            : undefined,
+        });
+        return;
+      }
+      toast.success("Tu antojo volvió al carrito", {
+        description: result.skipped.length
+          ? `Agregados ${result.added.length}; omitidos ${result.skipped.length}. Revisá precios y envío actuales.`
+          : `${result.added.length} productos listos. Revisá precios y envío actuales.`,
+      });
+      navigate("/cart");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos repetir el pedido");
+    } finally {
+      setQuickRepeating(false);
+    }
+  };
 
   const handleCancel = async (order: OrderView) => {
     try {
@@ -667,6 +740,30 @@ export default function OrdersPage() {
           </div>
         }
       />
+
+      {tab === "history" && recentDelivered && (
+        <section className="surface-raised mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-accent/20 p-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+              Tu último favorito
+            </p>
+            <p className="mt-1 truncate font-display text-sm font-bold">
+              {recentDelivered.businessName} · {recentDelivered.items.map((item) => item.name).slice(0, 2).join(", ")}
+            </p>
+            <p className="mt-0.5 text-[10px] text-muted-foreground">
+              Pedido {recentDelivered.code} · revisá el precio y el envío actuales antes de confirmar.
+            </p>
+          </div>
+          <Button
+            className="shrink-0 gap-2 bg-ember-gradient text-black"
+            disabled={quickRepeating}
+            onClick={() => void handleQuickRepeat()}
+          >
+            {quickRepeating ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
+            Pedir de nuevo
+          </Button>
+        </section>
+      )}
 
       {list.length === 0 ? (
         <EmptyState

@@ -515,6 +515,40 @@ export const checkout = mutation({
       })),
     }));
 
+    // El código se consume una vez por tienda y compra. Cuando un pedido del
+    // mismo local se divide en varios viajes, el descuento total del cupón se
+    // reparte por subtotal entre esos viajes para nunca duplicarlo.
+    const couponByBusiness = new Map<string, Doc<"coupons"> | null>();
+    const couponDiscountByTrip = new Map<string, number>();
+    const appliedCouponIds = new Set<Id<"coupons">>();
+    for (const businessId of businessIds) {
+      const coupon = await findCoupon(ctx, businessId, args.couponCode);
+      couponByBusiness.set(businessId, coupon);
+      if (!coupon) continue;
+      const entries = trips
+        .map((trip) => ({
+          key: `${trip.index}:${businessId}`,
+          subtotal: trip.lines
+            .filter((line) => line.businessId === businessId)
+            .reduce((sum, line) => sum + line.price * line.quantity, 0),
+        }))
+        .filter((entry) => entry.subtotal > 0);
+      const subtotal = entries.reduce((sum, entry) => sum + entry.subtotal, 0);
+      const totalDiscount = discountFor(coupon, subtotal);
+      let remaining = totalDiscount;
+      entries.forEach((entry, index) => {
+        const allocation =
+          index === entries.length - 1
+            ? remaining
+            : Math.min(
+                remaining,
+                Math.round((totalDiscount * entry.subtotal) / subtotal),
+              );
+        couponDiscountByTrip.set(entry.key, allocation);
+        remaining -= allocation;
+      });
+    }
+
     let total = 0;
     let created = 0;
     const now = Date.now();
@@ -558,9 +592,11 @@ export const checkout = mutation({
             )
           : 0;
 
-        // El cupón del local descuenta sus productos, no el envío.
-        const coupon = await findCoupon(ctx, store.id, args.couponCode);
-        const couponDiscount = discountFor(coupon, subtotal);
+        // El cupón del local descuenta sus productos, no el envío. La porción
+        // ya viene prorrateada si la compra usa varias entregas del mismo local.
+        const coupon = couponByBusiness.get(store.id) ?? null;
+        const couponDiscount =
+          couponDiscountByTrip.get(`${trip.index}:${store.id}`) ?? 0;
         const orderTotal =
           subtotal + tripStop.fee - deliveryDiscount - couponDiscount;
         total += orderTotal;
@@ -601,10 +637,7 @@ export const checkout = mutation({
         });
 
         if (coupon && couponDiscount > 0) {
-          await ctx.db.patch(coupon._id, {
-            redemptions: coupon.redemptions + 1,
-            updatedAt: now,
-          });
+          appliedCouponIds.add(coupon._id);
         }
 
         // Aviso fuera de la app: el local se entera aunque nadie tenga el panel
@@ -635,6 +668,15 @@ export const checkout = mutation({
       }
     }
 
+    for (const couponId of appliedCouponIds) {
+      const coupon = await ctx.db.get(couponId);
+      if (coupon) {
+        await ctx.db.patch(couponId, {
+          redemptions: coupon.redemptions + 1,
+          updatedAt: now,
+        });
+      }
+    }
     for (const item of cartItems) await ctx.db.delete(item._id);
     await ctx.db.patch(userId, { address, location: dropoff });
 

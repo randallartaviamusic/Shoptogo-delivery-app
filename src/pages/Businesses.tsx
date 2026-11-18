@@ -28,6 +28,7 @@ import {
   ShoppingCart,
   Star,
   Store,
+  TicketPercent,
   Truck,
   X,
 } from "lucide-react";
@@ -48,6 +49,7 @@ export default function BusinessesPage() {
 
 function Directory() {
   const directory = useQuery(api.businesses.directory);
+  const toggleFavorite = useMutation(api.businesses.toggleFavorite);
   const [departmentSlug, setDepartmentSlug] = useState("todos");
   const [category, setCategory] = useState("todas");
   const [search, setSearch] = useState("");
@@ -348,6 +350,11 @@ function Directory() {
                     key={business._id}
                     business={business}
                     searchTerm={searching ? term : ""}
+                    onToggleFavorite={(businessId) => {
+                      void toggleFavorite({ businessId })
+                        .then((result) => toast.success(result.favorite ? "Local guardado" : "Local quitado de favoritos"))
+                        .catch((error) => toast.error(error instanceof Error ? error.message : "Iniciá sesión para guardar locales"));
+                    }}
                   />
                 ))}
               </LoopRow>
@@ -379,8 +386,10 @@ function deliveryLabel(delivery: DeliveryInfo, promo?: PromoKind | null) {
 function BusinessCard({
   business,
   searchTerm,
+  onToggleFavorite,
 }: {
   business: {
+    _id: Id<"businesses">;
     name: string;
     slug: string;
     tagline: string;
@@ -395,14 +404,17 @@ function BusinessCard({
     promo: PromoKind | null;
     productCount: number;
     minPrice: number | null;
+    isFavorite: boolean;
   };
   searchTerm: string;
+  onToggleFavorite: (businessId: Id<"businesses">) => void;
 }) {
   return (
-    <Link
-      to={`/negocios/${business.slug}`}
-      className="surface-raised group flex w-[15rem] shrink-0 flex-col overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]"
-    >
+    <article className="surface-raised group relative w-[15rem] shrink-0 overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]">
+      <Link
+        to={`/negocios/${business.slug}`}
+        className="flex h-full flex-col"
+      >
       <div className="relative h-28 w-full overflow-hidden">
         <DishImage
           src={business.image}
@@ -421,7 +433,7 @@ function BusinessCard({
         >
           {business.isOpen ? "Abierto" : "Cerrado"}
         </span>
-        <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-white/15 bg-black/55 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">
+        <span className="absolute right-12 top-3 flex items-center gap-1 rounded-full border border-white/15 bg-black/55 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">
           <Star className="size-2.5 fill-accent text-accent" />
           {business.rating.toFixed(1)}
         </span>
@@ -479,14 +491,26 @@ function BusinessCard({
           </span>
         </div>
       </div>
-    </Link>
+      </Link>
+      <button
+        type="button"
+        aria-label={business.isFavorite ? `Quitar ${business.name} de favoritos` : `Guardar ${business.name} en favoritos`}
+        aria-pressed={business.isFavorite}
+        onClick={() => onToggleFavorite(business._id)}
+        className="absolute right-3 top-3 z-10 flex size-8 items-center justify-center rounded-full border border-white/15 bg-black/65 text-accent backdrop-blur transition-colors hover:border-accent/50"
+      >
+        <Star className={cn("size-3.5", business.isFavorite && "fill-current")} />
+      </button>
+    </article>
   );
 }
 
 function Storefront({ slug }: { slug: string }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toggleFavorite = useMutation(api.businesses.toggleFavorite);
   const data = useQuery(api.businesses.storefront, { slug });
+  const coupons = useQuery(api.coupons.forSlug, { slug });
   const cart = useQuery(api.cart.myCart, {});
   const addToCart = useMutation(api.cart.add);
   const [busy, setBusy] = useState<string | null>(null);
@@ -577,9 +601,24 @@ function Storefront({ slug }: { slug: string }) {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
               {department.label} · {business.category}
             </p>
-            <h1 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-              {business.name}
-            </h1>
+            <div className="mt-1 flex items-center gap-2">
+              <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+                {business.name}
+              </h1>
+              <button
+                type="button"
+                aria-label={business.isFavorite ? "Quitar local de favoritos" : "Guardar local en favoritos"}
+                aria-pressed={business.isFavorite}
+                onClick={() => {
+                  void toggleFavorite({ businessId: business._id })
+                    .then((result) => toast.success(result.favorite ? "Local guardado" : "Local quitado de favoritos"))
+                    .catch((error) => toast.error(error instanceof Error ? error.message : "Iniciá sesión para guardar locales"));
+                }}
+                className="relative z-10 flex size-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-black/50 text-accent"
+              >
+                <Star className={cn("size-4", business.isFavorite && "fill-current")} />
+              </button>
+            </div>
             <p className="mt-1 max-w-md text-xs leading-relaxed text-white/70">
               {business.tagline}
             </p>
@@ -628,6 +667,26 @@ function Storefront({ slug }: { slug: string }) {
           El local está cerrado ahora. Podés mirar el catálogo, pero no sumar
           productos hasta que abra.
         </p>
+      )}
+
+      {(coupons?.length ?? 0) > 0 && (
+        <section className="mt-5 rounded-2xl border border-accent/25 bg-accent/[0.05] p-4">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+            <TicketPercent className="size-3.5" /> Cupones de {business.name}
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {coupons?.map((coupon) => (
+              <li key={coupon.code} className="rounded-xl border border-accent/25 bg-black/25 px-3 py-2 text-[11px]">
+                <span className="font-bold text-accent">{coupon.code}</span>
+                <span className="ml-2">{coupon.label}</span>
+                {coupon.minSubtotal > 0 && (
+                  <span className="ml-1 text-muted-foreground">· desde {money(coupon.minSubtotal)}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[10px] text-muted-foreground">Ingresá el código en el carrito para aplicar el descuento a productos de este local.</p>
+        </section>
       )}
 
       {data.products.length === 0 ? (

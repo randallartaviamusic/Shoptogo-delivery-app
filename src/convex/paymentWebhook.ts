@@ -1,20 +1,6 @@
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-/**
- * Confirmación automática de pagos de suscripción.
- *
- * El proveedor de pagos (SINPE Móvil, pasarela o banco) hace POST acá cuando
- * una transferencia quedó acreditada. El cuerpo se firma con HMAC-SHA256 y el
- * secreto `PAYMENT_WEBHOOK_SECRET`; sin firma válida no se aprueba nada.
- *
- * Cuerpo esperado:
- *   { "reference": "ABC123", "amount": 8500, "status": "paid", "note": "..." }
- *
- * Se responde 200 con `matched:false` cuando no hay un pago pendiente que
- * coincida, para que el proveedor no reintente algo que ya no existe.
- */
-
 const encoder = new TextEncoder();
 
 async function hmacHex(secret: string, payload: string) {
@@ -31,7 +17,6 @@ async function hmacHex(secret: string, payload: string) {
     .join("");
 }
 
-/** Comparación de tiempo constante: no filtra cuántos caracteres coinciden. */
 function sameSignature(expected: string, received: string) {
   if (expected.length !== received.length) return false;
   let diff = 0;
@@ -48,30 +33,47 @@ function respond(body: unknown, status = 200) {
   });
 }
 
-const PAID_STATUSES = new Set(["paid", "approved", "succeeded", "completed"]);
-
+/** Webhook ONVO: firma vigente, timestamp fresco, pago e intención asociados. */
 export const confirmPayment = httpAction(async (ctx, request) => {
-  const secret = process.env.PAYMENT_WEBHOOK_SECRET?.trim();
-  if (!secret) {
-    return respond({ error: "Webhook de pagos no configurado" }, 503);
-  }
+  const secret = process.env.ONVO_WEBHOOK_SECRET?.trim();
+  if (!secret) return respond({ error: "Webhook ONVO no configurado" }, 503);
 
   const raw = await request.text();
-  const received = (request.headers.get("x-signature") ?? "")
-    .trim()
-    .replace(/^sha256=/i, "")
-    .toLowerCase();
-  if (!received) return respond({ error: "Falta la firma" }, 401);
-  const expected = await hmacHex(secret, raw);
-  if (!sameSignature(expected, received)) {
+  const header = request.headers.get("x-onvo-signature") ?? "";
+  const pairs = header.split(",").flatMap((part) => {
+    const separator = part.indexOf("=");
+    return separator < 0
+      ? []
+      : [[part.slice(0, separator).trim(), part.slice(separator + 1).trim()] as const];
+  });
+  const timestamp = Number(pairs.find(([key]) => key === "t")?.[1]);
+  const signatures = pairs
+    .filter(([key]) => key === "v1")
+    .map(([, signature]) => signature.toLowerCase())
+    .filter((signature) => /^[0-9a-f]{64}$/.test(signature));
+  if (
+    !Number.isSafeInteger(timestamp) ||
+    Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300 ||
+    signatures.length === 0
+  ) {
+    return respond({ error: "Firma ausente o vencida" }, 401);
+  }
+  const expected = await hmacHex(secret, `${timestamp}.${raw}`);
+  if (!signatures.some((candidate) => sameSignature(expected, candidate))) {
     return respond({ error: "Firma inválida" }, 401);
   }
 
   let payload: {
-    reference?: unknown;
-    amount?: unknown;
-    status?: unknown;
-    note?: unknown;
+    id?: unknown;
+    type?: unknown;
+    data?: {
+      object?: {
+        id?: unknown;
+        amount?: unknown;
+        currency?: unknown;
+        status?: unknown;
+      };
+    };
   };
   try {
     payload = JSON.parse(raw);
@@ -79,26 +81,23 @@ export const confirmPayment = httpAction(async (ctx, request) => {
     return respond({ error: "El cuerpo no es JSON válido" }, 400);
   }
 
-  const reference =
-    typeof payload.reference === "string" ? payload.reference.trim() : "";
-  const amount = Number(payload.amount);
-  const status =
-    typeof payload.status === "string" ? payload.status.toLowerCase() : "paid";
-  if (!reference || !Number.isFinite(amount)) {
-    return respond({ error: "Faltan la referencia o el monto" }, 400);
+  if (payload.type !== "payment_intent.succeeded") {
+    return respond({ received: true, ignored: payload.type ?? "unknown" });
   }
-  if (!PAID_STATUSES.has(status)) {
-    // Un pago rechazado o pendiente no activa nada; se acusa recibo igual.
-    return respond({ matched: false, ignored: status });
+  const intent = payload.data?.object;
+  if (
+    !intent ||
+    typeof intent.id !== "string" ||
+    typeof intent.amount !== "number" ||
+    typeof intent.currency !== "string" ||
+    intent.status !== "succeeded"
+  ) {
+    return respond({ error: "La intención confirmada está incompleta" }, 400);
   }
-
-  const result = await ctx.runMutation(
-    internal.subscriptions.confirmProviderPayment,
-    {
-      reference,
-      amount,
-      note: typeof payload.note === "string" ? payload.note : undefined,
-    },
-  );
+  const result = await ctx.runMutation(internal.subscriptions.confirmOnvoPayment, {
+    intentId: intent.id,
+    amount: intent.amount,
+    currency: intent.currency,
+  });
   return respond(result);
 });

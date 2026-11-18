@@ -86,9 +86,7 @@ export function VerificationAdmin() {
           </p>
           <h2 className="font-display text-lg font-bold">Verificación de cuentas</h2>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Revisá teléfono, cédula, local y vehículo antes de dar el sello de
-            confianza. Sin verificación, los locales no reciben pedidos y los
-            repartidores no pueden tomar entregas.
+            Las cuentas confirmadas por SMS y registro civil se activan automáticamente. Esta cola queda sólo para excepciones, fallas de proveedor, datos incompletos y revisiones de negocio o vehículo.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px]">

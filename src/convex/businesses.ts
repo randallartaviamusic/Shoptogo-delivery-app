@@ -165,6 +165,11 @@ export const mine = query({
 export const directory = query({
   args: {},
   handler: async (ctx) => {
+    const viewerId = await getAuthUserId(ctx);
+    const viewerDoc = viewerId ? await ctx.db.get(viewerId) : null;
+    const favorites = new Set(
+      (viewerDoc?.favoriteBusinessIds ?? []).map(String),
+    );
     const businesses = await ctx.db.query("businesses").collect();
     const products = await ctx.db.query("products").collect();
     const viewer = await viewerLocation(ctx);
@@ -230,6 +235,7 @@ export const directory = query({
           rating: business.rating,
           reviews: business.reviews,
           verified: Boolean(business.verifiedAt),
+          isFavorite: favorites.has(String(business._id)),
           isOpen: business.isOpen,
           etaMinutes: business.etaMinutes,
           delivery: describeDelivery(business.location, viewer),
@@ -253,6 +259,79 @@ export const directory = query({
 });
 
 /** Catálogo completo de venta de un local, agrupable por rubro. */
+export const toggleFavorite = mutation({
+  args: { businessId: v.id("businesses") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Iniciá sesión para guardar locales favoritos");
+    const user = await ctx.db.get(userId);
+    if (!user || user.isAnonymous) {
+      throw new Error("Creá una cuenta para guardar tus locales favoritos");
+    }
+    if (!(await ctx.db.get(args.businessId))) {
+      throw new Error("Ese local ya no existe");
+    }
+    const favorites = user.favoriteBusinessIds ?? [];
+    const exists = favorites.includes(args.businessId);
+    await ctx.db.patch(userId, {
+      favoriteBusinessIds: exists
+        ? favorites.filter((id) => id !== args.businessId)
+        : [...favorites, args.businessId],
+    });
+    return { favorite: !exists };
+  },
+});
+
+export const favorites = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const user = await ctx.db.get(userId);
+    if (!user?.favoriteBusinessIds?.length) return [];
+    const viewer = isValidPoint(user.location) ? user.location : null;
+    const results = [];
+    for (const businessId of user.favoriteBusinessIds) {
+      const business = await ctx.db.get(businessId);
+      if (!business) continue;
+      const access =
+        business.isDemo || !business.ownerId
+          ? { hasAccess: true }
+          : await subscriptionAccess(ctx, business.ownerId);
+      const verified =
+        business.isDemo || !business.ownerId
+          ? true
+          : await isAccountVerified(ctx, business.ownerId);
+      if (!access.hasAccess || !verified) continue;
+      const products = await ctx.db
+        .query("products")
+        .withIndex("by_business", (q) => q.eq("businessId", business._id))
+        .collect();
+      const available = products.filter(
+        (product) => product.isAvailable && business.isOpen,
+      );
+      results.push({
+        _id: business._id,
+        slug: business.slug,
+        name: business.name,
+        image: business.image,
+        category: business.category,
+        tagline: business.tagline,
+        rating: business.rating,
+        isOpen: business.isOpen,
+        delivery: describeDelivery(business.location, viewer),
+        promo: business.deliveryPromo ?? null,
+        productCount: available.length,
+        minPrice:
+          available.length > 0
+            ? Math.min(...available.map((product) => product.price))
+            : null,
+      });
+    }
+    return results;
+  },
+});
+
 export const storefront = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
@@ -269,10 +348,15 @@ export const storefront = query({
 
     const viewer = await viewerLocation(ctx);
 
+    const userId = await getAuthUserId(ctx);
+    const viewerDoc = userId ? await ctx.db.get(userId) : null;
     return {
       business: {
         ...business,
         verified: Boolean(business.verifiedAt),
+        isFavorite: Boolean(
+          viewerDoc?.favoriteBusinessIds?.includes(business._id),
+        ),
       },
       delivery: describeDelivery(business.location, viewer),
       products: products

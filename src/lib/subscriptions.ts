@@ -276,7 +276,7 @@ export function reminderSoundId(id?: string | null): ReminderSoundId {
     : "campana";
 }
 
-export type PaymentMethod = "sinpe" | "cash" | "deposit";
+export type PaymentMethod = "sinpe" | "onvo" | "cash" | "deposit";
 
 export const PAYMENT_METHODS: Array<{
   id: PaymentMethod;
@@ -287,6 +287,11 @@ export const PAYMENT_METHODS: Array<{
     id: "sinpe",
     label: "SINPE Móvil",
     hint: "Transferí al número indicado y guardá el comprobante.",
+  },
+  {
+    id: "onvo",
+    label: "SINPE automático",
+    hint: "ONVO confirma la transferencia con identidad y monto exactos.",
   },
   {
     id: "cash",
@@ -301,7 +306,8 @@ export const PAYMENT_METHODS: Array<{
 ];
 
 const METHOD_LABEL: Record<PaymentMethod, string> = {
-  sinpe: "SINPE Móvil",
+  sinpe: "SINPE Móvil manual",
+  onvo: "SINPE Móvil automático",
   cash: "Efectivo",
   deposit: "Depósito",
 };

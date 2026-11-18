@@ -51,6 +51,7 @@ import { motion } from "framer-motion";
 import {
   AlertCircle,
   ArrowRight,
+  Camera,
   Bike,
   CheckCircle2,
   History,
@@ -113,6 +114,7 @@ export default function CourierPage() {
   const board = useQuery(api.orders.courierBoard);
   const accept = useMutation(api.orders.courierAccept);
   const updateStatus = useMutation(api.orders.courierUpdateStatus);
+  const generateProofUploadUrl = useMutation(api.orders.generateDeliveryProofUploadUrl);
   const renounce = useMutation(api.orders.courierRenounceRemaining);
   const reportIssue = useMutation(api.orders.reportCashIssue);
   const [busy, setBusy] = useState<string | null>(null);
@@ -127,6 +129,7 @@ export default function CourierPage() {
   const [deliveryPin, setDeliveryPin] = useState("");
   const [cashAmount, setCashAmount] = useState("");
   const [cashNote, setCashNote] = useState("");
+  const [deliveryPhoto, setDeliveryPhoto] = useState<File | null>(null);
   const [issueTarget, setIssueTarget] = useState<OrderView | null>(null);
   const [issueKind, setIssueKind] = useState<CashIssueKind>("claim");
   const [issueAmount, setIssueAmount] = useState("");
@@ -318,6 +321,7 @@ export default function CourierPage() {
       pin?: string;
       cashAmount?: number;
       cashNote?: string;
+      proofStorageId?: Id<"_storage">;
     },
   ) => {
     setBusy(order._id);
@@ -359,6 +363,7 @@ export default function CourierPage() {
     setDeliveryPin("");
     setCashAmount(String(order.tripTotal));
     setCashNote("");
+    setDeliveryPhoto(null);
   };
 
   const deliveryDifference = deliveryOrder
@@ -1286,6 +1291,31 @@ export default function CourierPage() {
                 className="text-center font-display text-xl tracking-[0.4em]"
               />
             </div>
+            <div className="space-y-1.5 rounded-xl border border-border/70 bg-black/20 p-3">
+              <Label htmlFor="delivery-photo" className="flex items-center gap-1.5">
+                <Camera className="size-3.5 text-accent" /> Foto de respaldo (opcional)
+              </Label>
+              <Input
+                id="delivery-photo"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  if (file && file.size > 8 * 1024 * 1024) {
+                    toast.error("La foto no puede pesar más de 8 MB");
+                    event.target.value = "";
+                    setDeliveryPhoto(null);
+                    return;
+                  }
+                  setDeliveryPhoto(file);
+                }}
+                className="h-9 text-xs file:mr-2 file:rounded-md file:border-0 file:bg-secondary file:px-2 file:py-1 file:text-[10px]"
+              />
+              <p className="text-[10px] leading-relaxed text-muted-foreground">
+                El PIN del comprador y tu confirmación de entrega son obligatorios. La foto ayuda a resolver reclamos, pero no sustituye la doble confirmación.
+              </p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="cash-amount">Efectivo que cobraste</Label>
               <Input
@@ -1324,10 +1354,28 @@ export default function CourierPage() {
               onClick={async () => {
                 const order = deliveryOrder;
                 if (!order) return;
+                let proofStorageId: Id<"_storage"> | undefined;
+                if (deliveryPhoto) {
+                  try {
+                    const uploadUrl = await generateProofUploadUrl();
+                    const response = await fetch(uploadUrl, {
+                      method: "POST",
+                      headers: { "Content-Type": deliveryPhoto.type },
+                      body: deliveryPhoto,
+                    });
+                    if (!response.ok) throw new Error("No pudimos subir la foto");
+                    const payload = (await response.json()) as { storageId: string };
+                    proofStorageId = payload.storageId as Id<"_storage">;
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "No pudimos subir la foto");
+                    return;
+                  }
+                }
                 const ok = await handleAdvance(order, "delivered", {
                   pin: deliveryPin,
                   cashAmount: Math.round(Number(cashAmount) || 0),
                   cashNote,
+                  proofStorageId,
                 });
                 if (ok) setDeliveryOrder(null);
               }}

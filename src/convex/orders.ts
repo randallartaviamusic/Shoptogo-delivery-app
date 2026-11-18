@@ -402,6 +402,15 @@ async function decorateOrder(
           byName: await userName(ctx, leader.deliveryProof.by),
         }
       : null,
+    deliveryConfirmation: leader.deliveryConfirmation
+      ? {
+          buyerPinVerifiedAt:
+            leader.deliveryConfirmation.buyerPinVerifiedAt,
+          courierConfirmedAt:
+            leader.deliveryConfirmation.courierConfirmedAt,
+          courierId: leader.deliveryConfirmation.courierId,
+        }
+      : null,
     cancelledAt: order.cancelledAt ?? null,
     cancelledBy: order.cancelledBy ?? null,
     cancellationReason: order.cancellationReason ?? null,
@@ -506,6 +515,9 @@ export const businessBoard = query({
     const promoOrdersToday = deliveredToday.filter(
       (o) => (o.deliveryDiscount ?? 0) > 0,
     );
+    const couponOrdersToday = deliveredToday.filter(
+      (o) => (o.couponDiscount ?? 0) > 0,
+    );
     const reportOrders = new Map<string, (typeof decorated)[number]>();
     for (const order of [...cancelledToday, ...cashDifferencesToday]) {
       const row = decorated.find((candidate) => candidate._id === order._id);
@@ -566,6 +578,15 @@ export const businessBoard = query({
           code: order.code,
           amount: order.deliveryDiscount ?? 0,
         })),
+        couponOrders: couponOrdersToday.slice(0, 20).map((order) => ({
+          code: order.code,
+          couponCode: order.couponCode ?? "",
+          amount: order.couponDiscount ?? 0,
+        })),
+        couponDiscountToday: deliveredToday.reduce(
+          (acc, order) => acc + (order.couponDiscount ?? 0),
+          0,
+        ),
       },
       stats: {
         // El local recibe el 100% de sus productos menos lo que él mismo
@@ -578,8 +599,12 @@ export const businessBoard = query({
           (acc, o) => acc + (o.deliveryDiscount ?? 0),
           0,
         ),
+        couponSpendToday: deliveredToday.reduce(
+          (acc, o) => acc + (o.couponDiscount ?? 0),
+          0,
+        ),
         revenueToday: deliveredToday.reduce(
-          (acc, o) => acc + o.subtotal - (o.deliveryDiscount ?? 0),
+          (acc, o) => acc + o.subtotal - (o.deliveryDiscount ?? 0) - (o.couponDiscount ?? 0),
           0,
         ),
         deliveredToday: deliveredToday.length,
@@ -851,8 +876,10 @@ export const courierBoard = query({
         (a.pickupKm ?? 999) - (b.pickupKm ?? 999) ||
         (a.readyAt ?? a.createdAt) - (b.readyAt ?? b.createdAt),
     );
+    const standing = await courierStandingFor(ctx, userId);
     const eligible =
       user.verificationStatus === "verified" &&
+      !standing.restricted &&
       (await requireSubscriptionAccessForBoard(ctx, userId));
     const nearest = evaluated
       .filter((order) => order.acceptAllowed && order.pickupKm !== null)
@@ -864,7 +891,9 @@ export const courierBoard = query({
         !eligible
           ? user.verificationStatus !== "verified"
             ? "Verificá tu cuenta en Perfil para tomar entregas."
-            : "Activá o renová tu suscripción para tomar entregas."
+            : standing.restricted
+              ? standing.hint
+              : "Activá o renová tu suscripción para tomar entregas."
           : order.acceptReason,
       recommended: eligible && nearest?._id === order._id,
     }));
@@ -2263,8 +2292,19 @@ export const courierUpdateStatus = mutation({
         by: userId,
       };
     }
+    cashPatch.deliveryConfirmation = {
+      buyerPinVerifiedAt: now,
+      courierConfirmedAt: now,
+      courierId: userId,
+    };
     await ctx.db.patch(leader._id, cashPatch);
-    return { status: args.status, orders: trip.length, cashDifference: difference };
+    return {
+      status: args.status,
+      orders: trip.length,
+      cashDifference: difference,
+      proofSaved: Boolean(args.proofStorageId),
+      doubleConfirmed: true,
+    };
   },
 });
 
@@ -2413,6 +2453,8 @@ export const receipt = query({
       isAdminEmail(viewer?.email);
     if (!allowed) return null;
 
+    const trip = await tripOrders(ctx, order);
+    const leader = tripLeaderOf(trip);
     return {
       code: order.code,
       status: order.status,

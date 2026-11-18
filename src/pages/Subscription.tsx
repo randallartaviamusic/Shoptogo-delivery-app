@@ -35,7 +35,7 @@ import type { PaymentMethod, SubscriptionPlanId } from "@/lib/subscriptions";
 import { money } from "@/lib/format";
 import { playReminderSound } from "@/lib/reminderSounds";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   AlarmClock,
@@ -70,6 +70,7 @@ export default function SubscriptionPage() {
   const { user } = useAuth();
   const data = useQuery(api.subscriptions.mine);
   const requestPayment = useMutation(api.subscriptions.requestPayment);
+  const requestOnvoPayment = useAction(api.subscriptions.requestOnvoPayment);
   const setReminder = useMutation(api.subscriptions.setReminder);
 
   const [plan, setPlan] = useState<SubscriptionPlanId>("basico");
@@ -77,6 +78,9 @@ export default function SubscriptionPage() {
   const [hour, setHour] = useState(20);
   const [minute, setMinute] = useState(0);
   const [reference, setReference] = useState("");
+  const [payerIdentification, setPayerIdentification] = useState("");
+  const [identificationType, setIdentificationType] = useState("0");
+  const [payerPhone, setPayerPhone] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sound, setSound] = useState("campana");
@@ -157,18 +161,35 @@ export default function SubscriptionPage() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const result = await requestPayment({
-        plan,
-        method,
-        reference,
-        note: note.trim() || undefined,
-        expiryHour: hour,
-        expiryMinute: minute,
-      });
-      toast.success("Pago reportado", {
-        description: `Vence ${formatExpiry(result.expiryAt)}. Mandá el comprobante por WhatsApp para que lo verifiquen.`,
-      });
-      setReference("");
+      if (method === "onvo") {
+        const result = await requestOnvoPayment({
+          plan,
+          payerIdentification,
+          identificationType: Number(identificationType),
+          payerPhone,
+          note: note.trim() || undefined,
+          expiryHour: hour,
+          expiryMinute: minute,
+        });
+        toast.success("Intención SINPE creada", {
+          description: `Transferí ${money(result.price)} al número ONVO indicado. Tu suscripción se activará al confirmarse.`,
+        });
+        setPayerIdentification("");
+        setPayerPhone("");
+      } else {
+        const result = await requestPayment({
+          plan,
+          method,
+          reference,
+          note: note.trim() || undefined,
+          expiryHour: hour,
+          expiryMinute: minute,
+        });
+        toast.success("Pago reportado", {
+          description: `Vence ${formatExpiry(result.expiryAt)}. Mandá el comprobante por WhatsApp para que lo verifiquen.`,
+        });
+        setReference("");
+      }
       setNote("");
     } catch (error) {
       toast.error(
@@ -346,10 +367,9 @@ export default function SubscriptionPage() {
                   Estamos verificando tu comprobante
                 </h2>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Reportaste {money(pending.price)} del plan{" "}
-                  {planOf(pending.plan).name} por{" "}
-                  {PAYMENT_METHODS.find((option) => option.id === pending.method)?.label}.
-                  Un administrador lo revisará y activará tu cuenta.
+                  {pending.method === "onvo"
+                    ? `Esperando la confirmación automática de ONVO por ${money(pending.price)}. No necesitás enviar un comprobante.`
+                    : `Reportaste ${money(pending.price)} del plan ${planOf(pending.plan).name} por ${PAYMENT_METHODS.find((option) => option.id === pending.method)?.label}. Un administrador revisará el pago.`}
                 </p>
               </div>
               <span className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-[11px] font-semibold text-accent">
@@ -372,34 +392,45 @@ export default function SubscriptionPage() {
               </div>
             </dl>
 
-            <div className="mt-4 rounded-xl border border-accent/30 bg-accent/[0.06] p-3">
-              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-accent">
-                <MessageCircle className="size-3.5" /> Enviá el comprobante por WhatsApp
-              </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                El mensaje ya viene con tus datos. Adjuntá la foto o el PDF del
-                comprobante en el chat.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {data.settings.whatsappNumbers.map((number) => (
-                  <Button
-                    key={number}
-                    asChild
-                    size="sm"
-                    className="gap-1.5 bg-[#25d366] text-black hover:bg-[#1ebe5b]"
-                  >
-                    <a
-                      href={whatsappHref(number, whatsappMessage)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <MessageCircle className="size-3.5" />
-                      {number}
-                    </a>
+            {pending.method === "onvo" ? (
+              <div className="mt-4 rounded-xl border border-accent/30 bg-accent/[0.06] p-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-accent">
+                  <ShieldCheck className="size-3.5" /> Transferencia pendiente de confirmación
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Enviá exactamente {money(pending.price)} desde el número SINPE y la identificación registrados a:
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/70 bg-black/30 p-3">
+                  <span className="font-display text-lg font-extrabold tracking-wide">
+                    {pending.onvoDestinationPhone ?? "+506 7019-6686"}
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => void copy(pending.onvoDestinationPhone ?? "+50670196686", "Número SINPE de ONVO")}>
+                    <Copy className="mr-1 size-3" /> Copiar
                   </Button>
-                ))}
+                </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                  La cuenta se activa al recibir el webhook firmado de ONVO; no la marques como pagada por separado.
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-accent/30 bg-accent/[0.06] p-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-accent">
+                  <MessageCircle className="size-3.5" /> Enviá el comprobante por WhatsApp
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  El mensaje ya viene con tus datos. Adjuntá la foto o el PDF del comprobante en el chat.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {data.settings.whatsappNumbers.map((number) => (
+                    <Button key={number} asChild size="sm" className="gap-1.5 bg-[#25d366] text-black hover:bg-[#1ebe5b]">
+                      <a href={whatsappHref(number, whatsappMessage)} target="_blank" rel="noreferrer">
+                        <MessageCircle className="size-3.5" />{number}
+                      </a>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         ) : (
           <section className="surface-raised rounded-3xl p-5">
@@ -474,7 +505,9 @@ export default function SubscriptionPage() {
                     >
                       <span className="block text-xs font-semibold">{option.label}</span>
                       <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
-                        {option.hint}
+                        {option.id === "onvo" && !data.onvoConfigured
+                          ? "Automático no disponible hasta configurar el proveedor."
+                          : option.hint}
                       </span>
                     </button>
                   ))}
@@ -540,15 +573,39 @@ export default function SubscriptionPage() {
                 suma a partir de ese vencimiento.
               </p>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="sub-reference">Referencia o comprobante</Label>
-                <Input
-                  id="sub-reference"
-                  value={reference}
-                  onChange={(event) => setReference(event.target.value)}
-                  placeholder="Ej: 2026-0451 / SINPE 8492..."
-                />
-              </div>
+              {method === "onvo" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="onvo-identification-type">Tipo de identificación de la cuenta SINPE</Label>
+                    <Select value={identificationType} onValueChange={setIdentificationType}>
+                      <SelectTrigger id="onvo-identification-type"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Persona física nacional</SelectItem>
+                        <SelectItem value="1">Persona física residente</SelectItem>
+                        <SelectItem value="2">Entidad estatal</SelectItem>
+                        <SelectItem value="3">Persona jurídica</SelectItem>
+                        <SelectItem value="4">Institución autónoma</SelectItem>
+                        <SelectItem value="5">Diplomático</SelectItem>
+                        <SelectItem value="9">Persona extranjera</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="onvo-identification">Identificación del titular</Label>
+                    <Input id="onvo-identification" value={payerIdentification} onChange={(event) => setPayerIdentification(event.target.value)} placeholder="Como aparece en el banco" autoComplete="off" />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="onvo-phone">Número SINPE de quien transfiere</Label>
+                    <Input id="onvo-phone" value={payerPhone} onChange={(event) => setPayerPhone(event.target.value)} placeholder="8 dígitos, por ejemplo 8888-8888" inputMode="tel" autoComplete="tel" />
+                    <p className="text-[10px] text-muted-foreground">ONVO empareja la transferencia con el monto exacto y la identificación de esta cuenta. No guardamos la cédula en el historial de pago.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="sub-reference">Referencia o comprobante</Label>
+                  <Input id="sub-reference" value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Ej: 2026-0451 / SINPE 8492..." />
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="sub-note">Nota (opcional)</Label>
                 <Textarea
@@ -562,7 +619,12 @@ export default function SubscriptionPage() {
 
               <Button
                 className="h-11 w-full gap-2 bg-ember-gradient text-black"
-                disabled={submitting || reference.trim().length < 3}
+                disabled={
+                  submitting ||
+                  (method === "onvo"
+                    ? !data.onvoConfigured || !payerIdentification.trim() || !payerPhone.trim()
+                    : reference.trim().length < 3)
+                }
                 onClick={() => void handleSubmit()}
               >
                 {submitting ? (
@@ -570,11 +632,12 @@ export default function SubscriptionPage() {
                 ) : (
                   <CheckCircle2 className="size-4" />
                 )}
-                Ya pagué · reportar para verificación
+                {method === "onvo" ? "Crear pago SINPE automático" : "Ya pagué · reportar para verificación"}
               </Button>
               <p className="text-center text-[10px] text-muted-foreground">
-                No se activa sola: un administrador verifica el pago y después ves el
-                estado actualizado.
+                {method === "onvo"
+                  ? "Se activa automáticamente sólo después de la confirmación de pago firmada por ONVO."
+                  : "El pago manual no se activa solo: un administrador verifica el comprobante."}
               </p>
             </div>
           </section>

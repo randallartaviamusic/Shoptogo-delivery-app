@@ -45,6 +45,7 @@ export type SubscriptionRole = Infer<typeof subscriptionRoleValidator>;
 
 export const subscriptionMethodValidator = v.union(
   v.literal("sinpe"),
+  v.literal("onvo"),
   v.literal("cash"),
   v.literal("deposit"),
 );
@@ -161,6 +162,13 @@ export const deliveryProofValidator = v.object({
   by: v.id("users"),
 });
 
+/** Confirmación del comprador (PIN) y del repartidor (cierre del pedido). */
+export const deliveryConfirmationValidator = v.object({
+  buyerPinVerifiedAt: v.number(),
+  courierConfirmedAt: v.number(),
+  courierId: v.id("users"),
+});
+
 export const orderStatusValidator = v.union(
   v.literal("pending"),
   v.literal("accepted"),
@@ -227,6 +235,8 @@ const schema = defineSchema(
           }),
         ),
       ),
+      // Locales favoritos del comprador, separados de los productos guardados.
+      favoriteBusinessIds: v.optional(v.array(v.id("businesses"))),
       // Verificación de negocios y repartidores. El teléfono se confirma con
       // un código (Twilio Verify) y la cédula contra el registro del TSE
       // (Didit); si no hay proveedores configurados queda la revisión manual.
@@ -429,6 +439,7 @@ const schema = defineSchema(
       // repartidor al cerrar el viaje. El PIN del comprador sigue siendo la
       // confirmación principal; la foto queda como respaldo verificable.
       deliveryProof: v.optional(deliveryProofValidator),
+      deliveryConfirmation: v.optional(deliveryConfirmationValidator),
     })
       .index("by_buyer", ["buyerId"])
       .index("by_business", ["businessId"])
@@ -527,6 +538,11 @@ const schema = defineSchema(
       reviewedAt: v.optional(v.number()),
       reviewedBy: v.optional(v.id("users")),
       reviewNote: v.optional(v.string()),
+      // ONVO SINPE Móvil confirma transferencias por webhook sin revisión
+      // manual. Las instrucciones quedan asociadas a la intención específica.
+      onvoPaymentIntentId: v.optional(v.string()),
+      onvoDestinationPhone: v.optional(v.string()),
+      onvoPayerPhone: v.optional(v.string()),
     })
       .index("by_owner", ["ownerId"])
       .index("by_status", ["status"]),

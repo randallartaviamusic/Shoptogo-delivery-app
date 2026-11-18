@@ -7,16 +7,18 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { money } from "@/lib/format";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
-import { Bookmark, Clock, Loader2, Plus, Star, X } from "lucide-react";
+import { Bookmark, Clock, Loader2, MapPin, Plus, Star, Store, X } from "lucide-react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
 export default function FavoritesPage() {
   const saved = useQuery(api.catalog.saved);
+  const favoriteBusinesses = useQuery(api.businesses.favorites);
+  const toggleBusinessFavorite = useMutation(api.businesses.toggleFavorite);
   const addToCart = useMutation(api.cart.add);
   const swipe = useMutation(api.catalog.swipe);
 
-  if (saved === undefined) {
+  if (saved === undefined || favoriteBusinesses === undefined) {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="size-6 animate-spin text-primary" />
@@ -29,7 +31,7 @@ export default function FavoritesPage() {
       <PageHeader
         eyebrow="Súper antojos"
         title="Guardados para después"
-        description="Los productos que marcaste con la estrella. Aparecen acá aunque cierres la app."
+        description="Tus productos y locales favoritos, guardados en tu cuenta para volver cuando quieras."
         action={
           <Button asChild variant="outline" className="gap-2 border-accent/30 text-accent">
             <Link to="/swipe">
@@ -40,7 +42,41 @@ export default function FavoritesPage() {
         }
       />
 
-      {saved.length === 0 ? (
+      {favoriteBusinesses === undefined ? (
+        <div className="mb-6 flex h-24 items-center justify-center"><Loader2 className="size-5 animate-spin text-accent" /></div>
+      ) : favoriteBusinesses.length > 0 ? (
+        <section className="mb-8">
+          <div className="mb-3 flex items-center gap-2">
+            <Store className="size-4 text-accent" />
+            <h2 className="font-display text-base font-bold">Locales favoritos</h2>
+            <span className="text-xs text-muted-foreground">{favoriteBusinesses.length}</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {favoriteBusinesses.map((business) => (
+              <article key={business._id} className="surface-raised flex overflow-hidden rounded-2xl">
+                <Link to={`/negocios/${business.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
+                  <DishImage src={business.image} alt={business.name} className="size-20 shrink-0" />
+                  <div className="min-w-0 py-3">
+                    <p className="truncate font-display text-sm font-bold">{business.name}</p>
+                    <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{business.tagline}</p>
+                    <p className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <MapPin className="size-3 text-accent" />{business.isOpen ? "Abierto" : "Cerrado"} · {business.productCount} productos
+                    </p>
+                  </div>
+                </Link>
+                <button
+                  type="button"
+                  aria-label={`Quitar ${business.name} de favoritos`}
+                  onClick={() => void toggleBusinessFavorite({ businessId: business._id }).catch((error) => toast.error(error instanceof Error ? error.message : "No pudimos quitar el local"))}
+                  className="mr-3 flex size-8 shrink-0 items-center justify-center self-center rounded-full border border-accent/30 text-accent hover:bg-accent/10"
+                ><Star className="size-4 fill-current" /></button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {saved.length === 0 && (favoriteBusinesses?.length ?? 0) === 0 ? (
         <EmptyState
           icon={Bookmark}
           title="Todavía no guardaste antojos"
@@ -51,7 +87,12 @@ export default function FavoritesPage() {
             </Button>
           }
         />
-      ) : (
+      ) : saved.length === 0 ? null : (
+        <>
+        <div className="mb-3 flex items-center gap-2">
+          <Bookmark className="size-4 text-accent" />
+          <h2 className="font-display text-base font-bold">Productos guardados</h2>
+        </div>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
           {saved.map((item, index) => (
             <motion.article
@@ -142,6 +183,7 @@ export default function FavoritesPage() {
             </motion.article>
           ))}
         </div>
+        </>
       )}
     </div>
   );

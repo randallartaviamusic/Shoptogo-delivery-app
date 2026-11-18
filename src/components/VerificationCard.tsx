@@ -9,12 +9,13 @@ import {
   isValidCostaRicaId,
   isValidCostaRicaPhone,
 } from "@/lib/trust";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   BadgeCheck,
   Bike,
   IdCard,
   Loader2,
+  MessageSquareCode,
   Phone,
   Send,
   ShieldAlert,
@@ -35,11 +36,17 @@ const TONE: Record<string, string> = {
 export function VerificationCard() {
   const data = useQuery(api.verification.mine);
   const submit = useMutation(api.verification.submit);
+  const sendCode = useAction(api.verification.sendPhoneCode);
+  const checkCode = useAction(api.verification.checkPhoneCode);
+  const checkId = useAction(api.verification.checkId);
   const [phone, setPhone] = useState("");
   const [idNumber, setIdNumber] = useState("");
+  const [code, setCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
   const [vehicle, setVehicle] = useState("");
   const [accepted, setAccepted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [autoBusy, setAutoBusy] = useState<"phone" | "code" | "identity" | null>(null);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -55,6 +62,71 @@ export function VerificationCard() {
   const meta = VERIFICATION_META[data.status];
   const isCourier = data.role === "courier";
   const isVerified = data.status === "verified";
+  const phoneVerified = Boolean(data.phoneVerifiedAt);
+  const idVerified = Boolean(data.idVerifiedAt);
+
+  const handleSendCode = async () => {
+    if (!isValidCostaRicaPhone(phone)) {
+      toast.error("Escribí un teléfono de Costa Rica de 8 dígitos");
+      return;
+    }
+    setAutoBusy("phone");
+    try {
+      await sendCode({ phone });
+      setCodeSent(true);
+      toast.success("Código enviado", {
+        description: "Revisá el SMS en tu teléfono.",
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos enviar el código");
+    } finally {
+      setAutoBusy(null);
+    }
+  };
+
+  const handleCheckCode = async () => {
+    setAutoBusy("code");
+    try {
+      await checkCode({ code });
+      setCode("");
+      setCodeSent(false);
+      toast.success("Teléfono verificado", {
+        description: "Ya confirmamos que podés recibir mensajes en ese número.",
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos confirmar el código");
+    } finally {
+      setAutoBusy(null);
+    }
+  };
+
+  const handleCheckId = async () => {
+    if (!isValidCostaRicaId(idNumber)) {
+      toast.error("Escribí la cédula con 9 dígitos");
+      return;
+    }
+    setAutoBusy("identity");
+    try {
+      const result = await checkId({ idNumber });
+      if (result.matched) {
+        toast.success("Cédula confirmada", {
+          description: "Coincide con el registro civil.",
+        });
+      } else if ("pendingReview" in result) {
+        toast("El registro no respondió", {
+          description: "No te rechazamos por un problema técnico; la cuenta seguirá en revisión.",
+        });
+      } else {
+        toast.error("La cédula no coincide", {
+          description: result.reason ?? "Revisá el número e intentá de nuevo.",
+        });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos consultar la cédula");
+    } finally {
+      setAutoBusy(null);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!accepted) {
@@ -82,9 +154,9 @@ export function VerificationCard() {
         accepted: true,
       });
       setAccepted(false);
-      toast.success("Datos enviados", {
+      toast.success("Datos guardados", {
         description:
-          "La administración va a revisar tu teléfono y tus datos. Te avisamos por acá cuando esté listo.",
+          "Confirmá el teléfono por SMS y consultá la cédula para evitar la revisión manual cuando los proveedores estén configurados.",
       });
     } catch (error) {
       toast.error(
@@ -107,9 +179,8 @@ export function VerificationCard() {
           </p>
           <h2 className="font-display text-lg font-bold">Verificación de cuenta</h2>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Revisamos tu teléfono, tu cédula y los datos de tu{" "}
-            {isCourier ? "vehículo" : "local"}. Es lo que permite que compradores
-            y repartidores confíen en la cuenta.
+            Confirmá el teléfono por SMS y la cédula contra el registro civil. Si
+            ambos controles coinciden, tu cuenta se activa sin esperar revisión.
           </p>
         </div>
         <span
@@ -149,8 +220,45 @@ export function VerificationCard() {
             inputMode="tel"
           />
           <p className="text-[10px] text-muted-foreground">
-            Tiene que poder recibir llamadas durante una entrega.
+            {phoneVerified ? "Teléfono confirmado por SMS." : "Verificalo con un código SMS para usarlo como contacto."}
           </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 border-accent/35 text-[11px]"
+              disabled={autoBusy !== null || phoneVerified}
+              onClick={() => void handleSendCode()}
+            >
+              {autoBusy === "phone" ? <Loader2 className="size-3.5 animate-spin" /> : <Phone className="size-3.5" />}
+              {phoneVerified ? "Teléfono confirmado" : codeSent ? "Reenviar código" : "Enviar código SMS"}
+            </Button>
+            {codeSent && (
+              <div className="flex min-w-0 flex-1 gap-1.5">
+                <Input
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={10}
+                  placeholder="Código SMS"
+                  aria-label="Código de verificación por SMS"
+                  className="h-8 text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 gap-1.5 bg-accent text-accent-foreground"
+                  disabled={autoBusy !== null || code.trim().length < 4}
+                  onClick={() => void handleCheckCode()}
+                >
+                  {autoBusy === "code" ? <Loader2 className="size-3.5 animate-spin" /> : <MessageSquareCode className="size-3.5" />}
+                  Confirmar
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="verification-id" className="flex items-center gap-1.5">
@@ -164,8 +272,21 @@ export function VerificationCard() {
             inputMode="numeric"
           />
           <p className="text-[10px] text-muted-foreground">
-            Se usa solo para verificar la cuenta, no se muestra en el catálogo.
+            {idVerified
+              ? `Confirmada contra el registro civil${data.idVerifiedName ? ` como ${data.idVerifiedName}` : ""}.`
+              : "Se consulta en el registro civil y no se muestra en el catálogo."}
           </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 border-accent/35 text-[11px]"
+            disabled={autoBusy !== null || idVerified}
+            onClick={() => void handleCheckId()}
+          >
+            {autoBusy === "identity" ? <Loader2 className="size-3.5 animate-spin" /> : <IdCard className="size-3.5" />}
+            {idVerified ? "Cédula confirmada" : "Consultar cédula"}
+          </Button>
         </div>
 
         {isCourier ? (
@@ -234,13 +355,17 @@ export function VerificationCard() {
           ) : (
             <Send className="size-4" />
           )}
-          {isVerified ? "Actualizar datos" : "Enviar a revisión"}
+          {isVerified ? "Actualizar datos" : "Guardar mis datos"}
         </Button>
         <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <ShieldAlert className="size-3.5" />
           {isVerified
-            ? "Los datos ya están verificados."
-            : "La revisión la hace una persona administradora."}
+            ? data.verifiedAutomatically
+              ? "Confirmada por SMS y registro civil."
+              : "La cuenta conserva una verificación manual previa."
+            : data.automation.phone && data.automation.identity
+              ? "SMS + registro civil: aprobación automática si ambos coinciden."
+              : "Sin claves externas, podés solicitar revisión manual."}
         </p>
       </div>
     </section>

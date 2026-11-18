@@ -8,6 +8,7 @@ import { useQuery } from "convex/react";
 import {
   ArrowRight,
   BadgeCheck,
+  PackageCheck,
   CircleSlash,
   History,
   ShieldAlert,
@@ -46,9 +47,26 @@ export function TrustHistory() {
           <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
             <History className="size-3.5" /> Historial y confianza
           </p>
-          <h2 className="font-display text-lg font-bold">
-            Tu actividad en Capricho Express
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-display text-lg font-bold">
+              Tu actividad en Capricho Express
+            </h2>
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                data.standing.level === "restricted"
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : data.standing.level === "watch"
+                    ? "border-accent/40 bg-accent/10 text-accent"
+                    : "border-border/70 bg-secondary/40 text-muted-foreground",
+              )}
+            >
+              {data.standing.label}
+            </span>
+          </div>
+          <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-muted-foreground">
+            {data.standing.hint}
+          </p>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Todo lo importante queda registrado: entregas, cancelaciones,
             incidencias de efectivo y calificaciones.
@@ -114,7 +132,9 @@ export function TrustHistory() {
                       · {relativeTime(order.cancelledAt)}
                     </span>
                   </p>
-                  <p className="text-muted-foreground">{order.reason}</p>
+                  <p className="text-muted-foreground">
+                    {order.actorLabel} · {order.reason}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -154,6 +174,12 @@ export function TrustHistory() {
           )}
         </div>
       </div>
+
+      {data.role === "buyer" && (
+        <p className="mt-3 text-[10px] text-muted-foreground">
+          En los últimos 30 días: {data.totals.cancelledByBuyer} canceladas por vos · {data.totals.cancelledByBusiness} por el local · {data.totals.cancelledBySystem} automáticamente.
+        </p>
+      )}
 
       <div className="mt-4">
         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">

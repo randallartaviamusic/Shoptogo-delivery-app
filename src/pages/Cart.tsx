@@ -16,6 +16,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
+import { costaRicaLocalToTimestamp, SCHEDULE_RULES } from "@/lib/scheduling";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -29,6 +30,7 @@ import {
   ShoppingCart,
   Star,
   Store,
+  Tag,
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,7 +41,9 @@ export default function CartPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const cart = useQuery(api.cart.myCart);
+  const [couponDraft, setCouponDraft] = useState("");
+  const [couponCode, setCouponCode] = useState("");
+  const cart = useQuery(api.cart.myCart, { couponCode: couponCode || undefined });
   const setQuantity = useMutation(api.cart.setQuantity);
   const removeItem = useMutation(api.cart.remove);
   const clearCart = useMutation(api.cart.clear);
@@ -53,6 +57,8 @@ export default function CartPage() {
     user?.location ?? null,
   );
   const [notes, setNotes] = useState("");
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledLocal, setScheduledLocal] = useState("");
   const [placing, setPlacing] = useState(false);
   // Para compras de más de 3 productos: mismo repartidor en todas las entregas.
   const [sameCourier, setSameCourier] = useState(true);
@@ -68,6 +74,24 @@ export default function CartPage() {
   const hasClosed = groups.some((group) => !group.isOpen);
   const allCovered = groups.every((group) => group.deliveryAvailable);
   const canConfirm = Boolean(dropoff) && address.trim().length >= 6 && allCovered;
+  const scheduledFor = scheduleEnabled
+    ? costaRicaLocalToTimestamp(scheduledLocal)
+    : null;
+  const scheduleError = scheduleEnabled && !scheduledFor
+    ? "Elegí una fecha y hora de entrega"
+    : scheduleEnabled && scheduledFor
+      ? scheduledFor <= Date.now() + SCHEDULE_RULES.minMinutesAhead * 60_000
+        ? `Programá con al menos ${SCHEDULE_RULES.minMinutesAhead} minutos de anticipación`
+        : scheduledFor > Date.now() + SCHEDULE_RULES.maxDaysAhead * 86_400_000
+          ? `Podés programar hasta ${SCHEDULE_RULES.maxDaysAhead} días antes`
+          : null
+      : null;
+  const minScheduledLocal = new Date(
+    Date.now() + SCHEDULE_RULES.minMinutesAhead * 60_000 - 6 * 60 * 60 * 1000,
+  ).toISOString().slice(0, 16);
+  const maxScheduledLocal = new Date(
+    Date.now() + SCHEDULE_RULES.maxDaysAhead * 86_400_000 - 6 * 60 * 60 * 1000,
+  ).toISOString().slice(0, 16);
 
   // Clave del intento de compra. Se mantiene si la solicitud falla (reintentar
   // no duplica el pedido) y se renueva cuando cambia el carrito.
@@ -169,6 +193,8 @@ export default function CartPage() {
         notes,
         sameCourier: splitInDeliveries ? sameCourier : undefined,
         requestKey: requestKey.current,
+        couponCode: cart?.couponTotal ? couponCode : undefined,
+        scheduledFor: scheduleEnabled ? (scheduledFor ?? undefined) : undefined,
       });
       // La compra quedó registrada: el próximo intento es un pedido nuevo.
       requestKey.current = null;
@@ -387,6 +413,99 @@ export default function CartPage() {
             </p>
 
             <div className="mt-5 space-y-3">
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <label className="flex items-center gap-2 text-xs font-semibold">
+                  <Tag className="size-4 text-accent" /> Cupón del local
+                </label>
+                <div className="mt-2 flex gap-2">
+                  <Input
+                    value={couponDraft}
+                    onChange={(event) => setCouponDraft(event.target.value.toUpperCase())}
+                    maxLength={16}
+                    placeholder="Ej.: ANTOJO10"
+                    aria-label="Código de cupón del local"
+                    className="h-9 text-xs uppercase"
+                  />
+                  {couponCode ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9"
+                      onClick={() => {
+                        setCouponCode("");
+                        setCouponDraft("");
+                      }}
+                    >
+                      Quitar
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 border-accent/35 text-accent"
+                      disabled={!couponDraft.trim()}
+                      onClick={() => setCouponCode(couponDraft.trim().toUpperCase())}
+                    >
+                      Aplicar
+                    </Button>
+                  )}
+                </div>
+                {cart?.couponMessage && couponCode && (
+                  <p className="mt-2 text-[10px] text-primary">{cart.couponMessage}</p>
+                )}
+                {cart?.couponTotal ? (
+                  <p className="mt-2 text-[10px] font-semibold text-accent">
+                    Cupón aplicado · ahorrás {money(cart.couponTotal)} en los productos del local.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[10px] text-muted-foreground">
+                    El código se valida contra los cupones activos de cada local.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold">
+                  <input
+                    type="checkbox"
+                    checked={scheduleEnabled}
+                    onChange={(event) => {
+                      setScheduleEnabled(event.target.checked);
+                      if (event.target.checked && !scheduledLocal) {
+                        setScheduledLocal(
+                          new Date(Date.now() + 60 * 60 * 1000 - 6 * 60 * 60 * 1000)
+                            .toISOString()
+                            .slice(0, 16),
+                        );
+                      }
+                    }}
+                    className="size-4 accent-[var(--accent)]"
+                  />
+                  Programar para más tarde
+                </label>
+                {scheduleEnabled && (
+                  <div className="mt-2 space-y-1.5">
+                    <Input
+                      type="datetime-local"
+                      value={scheduledLocal}
+                      min={minScheduledLocal}
+                      max={maxScheduledLocal}
+                      onChange={(event) => setScheduledLocal(event.target.value)}
+                      aria-label="Fecha y hora del pedido programado"
+                      className="h-9 text-xs"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Hasta {SCHEDULE_RULES.maxDaysAhead} días antes. El local lo prepara cerca de la hora elegida.
+                    </p>
+                    {scheduleError && (
+                      <p className="text-[10px] text-primary">{scheduleError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {(addressBook?.addresses.length ?? 0) > 0 && (
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium">Usar una dirección guardada</label>
@@ -573,6 +692,12 @@ export default function CartPage() {
                   {money(cart?.deliveryTotal ?? 0)}
                 </span>
               </div>
+              {(cart?.couponTotal ?? 0) > 0 && (
+                <div className="flex justify-between text-accent">
+                  <span>Cupón del local</span>
+                  <span>−{money(cart?.couponTotal ?? 0)}</span>
+                </div>
+              )}
               <div className="flex items-end justify-between pt-2">
                 <span className="font-semibold">Efectivo exacto a entregar</span>
                 <span className="font-display text-2xl font-extrabold">
@@ -606,7 +731,7 @@ export default function CartPage() {
 
             <Button
               className="mt-5 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
-              disabled={placing || !canConfirm || hasClosed || groups.some((group) => group.items.some((item) => !item.isAvailable))}
+              disabled={placing || !canConfirm || Boolean(scheduleError) || hasClosed || groups.some((group) => group.items.some((item) => !item.isAvailable))}
               onClick={handleCheckout}
             >
               {placing ? (

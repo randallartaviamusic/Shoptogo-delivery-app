@@ -1,7 +1,14 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import {
+  action,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
+import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isAdminEmail } from "./branding";
 import {
@@ -21,6 +28,7 @@ import type { SubscriptionStatus } from "../lib/subscriptions";
 import {
   subscriptionMethodValidator,
   subscriptionPlanValidator,
+  subscriptionRoleValidator,
 } from "./schema";
 
 type DbCtx = QueryCtx | MutationCtx;
@@ -226,8 +234,11 @@ export const mine = query({
             expiryAt: pending.expiryAt,
             reportedAt: pending.reportedAt,
             status: pending.status,
+            onvoPaymentIntentId: pending.onvoPaymentIntentId ?? null,
+            onvoDestinationPhone: pending.onvoDestinationPhone ?? null,
           }
         : null,
+      onvoConfigured: Boolean(process.env.ONVO_SECRET_KEY?.trim()),
       payments: payments.slice(0, 8).map((payment) => ({
         _id: payment._id,
         plan: payment.plan,
@@ -264,6 +275,9 @@ export const requestPayment = mutation({
     const user = await ctx.db.get(userId);
     if (!user || (user.role !== "business" && user.role !== "courier")) {
       throw new Error("Las suscripciones son para negocios y repartidores");
+    }
+    if (args.method === "onvo") {
+      throw new Error("Usá el flujo ONVO directo para iniciar el pago automático");
     }
     const reference = args.reference.trim();
     if (reference.length < 3) {
@@ -309,6 +323,284 @@ export const requestPayment = mutation({
     // El plan se actualiza recién cuando el administrador aprueba el pago:
     // así nadie obtiene beneficios de un plan superior sin haberlo pagado.
     return { paymentId, expiryAt, price: plan.price };
+  },
+});
+
+/** Estado mínimo de una cuenta para crear una intención SINPE. */
+export const onvoRequestState = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      return null;
+    }
+    const pending = await pendingPaymentFor(ctx, args.userId);
+    const subscription = await subscriptionDoc(ctx, args.userId);
+    return {
+      ownerId: user._id,
+      role: user.role,
+      name: user.name ?? "Cuenta Capricho",
+      email: user.email ?? undefined,
+      activeUntil: subscription?.activeUntil ?? null,
+      pending: Boolean(pending),
+    };
+  },
+});
+
+/** Reserva pago antes de llamar a ONVO para no crear dos intenciones a la vez. */
+export const reserveOnvoPayment = internalMutation({
+  args: {
+    ownerId: v.id("users"),
+    role: subscriptionRoleValidator,
+    plan: subscriptionPlanValidator,
+    price: v.number(),
+    reference: v.string(),
+    note: v.optional(v.string()),
+    expiryAt: v.number(),
+    payerPhone: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (await pendingPaymentFor(ctx, args.ownerId)) {
+      throw new Error("Ya tenés un pago en revisión");
+    }
+    return await ctx.db.insert("subscriptionPayments", {
+      ownerId: args.ownerId,
+      role: args.role,
+      plan: args.plan,
+      price: args.price,
+      method: "onvo",
+      reference: args.reference,
+      note: args.note,
+      expiryAt: args.expiryAt,
+      reportedAt: Date.now(),
+      status: "pending",
+      onvoPayerPhone: args.payerPhone,
+    });
+  },
+});
+
+/** Asocia la intención con el pago reservado para validar el webhook exacto. */
+export const attachOnvoIntent = internalMutation({
+  args: {
+    paymentId: v.id("subscriptionPayments"),
+    intentId: v.string(),
+    destinationPhone: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const payment = await ctx.db.get(args.paymentId);
+    if (!payment || payment.status !== "pending" || payment.method !== "onvo") {
+      throw new Error("El pago ONVO ya no está pendiente");
+    }
+    const existing = await ctx.db.query("subscriptionPayments").collect();
+    if (existing.some((candidate) => candidate.onvoPaymentIntentId === args.intentId)) {
+      throw new Error("ONVO devolvió una intención ya asociada a otro pago");
+    }
+    await ctx.db.patch(payment._id, {
+      onvoPaymentIntentId: args.intentId,
+      onvoDestinationPhone: args.destinationPhone,
+    });
+  },
+});
+
+/** No deja una reserva sin intención si la API de ONVO devuelve un error. */
+export const failOnvoPayment = internalMutation({
+  args: { paymentId: v.id("subscriptionPayments"), note: v.string() },
+  handler: async (ctx, args) => {
+    const payment = await ctx.db.get(args.paymentId);
+    if (!payment || payment.status !== "pending") return;
+    await ctx.db.patch(payment._id, {
+      status: "rejected",
+      reviewedAt: Date.now(),
+      reviewNote: args.note.slice(0, 300),
+    });
+  },
+});
+
+/** Crea una intención y método ONVO, y muestra instrucciones para SINPE. */
+export const requestOnvoPayment = action({
+  args: {
+    plan: subscriptionPlanValidator,
+    payerIdentification: v.string(),
+    identificationType: v.number(),
+    payerPhone: v.string(),
+    note: v.optional(v.string()),
+    expiryHour: v.number(),
+    expiryMinute: v.number(),
+  },
+  handler: async (
+    ctx: ActionCtx,
+    args,
+  ): Promise<{
+    paymentId: Id<"subscriptionPayments">;
+    intentId: string;
+    reference: string;
+    price: number;
+    expiryAt: number;
+    destinationPhone: string;
+  }> => {
+    const ownerId = await getAuthUserId(ctx);
+    if (!ownerId) throw new Error("Necesitás iniciar sesión");
+    const apiKey = process.env.ONVO_SECRET_KEY?.trim();
+    if (!apiKey) throw new Error("El pago automático por SINPE todavía no está configurado");
+    const state = await ctx.runQuery(internal.subscriptions.onvoRequestState, {
+      userId: ownerId,
+    });
+    if (!state) throw new Error("Las suscripciones son para negocios y repartidores");
+    if (state.pending) throw new Error("Ya tenés un pago en revisión. Esperá que se confirme antes de crear otro");
+
+    const idType = Math.round(args.identificationType);
+    const identification = args.payerIdentification.trim();
+    const patterns: Record<number, RegExp> = {
+      0: /^\d{2}-\d{4}-\d{4}$/,
+      1: /^1\d{11}$/,
+      2: /^2-\d{3}-\d{6}$/,
+      3: /^3-\d{3}-\d{6}$/,
+      4: /^4-000-\d{6}$/,
+      5: /^5\d{12}$/,
+      9: /^9[A-Za-z0-9]{11}$/,
+    };
+    if (!patterns[idType]?.test(identification)) {
+      throw new Error("La identificación debe coincidir con la que muestra el banco, incluyendo guiones");
+    }
+    const digits = args.payerPhone.replace(/\D/g, "");
+    if (!(digits.length === 8 || (digits.length === 11 && digits.startsWith("506")))) {
+      throw new Error("Escribí el teléfono SINPE de Costa Rica con 8 dígitos");
+    }
+    const payerPhone = `+506${digits.slice(-8)}`;
+    const plan = planOf(args.plan);
+    const expiryAt = nextMonthlyExpiry(
+      renewalBase(state.activeUntil ?? undefined),
+      Math.min(23, Math.max(0, Math.round(args.expiryHour))),
+      Math.min(59, Math.max(0, Math.round(args.expiryMinute))),
+    );
+    const reference = `ONVO-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    const paymentId = await ctx.runMutation(internal.subscriptions.reserveOnvoPayment, {
+      ownerId,
+      role: state.role,
+      plan: plan.id,
+      price: plan.price,
+      reference,
+      note: args.note?.trim() || undefined,
+      expiryAt,
+      payerPhone,
+    });
+
+    try {
+      const headers = {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      };
+      const intentResponse = await fetch("https://api.onvopay.com/v1/payment-intents", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          amount: plan.price * 100,
+          currency: "CRC",
+          description: `Suscripción Capricho Express ${plan.name} ${reference}`,
+          metadata: { paymentReference: reference, accountId: String(ownerId) },
+        }),
+      });
+      const intentPayload = (await intentResponse.json().catch(() => null)) as {
+        id?: string;
+        data?: { id?: string };
+        message?: string;
+      } | null;
+      if (!intentResponse.ok) {
+        throw new Error(intentPayload?.message ?? `ONVO intención ${intentResponse.status}`);
+      }
+      const intentId = intentPayload?.id ?? intentPayload?.data?.id;
+      if (!intentId) throw new Error("ONVO no devolvió el ID de la intención de pago");
+
+      const methodResponse = await fetch("https://api.onvopay.com/v1/payment-methods", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          type: "mobile_number",
+          mobileNumber: {
+            identification,
+            identificationType: idType,
+            number: payerPhone,
+          },
+          billing: {
+            name: state.name,
+            ...(state.email ? { email: state.email } : {}),
+          },
+        }),
+      });
+      const methodPayload = (await methodResponse.json().catch(() => null)) as {
+        id?: string;
+        paymentMethodId?: string;
+        type?: string;
+        mobileNumber?: { number?: string; identification?: string };
+        data?: {
+          id?: string;
+          type?: string;
+          mobileNumber?: { number?: string; identification?: string };
+        };
+        message?: string;
+      } | null;
+      if (!methodResponse.ok) {
+        throw new Error(methodPayload?.message ?? `ONVO método de pago ${methodResponse.status}`);
+      }
+      const paymentMethodId =
+        methodPayload?.id ?? methodPayload?.paymentMethodId ?? methodPayload?.data?.id;
+      const methodDetails = methodPayload?.data ?? methodPayload;
+      if (!paymentMethodId || methodDetails?.type !== "mobile_number") {
+        throw new Error("ONVO no devolvió un método SINPE Móvil válido");
+      }
+      if (
+        methodDetails.mobileNumber?.number !== payerPhone ||
+        methodDetails.mobileNumber?.identification !== identification
+      ) {
+        throw new Error("ONVO devolvió datos SINPE distintos a los enviados; no iniciamos el pago");
+      }
+
+      const destinationPhone = process.env.ONVO_SINPE_DESTINATION_PHONE?.trim() || "+50670196686";
+      await ctx.runMutation(internal.subscriptions.attachOnvoIntent, {
+        paymentId,
+        intentId,
+        destinationPhone,
+      });
+
+      const confirmResponse = await fetch(
+        `https://api.onvopay.com/v1/payment-intents/${encodeURIComponent(intentId)}/confirm`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ paymentMethodId }),
+        },
+      );
+      const confirmPayload = (await confirmResponse.json().catch(() => null)) as {
+        id?: string;
+        status?: string;
+        data?: { id?: string; status?: string };
+        message?: string;
+      } | null;
+      if (!confirmResponse.ok) {
+        throw new Error(confirmPayload?.message ?? `ONVO confirmación ${confirmResponse.status}`);
+      }
+      const confirmedIntent = confirmPayload?.data ?? confirmPayload;
+      if (
+        (confirmedIntent?.id && confirmedIntent.id !== intentId) ||
+        confirmedIntent?.status !== "processing"
+      ) {
+        throw new Error("ONVO no dejó la transferencia en estado de espera; revisá el pago antes de continuar");
+      }
+      return {
+        paymentId,
+        intentId,
+        reference,
+        price: plan.price,
+        expiryAt,
+        destinationPhone,
+      };
+    } catch (error) {
+      await ctx.runMutation(internal.subscriptions.failOnvoPayment, {
+        paymentId,
+        note: error instanceof Error ? error.message : "No se pudo iniciar el pago ONVO",
+      });
+      throw error;
+    }
   },
 });
 
@@ -477,6 +769,9 @@ export const adminReviewPayment = mutation({
     if (payment.status !== "pending") {
       throw new Error("Ese pago ya fue revisado");
     }
+    if (payment.method === "onvo") {
+      throw new Error("Los pagos ONVO sólo se aprueban con su webhook firmado");
+    }
 
     const now = Date.now();
     const reviewNote = args.note?.trim() || undefined;
@@ -506,51 +801,30 @@ export const adminReviewPayment = mutation({
   },
 });
 
-/**
- * Confirmación automática desde el proveedor de pagos. La llama el webhook
- * firmado: busca el comprobante pendiente por referencia y monto exacto y, si
- * coincide, activa o renueva la suscripción sin intervención humana.
- */
-export const confirmProviderPayment = internalMutation({
-  args: {
-    reference: v.string(),
-    amount: v.number(),
-    note: v.optional(v.string()),
-  },
+/** Confirma únicamente la intención ONVO asociada al pago y CRC exactos. */
+export const confirmOnvoPayment = internalMutation({
+  args: { intentId: v.string(), amount: v.number(), currency: v.string() },
   handler: async (ctx, args) => {
-    const target = normalizeReference(args.reference);
-    const amount = Math.round(args.amount);
-    if (!target || !Number.isFinite(amount) || amount <= 0) {
-      return { matched: false, reason: "Datos del pago incompletos" };
+    if (!args.intentId || args.currency !== "CRC" || !Number.isSafeInteger(args.amount)) {
+      return { matched: false, reason: "Datos de la intención inválidos" };
     }
-
     const payments = await ctx.db.query("subscriptionPayments").collect();
-    const sameReference = payments.filter(
-      (payment) => normalizeReference(payment.reference) === target,
+    const payment = payments.find(
+      (candidate) => candidate.method === "onvo" && candidate.onvoPaymentIntentId === args.intentId,
     );
-    if (sameReference.some((payment) => payment.status === "approved")) {
-      return { matched: true, alreadyApproved: true };
-    }
-    const payment = sameReference
-      .filter((candidate) => candidate.status === "pending")
-      .sort((a, b) => b.reportedAt - a.reportedAt)[0];
-    if (!payment) return { matched: false, reason: "No hay un pago pendiente con esa referencia" };
-    if (payment.price !== amount) {
-      return {
-        matched: false,
-        reason: `El monto confirmado no coincide con el pago reportado (${payment.price})`,
-      };
+    if (!payment) return { matched: false, reason: "Intención ONVO no asociada a un pago" };
+    if (payment.status === "approved") return { matched: true, alreadyApproved: true };
+    if (payment.status !== "pending") return { matched: false, reason: "El pago ya no está pendiente" };
+    if (args.amount !== payment.price * 100) {
+      return { matched: false, reason: "El monto ONVO no coincide con el monto de la suscripción" };
     }
 
     const now = Date.now();
     await ctx.db.patch(payment._id, {
       status: "approved",
       reviewedAt: now,
-      reviewNote:
-        args.note?.trim() ||
-        "Confirmado automáticamente por el proveedor de pagos",
+      reviewNote: "Confirmado automáticamente por ONVO SINPE Móvil",
     });
-
     const existing = await subscriptionDoc(ctx, payment.ownerId);
     const plan = planOf(payment.plan);
     const activeUntil = Math.max(
