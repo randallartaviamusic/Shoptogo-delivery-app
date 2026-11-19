@@ -2,6 +2,7 @@ import defaultLogo from "@/assets/logo.svg";
 import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
 import { AdminMetrics } from "@/components/AdminMetrics";
+import { DemoCatalogAdmin } from "@/components/DemoCatalogAdmin";
 import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
 import { SupportAdmin } from "@/components/SupportAdmin";
 import { TrustHistory } from "@/components/TrustHistory";
@@ -773,6 +774,7 @@ export default function ProfilePage() {
       {isAdmin && <VerificationAdmin />}
       {isAdmin && <SupportAdmin />}
       {isAdmin && <SubscriptionAdmin />}
+      {isAdmin && <DemoCatalogAdmin />}
 
       {isAdmin && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">

@@ -1,9 +1,11 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { isAdminEmail } from "./branding";
 import { ASSIGNMENT_RULES, deliveryQuote } from "../lib/delivery";
+import { DEFAULT_DEPARTMENT, DEPARTMENTS, getDepartment } from "../lib/departments";
 import { hasSubscriptionAccess, subscriptionStatus } from "../lib/subscriptions";
 
 /**
@@ -338,5 +340,417 @@ export const deleteUser = mutation({
 
     await ctx.db.delete(args.userId);
     return cleared;
+  },
+});
+
+/* -------------------------------------------------------------------------- */
+/* Catálogo demo                                                              */
+/* -------------------------------------------------------------------------- */
+
+const DEPARTMENT_SLUGS = new Set(DEPARTMENTS.map((department) => department.slug));
+
+function cleanImage(value: string, label: string) {
+  const trimmed = value.trim();
+  if (!/^(https?:\/\/|\/)/i.test(trimmed)) {
+    throw new ConvexError(
+      `${label}: usá un enlace de imagen que empiece con https://`,
+    );
+  }
+  if (trimmed.length > 800) {
+    throw new ConvexError(`${label}: el enlace de la imagen es demasiado largo`);
+  }
+  return trimmed;
+}
+
+/** Tiendas demo con su catálogo, para editar o borrar desde el perfil admin. */
+export const demoCatalog = query({
+  args: { search: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const businesses = await ctx.db.query("businesses").collect();
+    const products = await ctx.db.query("products").collect();
+    const demoBusinesses = businesses.filter((business) => business.isDemo);
+    const demoIds = new Set(demoBusinesses.map((business) => business._id));
+
+    const productsByBusiness = new Map<string, Doc<"products">[]>();
+    for (const product of products) {
+      if (!demoIds.has(product.businessId)) continue;
+      const list = productsByBusiness.get(product.businessId) ?? [];
+      list.push(product);
+      productsByBusiness.set(product.businessId, list);
+    }
+
+    const term = (args.search ?? "").trim().toLowerCase();
+    const matches = (value: string | null | undefined) =>
+      (value ?? "").toLowerCase().includes(term);
+
+    const rows = demoBusinesses
+      .filter((business) => {
+        if (!term) return true;
+        const list = productsByBusiness.get(business._id) ?? [];
+        return (
+          matches(business.name) ||
+          matches(business.tagline) ||
+          matches(business.category) ||
+          matches(business.address) ||
+          matches(getDepartment(business.department).label) ||
+          list.some(
+            (product) =>
+              matches(product.name) || matches(product.category),
+          )
+        );
+      })
+      .map((business) => {
+        const list = productsByBusiness.get(business._id) ?? [];
+        return {
+          _id: business._id,
+          name: business.name,
+          slug: business.slug,
+          department: business.department ?? DEFAULT_DEPARTMENT,
+          category: business.category,
+          tagline: business.tagline,
+          image: business.image,
+          address: business.address,
+          etaMinutes: business.etaMinutes,
+          isOpen: business.isOpen,
+          rating: business.rating,
+          reviews: business.reviews,
+          products: list.map((product) => ({
+            _id: product._id,
+            name: product.name,
+            description: product.description,
+            price: product.price,
+            image: product.image,
+            category: product.category,
+            tags: product.tags,
+            isAvailable: product.isAvailable,
+          })),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      businesses: rows,
+      totals: {
+        businesses: demoBusinesses.length,
+        products: demoBusinesses.reduce(
+          (sum, business) =>
+            sum + (productsByBusiness.get(business._id)?.length ?? 0),
+          0,
+        ),
+      },
+    };
+  },
+});
+
+/** Edita los datos visibles de una tienda demo. */
+export const updateDemoBusiness = mutation({
+  args: {
+    businessId: v.id("businesses"),
+    name: v.optional(v.string()),
+    tagline: v.optional(v.string()),
+    category: v.optional(v.string()),
+    department: v.optional(v.string()),
+    image: v.optional(v.string()),
+    address: v.optional(v.string()),
+    etaMinutes: v.optional(v.number()),
+    isOpen: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const business = await ctx.db.get(args.businessId);
+    if (!business) throw new ConvexError("Esa tienda ya no existe");
+    if (!business.isDemo) {
+      throw new ConvexError("Sólo se pueden editar las tiendas demo");
+    }
+
+    const patch: Partial<Doc<"businesses">> = {};
+    let departmentChanged = false;
+
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (name.length < 2) {
+        throw new ConvexError("El nombre de la tienda necesita al menos 2 letras");
+      }
+      if (name.length > 80) {
+        throw new ConvexError("El nombre de la tienda no puede pasar de 80 letras");
+      }
+      patch.name = name;
+    }
+    if (args.tagline !== undefined) {
+      const tagline = args.tagline.trim();
+      if (tagline.length > 140) {
+        throw new ConvexError("La frase de la tienda no puede pasar de 140 letras");
+      }
+      patch.tagline = tagline;
+    }
+    if (args.category !== undefined) {
+      const category = args.category.trim();
+      if (category.length < 2) {
+        throw new ConvexError("La categoría de la tienda necesita al menos 2 letras");
+      }
+      if (category.length > 60) {
+        throw new ConvexError("La categoría de la tienda no puede pasar de 60 letras");
+      }
+      patch.category = category;
+    }
+    if (args.department !== undefined) {
+      if (!DEPARTMENT_SLUGS.has(args.department)) {
+        throw new ConvexError("Elegí un departamento válido");
+      }
+      patch.department = args.department;
+      departmentChanged =
+        (business.department ?? DEFAULT_DEPARTMENT) !== args.department;
+    }
+    if (args.image !== undefined) {
+      patch.image = cleanImage(args.image, "La foto de la tienda");
+    }
+    if (args.address !== undefined) {
+      const address = args.address.trim();
+      if (address.length < 3) {
+        throw new ConvexError("Escribí la dirección de la tienda");
+      }
+      if (address.length > 200) {
+        throw new ConvexError("La dirección no puede pasar de 200 letras");
+      }
+      patch.address = address;
+    }
+    if (args.etaMinutes !== undefined) {
+      if (!Number.isFinite(args.etaMinutes)) {
+        throw new ConvexError("El tiempo estimado no es válido");
+      }
+      patch.etaMinutes = Math.min(180, Math.max(5, Math.round(args.etaMinutes)));
+    }
+    if (args.isOpen !== undefined) patch.isOpen = args.isOpen;
+
+    if (Object.keys(patch).length === 0) return { updated: false, productsUpdated: 0 };
+
+    await ctx.db.patch(business._id, patch);
+
+    // El catálogo del local vive en el mismo departamento: si la tienda cambia
+    // de rubro, sus productos también para que aparezcan en el catálogo nuevo.
+    let productsUpdated = 0;
+    if (departmentChanged) {
+      const products = await ctx.db
+        .query("products")
+        .withIndex("by_business", (q) => q.eq("businessId", business._id))
+        .collect();
+      for (const product of products) {
+        await ctx.db.patch(product._id, { department: args.department! });
+        productsUpdated += 1;
+      }
+    }
+
+    return { updated: true, productsUpdated };
+  },
+});
+
+/** Borra una tienda demo con su catálogo y los datos que la referencian. */
+export const deleteDemoBusiness = mutation({
+  args: { businessId: v.id("businesses") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const business = await ctx.db.get(args.businessId);
+    if (!business) throw new ConvexError("Esa tienda ya no existe");
+    if (!business.isDemo) {
+      throw new ConvexError("Sólo se pueden borrar las tiendas demo");
+    }
+
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .collect();
+    const productIds = new Set(products.map((product) => product._id));
+
+    const cleared = {
+      products: products.length,
+      cartItems: 0,
+      swipes: 0,
+      coupons: 0,
+      favorites: 0,
+      openOrders: 0,
+    };
+
+    for (const item of await ctx.db.query("cartItems").collect()) {
+      if (
+        item.businessId !== business._id &&
+        !productIds.has(item.productId)
+      ) {
+        continue;
+      }
+      await ctx.db.delete(item._id);
+      cleared.cartItems += 1;
+    }
+
+    for (const swipe of await ctx.db.query("swipes").collect()) {
+      if (!productIds.has(swipe.productId)) continue;
+      await ctx.db.delete(swipe._id);
+      cleared.swipes += 1;
+    }
+
+    for (const coupon of await ctx.db
+      .query("coupons")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .collect()) {
+      await ctx.db.delete(coupon._id);
+      cleared.coupons += 1;
+    }
+
+    // Los favoritos y pedidos entregados se conservan; los abiertos de una
+    // tienda que ya no existe se cierran para no quedar colgados.
+    for (const user of await ctx.db.query("users").collect()) {
+      const favorites = user.favoriteBusinessIds ?? [];
+      if (!favorites.includes(business._id)) continue;
+      await ctx.db.patch(user._id, {
+        favoriteBusinessIds: favorites.filter(
+          (businessId) => businessId !== business._id,
+        ),
+      });
+      cleared.favorites += 1;
+    }
+
+    const openOrderIds = new Set<string>();
+    for (const order of await ctx.db
+      .query("orders")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .collect()) {
+      if (
+        !OPEN_ORDER_STATUSES.includes(
+          order.status as (typeof OPEN_ORDER_STATUSES)[number],
+        )
+      ) {
+        continue;
+      }
+      openOrderIds.add(order._id);
+      for (const notification of await ctx.db
+        .query("notifications")
+        .withIndex("by_order", (q) => q.eq("orderId", order._id))
+        .collect()) {
+        await ctx.db.delete(notification._id);
+      }
+      await ctx.db.delete(order._id);
+      cleared.openOrders += 1;
+    }
+    for (const offer of await ctx.db.query("deliveryOffers").collect()) {
+      if (!openOrderIds.has(offer.orderId)) continue;
+      await ctx.db.delete(offer._id);
+    }
+
+    for (const product of products) await ctx.db.delete(product._id);
+    await ctx.db.delete(business._id);
+
+    return cleared;
+  },
+});
+
+/** Edita un producto de una tienda demo. */
+export const updateDemoProduct = mutation({
+  args: {
+    productId: v.id("products"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    price: v.optional(v.number()),
+    category: v.optional(v.string()),
+    image: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    isAvailable: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const product = await ctx.db.get(args.productId);
+    if (!product) throw new ConvexError("Ese producto ya no existe");
+    const business = await ctx.db.get(product.businessId);
+    if (!business?.isDemo) {
+      throw new ConvexError("Sólo se pueden editar productos demo");
+    }
+
+    const patch: Partial<Doc<"products">> = {};
+
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (name.length < 2) {
+        throw new ConvexError("El producto necesita al menos 2 letras");
+      }
+      if (name.length > 90) {
+        throw new ConvexError("El nombre del producto no puede pasar de 90 letras");
+      }
+      patch.name = name;
+    }
+    if (args.description !== undefined) {
+      const description = args.description.trim();
+      if (description.length > 500) {
+        throw new ConvexError("La descripción no puede pasar de 500 letras");
+      }
+      patch.description = description;
+    }
+    if (args.price !== undefined) {
+      if (!Number.isFinite(args.price) || args.price <= 0) {
+        throw new ConvexError("El precio tiene que ser mayor a 0");
+      }
+      patch.price = Math.round(args.price);
+    }
+    if (args.category !== undefined) {
+      const category = args.category.trim();
+      if (category.length < 2) {
+        throw new ConvexError("La categoría del producto necesita al menos 2 letras");
+      }
+      if (category.length > 60) {
+        throw new ConvexError("La categoría del producto no puede pasar de 60 letras");
+      }
+      patch.category = category;
+    }
+    if (args.image !== undefined) {
+      patch.image = cleanImage(args.image, "La foto del producto");
+    }
+    if (args.tags !== undefined) {
+      const tags = Array.from(
+        new Set(
+          args.tags
+            .map((tag) => tag.trim())
+            .filter((tag) => tag.length > 0),
+        ),
+      ).slice(0, 12);
+      if (tags.some((tag) => tag.length > 40)) {
+        throw new ConvexError("Cada etiqueta puede tener hasta 40 letras");
+      }
+      patch.tags = tags;
+    }
+    if (args.isAvailable !== undefined) patch.isAvailable = args.isAvailable;
+
+    if (Object.keys(patch).length === 0) return { updated: false };
+    await ctx.db.patch(product._id, patch);
+    return { updated: true };
+  },
+});
+
+/** Borra un producto demo y lo saca de carritos y antojos guardados. */
+export const deleteDemoProduct = mutation({
+  args: { productId: v.id("products") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const product = await ctx.db.get(args.productId);
+    if (!product) throw new ConvexError("Ese producto ya no existe");
+    const business = await ctx.db.get(product.businessId);
+    if (!business?.isDemo) {
+      throw new ConvexError("Sólo se pueden borrar productos demo");
+    }
+
+    let cartItems = 0;
+    for (const item of await ctx.db.query("cartItems").collect()) {
+      if (item.productId !== product._id) continue;
+      await ctx.db.delete(item._id);
+      cartItems += 1;
+    }
+
+    let swipes = 0;
+    for (const swipe of await ctx.db.query("swipes").collect()) {
+      if (swipe.productId !== product._id) continue;
+      await ctx.db.delete(swipe._id);
+      swipes += 1;
+    }
+
+    await ctx.db.delete(product._id);
+    return { deleted: true, cartItems, swipes };
   },
 });
