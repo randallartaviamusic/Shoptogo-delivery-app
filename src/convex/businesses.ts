@@ -1,5 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -263,13 +263,19 @@ export const toggleFavorite = mutation({
   args: { businessId: v.id("businesses") },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Iniciá sesión para guardar locales favoritos");
+    // ConvexError conserva el mensaje para la persona; un Error plano se
+    // reemplaza por "Server Error" en producción y no dice nada útil.
+    if (!userId) {
+      throw new ConvexError("Iniciá sesión para guardar locales favoritos");
+    }
     const user = await ctx.db.get(userId);
     if (!user || user.isAnonymous) {
-      throw new Error("Creá una cuenta para guardar tus locales favoritos");
+      throw new ConvexError(
+        "Creá una cuenta para guardar tus locales favoritos",
+      );
     }
     if (!(await ctx.db.get(args.businessId))) {
-      throw new Error("Ese local ya no existe");
+      throw new ConvexError("Ese local ya no existe");
     }
     const favorites = user.favoriteBusinessIds ?? [];
     const exists = favorites.includes(args.businessId);

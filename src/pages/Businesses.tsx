@@ -42,6 +42,19 @@ const normalize = (value: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+/** Mensaje real de un ConvexError, o el respaldo si el servidor lo censura. */
+function favoriteErrorMessage(error: unknown, fallback: string) {
+  const data = (error as { data?: unknown } | null)?.data;
+  if (typeof data === "string" && data.trim()) return data;
+  if (error instanceof Error) {
+    const clean = error.message
+      .replace(/^.*Uncaught ConvexError:\s*/i, "")
+      .trim();
+    if (clean && !/Called by client/i.test(clean)) return clean;
+  }
+  return fallback;
+}
+
 export default function BusinessesPage() {
   const { slug } = useParams();
   return slug ? <Storefront slug={slug} /> : <Directory />;
@@ -50,6 +63,8 @@ export default function BusinessesPage() {
 function Directory() {
   const directory = useQuery(api.businesses.directory);
   const toggleFavorite = useMutation(api.businesses.toggleFavorite);
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [departmentSlug, setDepartmentSlug] = useState("todos");
   const [category, setCategory] = useState("todas");
   const [search, setSearch] = useState("");
@@ -169,6 +184,27 @@ function Directory() {
   const chooseDepartment = (slug: string) => {
     setDepartmentSlug(slug);
     setCategory("todas");
+  };
+
+  const handleToggleFavorite = (businessId: Id<"businesses">) => {
+    // Sin sesión la mutación no puede guardar nada: se pide entrar en vez de
+    // mostrar un error del servidor.
+    if (!user || user.isAnonymous) {
+      toast("Iniciá sesión para guardar locales", {
+        description: "Con tu cuenta tus locales favoritos quedan guardados.",
+      });
+      navigate(`/auth?role=buyer&returnTo=${encodeURIComponent("/negocios")}`);
+      return;
+    }
+    void toggleFavorite({ businessId })
+      .then((result) =>
+        toast.success(
+          result.favorite ? "Local guardado" : "Local quitado de favoritos",
+        ),
+      )
+      .catch((error) =>
+        toast.error(favoriteErrorMessage(error, "No pudimos guardar el local")),
+      );
   };
 
   return (
@@ -350,11 +386,7 @@ function Directory() {
                     key={business._id}
                     business={business}
                     searchTerm={searching ? term : ""}
-                    onToggleFavorite={(businessId) => {
-                      void toggleFavorite({ businessId })
-                        .then((result) => toast.success(result.favorite ? "Local guardado" : "Local quitado de favoritos"))
-                        .catch((error) => toast.error(error instanceof Error ? error.message : "Iniciá sesión para guardar locales"));
-                    }}
+                    onToggleFavorite={handleToggleFavorite}
                   />
                 ))}
               </LoopRow>
@@ -610,9 +642,32 @@ function Storefront({ slug }: { slug: string }) {
                 aria-label={business.isFavorite ? "Quitar local de favoritos" : "Guardar local en favoritos"}
                 aria-pressed={business.isFavorite}
                 onClick={() => {
+                  if (!user || user.isAnonymous) {
+                    toast("Iniciá sesión para guardar locales", {
+                      description:
+                        "Con tu cuenta tus locales favoritos quedan guardados.",
+                    });
+                    navigate(
+                      `/auth?role=buyer&returnTo=${encodeURIComponent(`/negocios/${slug}`)}`,
+                    );
+                    return;
+                  }
                   void toggleFavorite({ businessId: business._id })
-                    .then((result) => toast.success(result.favorite ? "Local guardado" : "Local quitado de favoritos"))
-                    .catch((error) => toast.error(error instanceof Error ? error.message : "Iniciá sesión para guardar locales"));
+                    .then((result) =>
+                      toast.success(
+                        result.favorite
+                          ? "Local guardado"
+                          : "Local quitado de favoritos",
+                      ),
+                    )
+                    .catch((error) =>
+                      toast.error(
+                        favoriteErrorMessage(
+                          error,
+                          "No pudimos guardar el local",
+                        ),
+                      ),
+                    );
                 }}
                 className="relative z-10 flex size-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-black/50 text-accent"
               >
