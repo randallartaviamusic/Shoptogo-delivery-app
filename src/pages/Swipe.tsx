@@ -283,7 +283,6 @@ export default function SwipePage() {
       )}
 
       <PageHeader
-        eyebrow={department.label}
         title={department.headline}
         description={department.blurb}
         action={
