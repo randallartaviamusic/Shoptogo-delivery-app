@@ -283,7 +283,7 @@ export default function SwipePage() {
       )}
 
       <PageHeader
-        eyebrow={<span>Modo antojo · {department.label}</span>}
+        eyebrow={department.label}
         title={department.headline}
         description={department.blurb}
         action={

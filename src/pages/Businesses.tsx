@@ -230,7 +230,6 @@ function Directory() {
   return (
     <div>
       <PageHeader
-        eyebrow={<span>Modo negocios</span>}
         title="Todos los negocios"
         description="Entrá al local que quieras y comprá directo de su catálogo completo, sin deslizar."
         action={
@@ -725,7 +724,7 @@ function Storefront({ slug }: { slug: string }) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.22em]">
-        <span className="text-accent">Modo negocios · {business.category}</span>
+        <span className="text-accent">{business.category}</span>
         <Link
           to="/negocios"
           className="flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
