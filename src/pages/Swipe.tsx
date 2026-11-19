@@ -1,6 +1,5 @@
 import { PageHeader } from "@/components/AppShell";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
-import { ModeSwitch } from "@/components/ModeSwitch";
 import {
   DeckActions,
   SwipeCard,
@@ -284,7 +283,7 @@ export default function SwipePage() {
       )}
 
       <PageHeader
-        eyebrow={<ModeSwitch mode="antojo" suffix={department.label} />}
+        eyebrow={<span>Modo antojo · {department.label}</span>}
         title={department.headline}
         description={department.blurb}
         action={
