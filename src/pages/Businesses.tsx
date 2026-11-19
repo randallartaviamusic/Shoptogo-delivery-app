@@ -7,6 +7,13 @@ import type { PromoKind } from "@/lib/promo";
 import { LoopRow } from "@/components/LoopRow";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -26,6 +33,7 @@ import {
   Search,
   ShoppingBag,
   ShoppingCart,
+  SlidersHorizontal,
   Star,
   Store,
   TicketPercent,
@@ -72,6 +80,7 @@ function Directory() {
   const [maxDistance, setMaxDistance] = useState("");
   const [maxMinutes, setMaxMinutes] = useState("");
   const [openOnly, setOpenOnly] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const rows = directory ?? [];
   const term = normalize(search.trim());
@@ -180,6 +189,18 @@ function Directory() {
   }, [filtered, departmentSlug, searching, categories]);
 
   const totalOpen = rows.filter((business) => business.isOpen).length;
+  const activeFilterCount =
+    (openOnly ? 1 : 0) +
+    (maxPrice.trim() ? 1 : 0) +
+    (maxDistance.trim() ? 1 : 0) +
+    (maxMinutes.trim() ? 1 : 0);
+
+  const clearFilters = () => {
+    setOpenOnly(false);
+    setMaxPrice("");
+    setMaxDistance("");
+    setMaxMinutes("");
+  };
 
   const chooseDepartment = (slug: string) => {
     setDepartmentSlug(slug);
@@ -214,9 +235,24 @@ function Directory() {
         title="Todos los negocios"
         description="Entrá al local que quieras y comprá directo de su catálogo completo, sin deslizar."
         action={
-          <div className="flex items-center gap-2 rounded-full border border-border/80 bg-secondary/40 px-3 py-1.5 text-xs text-muted-foreground">
-            <Store className="size-3.5 text-accent" />
-            {totalOpen} {totalOpen === 1 ? "local abierto" : "locales abiertos"}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-full border border-border/80 bg-secondary/40 px-3 py-1.5 text-xs text-muted-foreground">
+              <Store className="size-3.5 text-accent" />
+              {totalOpen} {totalOpen === 1 ? "local abierto" : "locales abiertos"}
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setFiltersOpen(true)}
+              className="glass-sheen gap-2 border-border/80"
+            >
+              <SlidersHorizontal className="size-4 text-accent" />
+              Filtros
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-accent-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
           </div>
         }
       />
@@ -240,26 +276,6 @@ function Directory() {
             <X className="size-3.5" />
           </button>
         )}
-      </div>
-
-      <div className="mb-5 rounded-2xl border border-border/70 bg-card/40 p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filtrar</span>
-          <button
-            type="button"
-            onClick={() => setOpenOnly((value) => !value)}
-            className={cn("rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors", openOnly ? "border-accent bg-accent text-accent-foreground" : "border-border/80 text-muted-foreground")}
-          >
-            Abiertos ahora
-          </button>
-          <Input type="number" min="0" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="Precio máx. ₡" aria-label="Precio máximo del producto" className="h-8 w-32 text-[11px]" />
-          <Input type="number" min="0" value={maxDistance} onChange={(event) => setMaxDistance(event.target.value)} placeholder="Distancia máx. km" aria-label="Distancia máxima en kilómetros" className="h-8 w-36 text-[11px]" />
-          <Input type="number" min="0" value={maxMinutes} onChange={(event) => setMaxMinutes(event.target.value)} placeholder="ETA máx. min" aria-label="Tiempo estimado máximo en minutos" className="h-8 w-32 text-[11px]" />
-          {(openOnly || maxPrice || maxDistance || maxMinutes) && (
-            <button type="button" onClick={() => { setOpenOnly(false); setMaxPrice(""); setMaxDistance(""); setMaxMinutes(""); }} className="text-[11px] font-semibold text-accent hover:underline">Limpiar filtros</button>
-          )}
-        </div>
-        <p className="mt-2 text-[10px] text-muted-foreground">Precio usa el producto más económico de cada local; distancia y ETA se calculan cuando guardaste un punto de entrega.</p>
       </div>
 
       <div className="-mx-4 mb-2 flex gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
@@ -394,6 +410,101 @@ function Directory() {
           ))}
         </div>
       )}
+
+      <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto border-border/80 bg-card sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Filtros de negocios</DialogTitle>
+            <DialogDescription>
+              Elegí qué locales querés ver. Los cambios se aplican al instante
+              en toda la lista.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-1">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Disponibilidad
+              </p>
+              <button
+                type="button"
+                onClick={() => setOpenOnly((value) => !value)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                  openOnly
+                    ? "border-accent bg-accent text-accent-foreground"
+                    : "border-border/80 text-muted-foreground hover:border-accent/40 hover:text-foreground",
+                )}
+              >
+                Abiertos ahora
+              </button>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Límites
+              </p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="space-y-1.5 text-[11px] text-muted-foreground">
+                  Precio máx. (₡)
+                  <Input
+                    type="number"
+                    min="0"
+                    value={maxPrice}
+                    onChange={(event) => setMaxPrice(event.target.value)}
+                    placeholder="Sin límite"
+                    className="h-9 text-xs"
+                  />
+                </label>
+                <label className="space-y-1.5 text-[11px] text-muted-foreground">
+                  Distancia máx. (km)
+                  <Input
+                    type="number"
+                    min="0"
+                    value={maxDistance}
+                    onChange={(event) => setMaxDistance(event.target.value)}
+                    placeholder="Sin límite"
+                    className="h-9 text-xs"
+                  />
+                </label>
+                <label className="space-y-1.5 text-[11px] text-muted-foreground">
+                  ETA máx. (min)
+                  <Input
+                    type="number"
+                    min="0"
+                    value={maxMinutes}
+                    onChange={(event) => setMaxMinutes(event.target.value)}
+                    placeholder="Sin límite"
+                    className="h-9 text-xs"
+                  />
+                </label>
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                Precio usa el producto más económico de cada local; distancia y
+                ETA se calculan cuando guardaste un punto de entrega.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-4">
+            <Button
+              variant="ghost"
+              onClick={clearFilters}
+              disabled={activeFilterCount === 0}
+              className="text-muted-foreground"
+            >
+              Limpiar todo
+            </Button>
+            <Button
+              className="gap-2 bg-ember-gradient text-black"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Ver {filtered.length} {filtered.length === 1 ? "local" : "locales"}
+              <ArrowRight className="size-4" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
