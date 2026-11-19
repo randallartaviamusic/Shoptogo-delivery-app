@@ -22,12 +22,18 @@ import {
  * El arrastre no mueve el scroll directamente: acumula un objetivo y un bucle
  * de animación interpola hacia él, con inercia al soltar, para que el
  * desplazamiento se sienta continuo incluso si el puntero llega a saltos.
+ *
+ * Mientras la fila se mueve expone `data-scrolling="true"`: el CSS usa ese
+ * atributo para pausar los destellos animados de las tarjetas, que de otro
+ * modo repintarían cada card en cada frame y trabarían el desplazamiento.
+ * El reajuste del bucle se hace al detenerse para no cortar el momentum.
  */
 
 const FOLLOW = 0.38; // qué tan rápido alcanza el objetivo cada frame
 const FRICTION = 0.93; // cuánto conserva la inercia al soltar
 const MIN_SPEED = 0.08; // px/ms por debajo de los cuales se detiene
 const MAX_SPEED = 2.2; // px/ms tope para no salir disparado
+const IDLE = 140; // ms sin scroll para considerar que la fila se detuvo
 
 const mod = (value: number, size: number) => ((value % size) + size) % size;
 
@@ -51,7 +57,7 @@ export function LoopRow({
   const target = useRef(0);
   const raf = useRef(0);
   const items = Children.toArray(children);
-  const [copies, setCopies] = useState(3);
+  const [copies, setCopies] = useState(5);
 
   // Mide el ancho de un juego completo de tarjetas y decide cuántas copias
   // hacen falta para cubrir la pantalla dejando siempre un juego a cada lado.
@@ -71,7 +77,7 @@ export function LoopRow({
       if (set <= 0) return;
       setWidth.current = set;
 
-      const needed = Math.max(3, 3 + Math.ceil(el.clientWidth / set));
+      const needed = Math.max(5, 5 + 2 * Math.ceil(el.clientWidth / set));
       setCopies((prev) => (prev === needed ? prev : needed));
     };
 
@@ -81,12 +87,15 @@ export function LoopRow({
     return () => observer.disconnect();
   }, [items.length, copies]);
 
-  // Coloca la fila en la copia del medio y la devuelve ahí al cruzar un borde.
+  // Coloca la fila en la copia del medio y la devuelve ahí cuando el gesto
+  // termina. Corregir en pleno desplazamiento cortaba el momentum nativo.
   useLayoutEffect(() => {
     const el = trackRef.current;
     if (!el) return;
 
-    const normalize = () => {
+    let idleTimer = 0;
+
+    const recenter = () => {
       const set = setWidth.current;
       if (set <= 0) return;
 
@@ -103,11 +112,54 @@ export function LoopRow({
       target.current += shift;
     };
 
-    normalize();
+    const scheduleIdle = () => {
+      if (idleTimer) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        idleTimer = 0;
+        delete el.dataset.scrolling;
+        recenter();
+      }, IDLE);
+    };
+
+    const markScrolling = () => {
+      el.dataset.scrolling = "true";
+      scheduleIdle();
+    };
+
+    const onScroll = () => {
+      // Se refresca también durante el arrastre para que los destellos sigan
+      // pausados todo el gesto, no solo los primeros 140 ms.
+      markScrolling();
+      if (drag.current.active) return;
+
+      // Red de seguridad: si un gesto muy largo llega cerca de un borde duro,
+      // se reajusta ahí mismo para que nunca se vea el final de la fila.
+      const set = setWidth.current;
+      const max = el.scrollWidth - el.clientWidth;
+      if (
+        set > 0 &&
+        max > 0 &&
+        (el.scrollLeft < set || el.scrollLeft > max - set)
+      ) {
+        recenter();
+      }
+    };
+
+    recenter();
     target.current = el.scrollLeft;
-    el.addEventListener("scroll", normalize, { passive: true });
-    return () => el.removeEventListener("scroll", normalize);
-  }, [copies, items.length]);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("pointerdown", markScrolling, { passive: true });
+    el.addEventListener("wheel", markScrolling, { passive: true });
+    el.addEventListener("touchstart", markScrolling, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("pointerdown", markScrolling);
+      el.removeEventListener("wheel", markScrolling);
+      el.removeEventListener("touchstart", markScrolling);
+      if (idleTimer) window.clearTimeout(idleTimer);
+      delete el.dataset.scrolling;
+    };
+  }, [copies]);
 
   const stopAnimation = useCallback(() => {
     if (raf.current) cancelAnimationFrame(raf.current);

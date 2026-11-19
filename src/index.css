@@ -418,6 +418,16 @@
     }
   }
 
+  /* Mientras una fila infinita se desplaza, sus destellos se pausan: animar
+     el degradado repinta cada tarjeta en cada frame y es lo que trababa el
+     scroll. Al detenerse, la animación retoma donde iba. */
+  [data-scrolling="true"] .surface,
+  [data-scrolling="true"] .surface-raised,
+  [data-scrolling="true"] .glass-sheen,
+  [data-scrolling="true"] :where(button, a[data-slot="button"])::after {
+    animation-play-state: paused;
+  }
+
   .ember-glow {
     box-shadow:
       0 0 0 1px oklch(0.86 0.163 88 / 25%),
