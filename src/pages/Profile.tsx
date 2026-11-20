@@ -365,18 +365,22 @@ export default function ProfilePage() {
     }
   };
 
-  const handleRole = async (next: "buyer" | "business" | "courier") => {
-    if (next === role) return;
-    // Cada rol es una cuenta aparte: cerramos esta sesión para que pueda entrar
-    // (o registrar) la cuenta de ese rol.
-    await signOut();
+  const handleRole = (next: "buyer" | "business" | "courier") => {
+    if (next === role || switching) return;
+    setSwitching(next);
+    // No cerramos la sesión acá: la ruta protegida redirigiría a /auth sin el
+    // rol elegido. /auth cierra la sesión anterior y conserva este rol.
     toast(`Entrá con tu cuenta de ${ROLE_LABEL[next].toLowerCase()}`, {
       description:
         "Cada rol es una cuenta separada. Iniciá sesión o creá una nueva con correo y contraseña.",
     });
-    navigate(
-      `/auth?role=${next}&returnTo=${encodeURIComponent(ROLE_HOME[next])}`,
-    );
+    const params = new URLSearchParams({
+      role: next,
+      mode: "signin",
+      returnTo: ROLE_HOME[next],
+      switch: "1",
+    });
+    navigate(`/auth?${params.toString()}`);
   };
 
   return (

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
 import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 
 type Role = "buyer" | "business" | "courier";
@@ -77,11 +77,14 @@ interface AuthProps {
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, user } = useAuth();
-  const { signIn } = useAuthActions();
+  const { signIn, signOut } = useAuthActions();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectParam = searchParams.get("returnTo");
   const roleParam = searchParams.get("role");
+  // Cambio de rol desde el perfil: hay que cerrar la sesión anterior sin
+  // perder el rol ni el modo "Iniciar sesión" elegidos.
+  const switchAccount = searchParams.get("switch") === "1";
 
   const [mode, setMode] = useState<Mode>(() =>
     searchParams.get("mode") === "signin" ? "signIn" : "signup",
@@ -97,6 +100,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [error, setError] = useState<string | null>(null);
 
   const [slow, setSlow] = useState(false);
+  const switchStarted = useRef(false);
   useEffect(() => {
     if (!authLoading) {
       setSlow(false);
@@ -105,6 +109,12 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     const timer = setTimeout(() => setSlow(true), 8000);
     return () => clearTimeout(timer);
   }, [authLoading]);
+
+  useEffect(() => {
+    if (!switchAccount || !isAuthenticated || switchStarted.current) return;
+    switchStarted.current = true;
+    void signOut();
+  }, [isAuthenticated, signOut, switchAccount]);
 
   if (authLoading) {
     return (
@@ -120,6 +130,17 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
         ) : (
           <Loader2 className="size-6 animate-spin text-primary" />
         )}
+      </main>
+    );
+  }
+
+  if (switchAccount && isAuthenticated) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-6 text-center">
+        <Loader2 className="size-6 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">
+          Cerrando la sesión anterior...
+        </p>
       </main>
     );
   }
