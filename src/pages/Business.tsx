@@ -1397,7 +1397,7 @@ export default function BusinessPage() {
       )}
 
       <Dialog open={productDialog} onOpenChange={setProductDialog}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto border-border/80 bg-card sm:max-w-md">
+        <DialogContent className="max-h-[88vh] w-screen max-w-none overflow-y-auto rounded-none border-border/80 bg-card sm:max-w-md sm:rounded-lg">
           <DialogHeader>
             <DialogTitle className="font-display">
               {editing ? "Editar producto" : "Nuevo producto"}
