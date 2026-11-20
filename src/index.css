@@ -529,6 +529,7 @@
 .phone-dialog {
   width: 390px;
   max-width: 390px;
+  overflow-x: hidden;
 }
 
 @media (max-width: 639px) {

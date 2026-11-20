@@ -64,7 +64,7 @@ export function ProductVideoUpload({
           Élite
         </span>
       </div>
-      <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-black/20 p-3">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-black/20 p-3">
         {preview ? (
           <video
             src={preview}
@@ -87,7 +87,7 @@ export function ProductVideoUpload({
               type="button"
               variant="outline"
               size="sm"
-              className="gap-2 border-border/80"
+              className="w-full gap-2 border-border/80"
               disabled={uploading}
               onClick={() => inputRef.current?.click()}
             >

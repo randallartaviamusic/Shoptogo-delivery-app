@@ -1397,7 +1397,7 @@ export default function BusinessPage() {
       )}
 
       <Dialog open={productDialog} onOpenChange={setProductDialog}>
-        <DialogContent className="phone-dialog max-h-[88vh] overflow-y-auto border-border/80 bg-card">
+        <DialogContent className="phone-dialog max-h-[88vh] overflow-y-auto border-border/80 bg-card [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle className="font-display">
               {editing ? "Editar producto" : "Nuevo producto"}
@@ -1408,7 +1408,7 @@ export default function BusinessPage() {
                 : "Va a aparecer al azar entre los productos de tu rubro."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleProductSubmit} className="space-y-3.5">
+          <form onSubmit={handleProductSubmit} className="min-w-0 space-y-3.5">
             <div className="space-y-1.5">
               <Label htmlFor="product-name">Nombre</Label>
               <Input
@@ -1456,7 +1456,7 @@ export default function BusinessPage() {
                     setProductForm({ ...productForm, category: value })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full min-w-0">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1498,7 +1498,7 @@ export default function BusinessPage() {
                           })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="w-full min-w-0">
                           <SelectValue placeholder="Sin especificar" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1563,12 +1563,12 @@ export default function BusinessPage() {
                     Élite
                   </span>
                 </div>
-                <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-accent/30 bg-accent/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-accent/30 bg-accent/[0.04] p-3">
                   <div className="flex items-start gap-2.5">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
                       <Crown className="size-4" />
                     </span>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs font-semibold">
                         Subir video es exclusivo del plan Élite
                       </p>
