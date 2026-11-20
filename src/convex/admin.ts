@@ -85,6 +85,13 @@ export const users = query({
         isAdmin: isAdminEmail(user.email),
         sameEmail: emailCount.get((user.email ?? "").trim().toLowerCase()) ?? 1,
         businessName: businessByOwner.get(user._id)?.name ?? null,
+        // Portada visible en la lista: la tienda para negocios y la portada
+        // personal (o el avatar) para repartidores y compradores.
+        image:
+          businessByOwner.get(user._id)?.image?.trim() ||
+          user.coverImage?.trim() ||
+          user.image?.trim() ||
+          null,
         orders: orderCount.get(user._id) ?? 0,
         swipes: swipeCount.get(user._id) ?? 0,
       }))

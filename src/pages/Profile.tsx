@@ -84,6 +84,7 @@ type AccountRow = {
   isAdmin: boolean;
   sameEmail: number;
   businessName: string | null;
+  image: string | null;
   orders: number;
   swipes: number;
 };
@@ -834,6 +835,23 @@ export default function ProfilePage() {
                     key={account._id}
                     className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/70 bg-black/20 p-3"
                   >
+                    {account.image ? (
+                      <img
+                        src={account.image}
+                        alt={`Portada de ${account.businessName ?? account.name ?? "la cuenta"}`}
+                        className="size-14 shrink-0 rounded-xl border border-border/60 object-cover"
+                      />
+                    ) : (
+                      <div className="flex size-14 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-secondary/40 text-muted-foreground">
+                        {account.role === "business" ? (
+                          <Store className="size-5" />
+                        ) : account.role === "courier" ? (
+                          <Bike className="size-5" />
+                        ) : (
+                          <UserRound className="size-5" />
+                        )}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                         <span className="truncate">
