@@ -29,6 +29,14 @@ export const promoKindValidator = v.union(
 );
 export type PromoKind = Infer<typeof promoKindValidator>;
 
+/** Un tramo de atención semanal: día 0 = domingo, 1 = lunes ... 6 = sábado. */
+export const businessHourValidator = v.object({
+  day: v.number(),
+  open: v.string(),
+  close: v.string(),
+});
+export type BusinessHour = Infer<typeof businessHourValidator>;
+
 /** Suscripción mensual: tres planes de precio fijo, sin comisión por venta. */
 export const subscriptionPlanValidator = v.union(
   v.literal("basico"),
@@ -290,6 +298,9 @@ const schema = defineSchema(
       rating: v.number(),
       reviews: v.number(),
       isOpen: v.boolean(),
+      // Horario semanal opcional. Cuando existe, `isOpen` se calcula solo a
+      // partir de estos tramos y el interruptor manual queda deshabilitado.
+      hours: v.optional(v.array(businessHourValidator)),
       isDemo: v.optional(v.boolean()),
       // Se completa cuando la administración verifica al dueño del local.
       // Sirve para mostrar el sello de confianza sin exponer datos privados.

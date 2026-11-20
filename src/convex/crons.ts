@@ -3,6 +3,15 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
+// El local se abre y cierra solo según su horario: recalcular cada minuto
+// mantiene alineados el interruptor, el directorio y los pedidos.
+crons.interval(
+  "actualizar horarios de atencion",
+  { minutes: 1 },
+  internal.businesses.syncOpenState,
+  {},
+);
+
 // Un pedido listo que nadie toma no puede quedar esperando para siempre: a la
 // hora se cancela solo, además de la cancelación manual del local a los 30 min.
 crons.interval(

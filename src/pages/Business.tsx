@@ -43,6 +43,14 @@ import type { CashIssueKind, OrderStatus } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { CASH_ISSUE_LABELS } from "@/lib/cash";
 import { getDepartment } from "@/lib/departments";
+import {
+  BUSINESS_DAY_LABELS,
+  BUSINESS_DAY_ORDER,
+  DEFAULT_BUSINESS_HOURS,
+  isBusinessOpenAt,
+  parseBusinessTime,
+  type BusinessHour,
+} from "@/lib/hours";
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
 import { ASSIGNMENT_RULES } from "@/lib/delivery";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
@@ -54,6 +62,7 @@ import {
   ArrowRight,
   ChefHat,
   ClipboardList,
+  Clock,
   DollarSign,
   Loader2,
   MapPin,
@@ -192,6 +201,8 @@ export default function BusinessPage() {
     deliveryPromo: null as DeliveryPromo,
     pickupInstructions: "",
     packagingInstructions: "",
+    hoursEnabled: false,
+    hours: DEFAULT_BUSINESS_HOURS.map((entry) => ({ ...entry })),
   });
   const [coverStorageId, setCoverStorageId] = useState<Id<"_storage"> | null>(
     null,
@@ -244,6 +255,10 @@ export default function BusinessPage() {
 
   const business = mine.business;
   const products = mine.products;
+  const autoSchedule = Boolean(business.hours?.length);
+  const isOpenNow = autoSchedule
+    ? isBusinessOpenAt(business.hours, now)
+    : business.isOpen;
   const departmentInfo = getDepartment(business.department);
   const productCategories = departmentInfo.subcategories;
   const stats = board?.stats;
@@ -353,6 +368,10 @@ export default function BusinessPage() {
       deliveryPromo: business.deliveryPromo ?? null,
       pickupInstructions: business.pickupInstructions ?? "",
       packagingInstructions: business.packagingInstructions ?? "",
+      hoursEnabled: Boolean(business.hours?.length),
+      hours: business.hours?.length
+        ? business.hours.map((entry) => ({ ...entry }))
+        : DEFAULT_BUSINESS_HOURS.map((entry) => ({ ...entry })),
     });
     setCoverStorageId(null);
     setSettingsDialog(true);
@@ -384,6 +403,30 @@ export default function BusinessPage() {
     }
   };
 
+  const updateSettingsHour = (
+    day: number,
+    patch: Partial<Pick<BusinessHour, "open" | "close">>,
+  ) => {
+    setSettingsForm((current) => ({
+      ...current,
+      hours: current.hours.map((entry) =>
+        entry.day === day ? { ...entry, ...patch } : entry,
+      ),
+    }));
+  };
+
+  const toggleSettingsDay = (day: number, enabled: boolean) => {
+    setSettingsForm((current) => ({
+      ...current,
+      hours: enabled
+        ? [
+            ...current.hours.filter((entry) => entry.day !== day),
+            { day, open: "09:00", close: "21:00" },
+          ].sort((a, b) => a.day - b.day)
+        : current.hours.filter((entry) => entry.day !== day),
+    }));
+  };
+
   const handleSettingsSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!settingsForm.location) {
@@ -393,6 +436,23 @@ export default function BusinessPage() {
     if (settingsForm.address.trim().length < 5) {
       toast.error("Escribí la dirección del local");
       return;
+    }
+    if (settingsForm.hoursEnabled) {
+      if (settingsForm.hours.length === 0) {
+        toast.error("Elegí al menos un día de atención");
+        return;
+      }
+      const invalid = settingsForm.hours.find((entry) => {
+        const open = parseBusinessTime(entry.open);
+        const close = parseBusinessTime(entry.close);
+        return open === null || close === null || open === close;
+      });
+      if (invalid) {
+        toast.error(
+          `Revisá el horario del ${BUSINESS_DAY_LABELS[invalid.day].toLowerCase()}`,
+        );
+        return;
+      }
     }
     try {
       await updateBusiness({
@@ -406,6 +466,7 @@ export default function BusinessPage() {
         deliveryPromo: settingsForm.deliveryPromo,
         pickupInstructions: settingsForm.pickupInstructions,
         packagingInstructions: settingsForm.packagingInstructions,
+        hours: settingsForm.hoursEnabled ? settingsForm.hours : null,
       });
       toast.success("Local actualizado");
       setSettingsDialog(false);
@@ -505,35 +566,52 @@ export default function BusinessPage() {
             {business.tagline} · {business.address}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" className="gap-2 border-border/80" onClick={openSettings}>
             <Settings2 className="size-4" />
             Editar local
           </Button>
-          <div
-            className={cn(
-              "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold",
-              business.isOpen
-                ? "border-accent/30 bg-accent/10 text-accent"
-                : "border-border/80 bg-secondary/50 text-muted-foreground",
-            )}
-          >
-            {business.isOpen ? "Abierto" : "Cerrado"}
-            <Switch
-              checked={business.isOpen}
-              onCheckedChange={async (checked) => {
-                try {
-                  await updateBusiness({ isOpen: checked });
-                  toast(checked ? "Local abierto" : "Local cerrado", {
-                    description: checked
-                      ? "Tu catálogo vuelve a aparecer en el mazo."
-                      : "Tu catálogo no se mostrará hasta que lo abras.",
-                  });
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "No pudimos cambiar");
+          <div className="flex flex-col items-end gap-1">
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold",
+                isOpenNow
+                  ? "border-accent/30 bg-accent/10 text-accent"
+                  : "border-border/80 bg-secondary/50 text-muted-foreground",
+              )}
+            >
+              {isOpenNow ? "Abierto" : "Cerrado"}
+              <Switch
+                checked={isOpenNow}
+                disabled={autoSchedule}
+                aria-label={
+                  autoSchedule
+                    ? "Estado automático según el horario de atención"
+                    : "Abrir o cerrar el local"
                 }
-              }}
-            />
+                title={
+                  autoSchedule
+                    ? "Se abre y cierra solo según tu horario de atención"
+                    : undefined
+                }
+                onCheckedChange={async (checked) => {
+                  if (autoSchedule) return;
+                  try {
+                    await updateBusiness({ isOpen: checked });
+                    toast(checked ? "Local abierto" : "Local cerrado", {
+                      description: checked
+                        ? "Tu catálogo vuelve a aparecer en el mazo."
+                        : "Tu catálogo no se mostrará hasta que lo abras.",
+                    });
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "No pudimos cambiar");
+                  }
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              {autoSchedule ? "Automático según horario" : "Control manual"}
+            </p>
           </div>
         </div>
       </div>
@@ -1623,6 +1701,106 @@ export default function BusinessPage() {
                 El costo de envío lo calcula Shop To Go según la distancia
                 entre tu local y el punto de entrega del cliente.
               </p>
+            </div>
+            <div className="space-y-2.5 rounded-2xl border border-border/70 bg-black/20 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                    <Clock className="size-3.5" /> Horario de atención
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                    Activalo para que el local se abra y cierre solo. Fuera del
+                    horario el catálogo no recibe pedidos.
+                  </p>
+                </div>
+                <Switch
+                  checked={settingsForm.hoursEnabled}
+                  onCheckedChange={(checked) =>
+                    setSettingsForm((current) => ({
+                      ...current,
+                      hoursEnabled: checked,
+                      hours:
+                        checked && current.hours.length === 0
+                          ? DEFAULT_BUSINESS_HOURS.map((entry) => ({ ...entry }))
+                          : current.hours,
+                    }))
+                  }
+                  aria-label="Abrir y cerrar automáticamente según el horario"
+                />
+              </div>
+              {settingsForm.hoursEnabled && (
+                <div className="space-y-1.5">
+                  {BUSINESS_DAY_ORDER.map((day) => {
+                    const entry = settingsForm.hours.find(
+                      (item) => item.day === day,
+                    );
+                    const label = BUSINESS_DAY_LABELS[day];
+                    return (
+                      <div
+                        key={day}
+                        className="rounded-xl border border-border/60 bg-black/20 px-2.5 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            id={`settings-hours-${day}`}
+                            type="checkbox"
+                            checked={Boolean(entry)}
+                            onChange={(event) =>
+                              toggleSettingsDay(day, event.target.checked)
+                            }
+                            className="size-3.5 shrink-0 accent-[var(--accent)]"
+                          />
+                          <label
+                            htmlFor={`settings-hours-${day}`}
+                            className="flex-1 text-[11px] font-medium"
+                          >
+                            {label}
+                          </label>
+                          {!entry && (
+                            <span className="text-[10px] text-muted-foreground">
+                              Cerrado
+                            </span>
+                          )}
+                        </div>
+                        {entry && (
+                          <div className="mt-1.5 flex items-center gap-1.5 pl-5">
+                            <Input
+                              type="time"
+                              value={entry.open}
+                              onChange={(event) =>
+                                updateSettingsHour(day, {
+                                  open: event.target.value,
+                                })
+                              }
+                              aria-label={`Apertura del ${label.toLowerCase()}`}
+                              className="h-8 min-w-0 flex-1 border-border/80 bg-black/30 px-2 text-[11px] [color-scheme:dark]"
+                            />
+                            <span className="text-[10px] text-muted-foreground">
+                              a
+                            </span>
+                            <Input
+                              type="time"
+                              value={entry.close}
+                              onChange={(event) =>
+                                updateSettingsHour(day, {
+                                  close: event.target.value,
+                                })
+                              }
+                              aria-label={`Cierre del ${label.toLowerCase()}`}
+                              className="h-8 min-w-0 flex-1 border-border/80 bg-black/30 px-2 text-[11px] [color-scheme:dark]"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] leading-relaxed text-muted-foreground">
+                    Los horarios se guardan al tocar “Guardar local”. Si el
+                    cierre es más temprano que la apertura, se entiende que
+                    termina al día siguiente.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pickup-instructions">Instrucciones para retiro</Label>

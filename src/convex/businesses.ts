@@ -1,10 +1,19 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { geoPointValidator, promoKindValidator } from "./schema";
+import {
+  businessHourValidator,
+  geoPointValidator,
+  promoKindValidator,
+} from "./schema";
 import { planTier } from "../lib/subscriptions";
+import {
+  isBusinessOpenAt,
+  normalizeBusinessHours,
+  type BusinessHour,
+} from "../lib/hours";
 import { subscriptionAccess } from "./subscriptions";
 import { isAccountVerified } from "./verification";
 import {
@@ -538,6 +547,8 @@ export const update = mutation({
     image: v.optional(v.string()),
     // Portada nueva subida desde la galería. Tiene prioridad sobre `image`.
     coverStorageId: v.optional(v.id("_storage")),
+    // Horario semanal. null = se borra y vuelve el control manual.
+    hours: v.optional(v.union(v.array(businessHourValidator), v.null())),
     // Promoción de envío del local. null = queda sin promoción.
     deliveryPromo: v.optional(v.union(promoKindValidator, v.null())),
     pickupInstructions: v.optional(v.string()),
@@ -562,7 +573,43 @@ export const update = mutation({
     }
     if (args.etaMinutes !== undefined)
       patch.etaMinutes = Math.max(5, Math.round(args.etaMinutes));
-    if (args.isOpen !== undefined) patch.isOpen = args.isOpen;
+
+    // El horario manda sobre el interruptor: se recalcula el estado actual
+    // cada vez que se guarda, y el cron lo mantiene al día después.
+    let nextHours: BusinessHour[] | undefined = business.hours;
+    if (args.hours !== undefined) {
+      if (args.hours === null) {
+        patch.hours = undefined;
+        nextHours = undefined;
+      } else {
+        let normalized: BusinessHour[];
+        try {
+          normalized = normalizeBusinessHours(args.hours);
+        } catch (error) {
+          throw new ConvexError(
+            error instanceof Error ? error.message : "El horario no es válido",
+          );
+        }
+        if (normalized.length > 0) {
+          patch.hours = normalized;
+          nextHours = normalized;
+        } else {
+          patch.hours = undefined;
+          nextHours = undefined;
+        }
+      }
+    }
+    if (args.isOpen !== undefined) {
+      if (nextHours?.length) {
+        throw new ConvexError(
+          "Tu local se abre y cierra solo según el horario configurado",
+        );
+      }
+      patch.isOpen = args.isOpen;
+    } else if (nextHours?.length) {
+      patch.isOpen = isBusinessOpenAt(nextHours);
+    }
+
     if (args.image !== undefined && args.image.trim().length > 0)
       patch.image = args.image.trim();
     if (args.coverStorageId) {
@@ -589,6 +636,31 @@ export const update = mutation({
 
     await ctx.db.patch(business._id, patch);
     return null;
+  },
+});
+
+/**
+ * Mantiene `isOpen` alineado con el horario de cada local. Lo llama el cron
+ * cada minuto: así el interruptor, el directorio y el carrito cambian solos
+ * al llegar la hora de apertura o cierre.
+ */
+export const syncOpenState = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const businesses = await ctx.db.query("businesses").collect();
+    let updated = 0;
+
+    for (const business of businesses) {
+      if (!business.hours?.length) continue;
+      const nextOpen = isBusinessOpenAt(business.hours, now);
+      if (business.isOpen !== nextOpen) {
+        await ctx.db.patch(business._id, { isOpen: nextOpen });
+        updated += 1;
+      }
+    }
+
+    return { updated };
   },
 });
 
