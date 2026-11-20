@@ -156,7 +156,9 @@ export function VerificationCard() {
       setAccepted(false);
       toast.success("Datos guardados", {
         description:
-          "Confirmá el teléfono por SMS y consultá la cédula para evitar la revisión manual cuando los proveedores estén configurados.",
+          data.automation.phone && data.automation.identity
+            ? "Confirmá el teléfono por SMS y consultá la cédula para activar la cuenta sin esperar revisión."
+            : "Tu cuenta quedó en revisión manual. La administración va a validar el teléfono y la cédula.",
       });
     } catch (error) {
       toast.error(
@@ -222,43 +224,50 @@ export function VerificationCard() {
           <p className="text-[10px] text-muted-foreground">
             {phoneVerified ? "Teléfono confirmado por SMS." : "Verificalo con un código SMS para usarlo como contacto."}
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 border-accent/35 text-[11px]"
-              disabled={autoBusy !== null || phoneVerified}
-              onClick={() => void handleSendCode()}
-            >
-              {autoBusy === "phone" ? <Loader2 className="size-3.5 animate-spin" /> : <Phone className="size-3.5" />}
-              {phoneVerified ? "Teléfono confirmado" : codeSent ? "Reenviar código" : "Enviar código SMS"}
-            </Button>
-            {codeSent && (
-              <div className="flex min-w-0 flex-1 gap-1.5">
-                <Input
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={10}
-                  placeholder="Código SMS"
-                  aria-label="Código de verificación por SMS"
-                  className="h-8 text-xs"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 gap-1.5 bg-accent text-accent-foreground"
-                  disabled={autoBusy !== null || code.trim().length < 4}
-                  onClick={() => void handleCheckCode()}
-                >
-                  {autoBusy === "code" ? <Loader2 className="size-3.5 animate-spin" /> : <MessageSquareCode className="size-3.5" />}
-                  Confirmar
-                </Button>
-              </div>
-            )}
-          </div>
+          {data.automation.phone || phoneVerified ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 border-accent/35 text-[11px]"
+                disabled={autoBusy !== null || phoneVerified}
+                onClick={() => void handleSendCode()}
+              >
+                {autoBusy === "phone" ? <Loader2 className="size-3.5 animate-spin" /> : <Phone className="size-3.5" />}
+                {phoneVerified ? "Teléfono confirmado" : codeSent ? "Reenviar código" : "Enviar código SMS"}
+              </Button>
+              {codeSent && (
+                <div className="flex min-w-0 flex-1 gap-1.5">
+                  <Input
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={10}
+                    placeholder="Código SMS"
+                    aria-label="Código de verificación por SMS"
+                    className="h-8 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 gap-1.5 bg-accent text-accent-foreground"
+                    disabled={autoBusy !== null || code.trim().length < 4}
+                    onClick={() => void handleCheckCode()}
+                  >
+                    {autoBusy === "code" ? <Loader2 className="size-3.5 animate-spin" /> : <MessageSquareCode className="size-3.5" />}
+                    Confirmar
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="rounded-lg border border-border/70 bg-black/20 px-2.5 py-2 text-[10px] leading-relaxed text-muted-foreground">
+              La confirmación por SMS todavía no está disponible. Guardá tus
+              datos y la administración revisará el teléfono manualmente.
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="verification-id" className="flex items-center gap-1.5">
@@ -276,17 +285,24 @@ export function VerificationCard() {
               ? `Confirmada contra el registro civil${data.idVerifiedName ? ` como ${data.idVerifiedName}` : ""}.`
               : "Se consulta en el registro civil y no se muestra en el catálogo."}
           </p>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 border-accent/35 text-[11px]"
-            disabled={autoBusy !== null || idVerified}
-            onClick={() => void handleCheckId()}
-          >
-            {autoBusy === "identity" ? <Loader2 className="size-3.5 animate-spin" /> : <IdCard className="size-3.5" />}
-            {idVerified ? "Cédula confirmada" : "Consultar cédula"}
-          </Button>
+          {data.automation.identity || idVerified ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 border-accent/35 text-[11px]"
+              disabled={autoBusy !== null || idVerified}
+              onClick={() => void handleCheckId()}
+            >
+              {autoBusy === "identity" ? <Loader2 className="size-3.5 animate-spin" /> : <IdCard className="size-3.5" />}
+              {idVerified ? "Cédula confirmada" : "Consultar cédula"}
+            </Button>
+          ) : (
+            <p className="rounded-lg border border-border/70 bg-black/20 px-2.5 py-2 text-[10px] leading-relaxed text-muted-foreground">
+              La consulta automática no está configurada. Guardá tus datos y la
+              administración validará la cédula manualmente.
+            </p>
+          )}
         </div>
 
         {isCourier ? (

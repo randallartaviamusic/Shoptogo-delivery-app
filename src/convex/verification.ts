@@ -142,7 +142,7 @@ export const submit = mutation({
     if (!args.accepted) {
       throw new Error("Confirmá que los datos son tuyos y que podés recibir llamadas");
     }
-    if ((user.name ?? "").trim().length < 3) {
+    if ((user.name ?? "").trim().length < 2) {
       throw new Error("Completá tu nombre completo antes de verificar la cuenta");
     }
     if (!isValidCostaRicaPhone(args.phone)) {
@@ -155,13 +155,8 @@ export const submit = mutation({
     if (user.role === "courier" && vehicle.length < 3) {
       throw new Error("Contanos en qué vehículo repartís");
     }
-    if (user.role === "business") {
-      const business = await ownedBusiness(ctx, userId);
-      if (!business) {
-        throw new Error("Primero cargá los datos de tu local en el onboarding");
-      }
-    }
-
+    // La cuenta puede guardar teléfono y cédula antes de publicar el local: la
+    // aprobación automática sí espera al negocio, pero la revisión manual no.
     const business =
       user.role === "business" ? await ownedBusiness(ctx, userId) : null;
     const phone = normalizeCostaRicaPhone(args.phone);
@@ -551,14 +546,18 @@ export const checkId = action({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Necesitás iniciar sesión");
-    const apiKey = process.env.DIDIT_API_KEY?.trim();
-    if (!apiKey) {
-      throw new Error(
-        "La consulta automática de cédula no está configurada. La administración puede revisar tu cuenta manualmente",
-      );
-    }
     if (!isValidCostaRicaId(args.idNumber)) {
       throw new Error("Escribí la cédula con 9 dígitos");
+    }
+    const apiKey = process.env.DIDIT_API_KEY?.trim();
+    if (!apiKey) {
+      // Sin proveedor no se rechaza ni se aprueba: la cuenta sigue por revisión
+      // manual, igual que cuando el registro civil no responde.
+      return {
+        matched: false,
+        pendingReview: true,
+        reason: "La consulta automática no está configurada; la cédula quedará en revisión manual",
+      };
     }
     const state = await ctx.runQuery(internal.verification.stateForAutomation, {
       userId,
