@@ -535,6 +535,24 @@ const schema = defineSchema(
       updatedAt: v.number(),
     }).index("by_owner", ["ownerId"]),
 
+    // Recordatorio automático del próximo pago enviado por WhatsApp. Se guarda
+    // una fila por vencimiento para no repetir el mensaje cada hora.
+    subscriptionReminders: defineTable({
+      ownerId: v.id("users"),
+      role: subscriptionRoleValidator,
+      // Vencimiento que originó el aviso: al renovar cambia y llega el próximo.
+      activeUntil: v.number(),
+      phone: v.string(),
+      message: v.string(),
+      status: notificationStatusValidator,
+      attempts: v.number(),
+      lastError: v.optional(v.string()),
+      createdAt: v.number(),
+      sentAt: v.optional(v.number()),
+    })
+      .index("by_period", ["ownerId", "activeUntil"])
+      .index("by_status", ["status", "createdAt"]),
+
     // Comprobantes que el negocio o repartidor reporta y la administración
     // revisa. Cada pago conserva monto, referencia, fecha y quién lo aprobó.
     subscriptionPayments: defineTable({

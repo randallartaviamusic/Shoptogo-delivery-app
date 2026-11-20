@@ -27,7 +27,7 @@ import { buildNotifyDraft } from "../lib/notify";
 /** URL pública de la app, necesaria para los enlaces de un toque. */
 const APP_URL_ENV = ["PUBLIC_APP_URL", "APP_URL", "SITE_URL"] as const;
 
-function appUrl() {
+export function appUrl() {
   for (const name of APP_URL_ENV) {
     const value = process.env[name]?.trim();
     if (value) return value.replace(/\/+$/, "");
@@ -248,7 +248,7 @@ export const dispatch = internalAction({
   },
 });
 
-async function sendWhatsapp(input: {
+export async function sendWhatsapp(input: {
   token: string;
   phoneId: string;
   to: string;

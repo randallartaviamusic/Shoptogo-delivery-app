@@ -35,6 +35,7 @@ import {
 } from "@/lib/subscriptions";
 import type { PaymentMethod, SubscriptionPlanId } from "@/lib/subscriptions";
 import { money } from "@/lib/format";
+import { displayPhone } from "@/lib/notify";
 import { playReminderSound } from "@/lib/reminderSounds";
 import { isValidCostaRicaPhone } from "@/lib/trust";
 import { cn } from "@/lib/utils";
@@ -147,6 +148,7 @@ export default function SubscriptionPage() {
   const cashPhoneValid = isValidCostaRicaPhone(cashPhone);
   const cashAddressValid = cashAddress.trim().length >= 5;
   const cashReady = cashPhoneValid && cashAddressValid;
+  const reminderPhone = displayPhone(data.contactPhone);
   const cashMessage = cashPickupWhatsappMessage({
     name: user?.name ?? "",
     audience: data.role,
@@ -747,8 +749,8 @@ export default function SubscriptionPage() {
                 Cuenta regresiva con alarma
               </h2>
               <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-                Te avisamos cuando falten pocos días para el vencimiento. Elegí el
-                sonido y probalo acá.
+                Te avisamos en la app y por WhatsApp cuando falten pocos días para
+                el vencimiento. Elegí el sonido y probalo acá.
               </p>
             </div>
             <Switch
@@ -784,6 +786,16 @@ export default function SubscriptionPage() {
               Probar sonido
             </Button>
           </div>
+          <p className="mt-3 flex items-start gap-1.5 rounded-xl border border-border/70 bg-black/20 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+            <MessageCircle className="mt-0.5 size-3.5 shrink-0 text-accent" />
+            <span>
+              {!reminderEnabled
+                ? "El recordatorio está apagado: no se envía el WhatsApp ni suena la alarma."
+                : reminderPhone
+                  ? `El mismo aviso se envía automáticamente por WhatsApp a ${reminderPhone}.`
+                  : "Para recibir también el aviso por WhatsApp, guardá tu número en tu perfil."}
+            </span>
+          </p>
           <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
             Si el navegador bloquea el audio automático, tocá "Probar sonido" para
             habilitarlo; la cuenta regresiva siempre está visible.

@@ -29,6 +29,16 @@ crons.interval(
   { limit: 20 },
 );
 
+// Recordatorio de pago: una semana antes del vencimiento se escribe al
+// WhatsApp del negocio o repartidor. El cron revisa cada hora para no perder
+// la ventana y no repetir el aviso del mismo período.
+crons.interval(
+  "recordatorios de pago whatsapp",
+  { hours: 1 },
+  internal.subscriptions.sendDueReminders,
+  {},
+);
+
 // Las ofertas duran pocos minutos: se cierran solas para que el tablero no
 // muestre entregas que ya no están disponibles.
 crons.interval(

@@ -2,6 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import {
   action,
+  internalAction,
   internalMutation,
   internalQuery,
   mutation,
@@ -11,17 +12,21 @@ import { internal } from "./_generated/api";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { isAdminEmail } from "./branding";
+import { normalizePhone } from "../lib/notify";
+import { appUrl, sendWhatsapp } from "./notifications";
 import {
   DEFAULT_GRACE_DAYS,
   DEFAULT_IBAN,
   DEFAULT_SINPE_PHONE,
   DEFAULT_WHATSAPP_NUMBERS,
+  EXPIRING_DAYS,
   MAX_WHATSAPP_NUMBERS,
   REMINDER_SOUNDS,
   hasSubscriptionAccess,
   nextMonthlyExpiry,
   planOf,
   renewalBase,
+  subscriptionReminderMessage,
   subscriptionStatus,
 } from "../lib/subscriptions";
 import type { SubscriptionStatus } from "../lib/subscriptions";
@@ -645,6 +650,237 @@ export const setReminder = mutation({
       reminderEnabled: args.enabled,
     });
     return { sound, enabled: args.enabled };
+  },
+});
+
+// Aviso automático por WhatsApp una semana antes del vencimiento. Se manda una
+// sola vez por período; si el envío falla, el ciclo siguiente reintenta.
+const REMINDER_LEAD_MS = EXPIRING_DAYS * DAY_MS;
+const REMINDER_STALE_MS = 10 * 60_000;
+const REMINDER_MAX_ATTEMPTS = 3;
+
+/**
+ * Cuentas que están por vencer y todavía no recibieron el aviso de este
+ * período. Sólo devuelve suscripciones activas, con recordatorio habilitado y
+ * un WhatsApp válido guardado en la cuenta.
+ */
+export const reminderCandidates = internalQuery({
+  args: { now: v.number(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(50, args.limit ?? 25));
+    const base = appUrl();
+    const subscriptions = await ctx.db.query("subscriptions").collect();
+    const candidates: Array<{
+      ownerId: Id<"users">;
+      role: "business" | "courier";
+      activeUntil: number;
+      phone: string;
+      message: string;
+    }> = [];
+
+    for (const subscription of subscriptions) {
+      if (candidates.length >= limit) break;
+      const activeUntil = subscription.activeUntil;
+      if (!activeUntil || subscription.reminderEnabled === false) continue;
+      // Fuera de la semana previa (o ya vencida) no corresponde avisar.
+      if (activeUntil <= args.now || activeUntil - args.now > REMINDER_LEAD_MS) {
+        continue;
+      }
+
+      const user = await ctx.db.get(subscription.ownerId);
+      if (!user || (user.role !== "business" && user.role !== "courier")) {
+        continue;
+      }
+      const phone = normalizePhone(user.phone);
+      if (!phone) continue;
+
+      const existing = await ctx.db
+        .query("subscriptionReminders")
+        .withIndex("by_period", (q) =>
+          q.eq("ownerId", subscription.ownerId).eq("activeUntil", activeUntil),
+        )
+        .collect();
+      const settled = existing.some(
+        (reminder) =>
+          reminder.status === "sent" ||
+          reminder.status === "skipped" ||
+          (reminder.status === "queued" &&
+            args.now - reminder.createdAt < REMINDER_STALE_MS),
+      );
+      if (settled) continue;
+      const retryable = existing.some(
+        (reminder) =>
+          (reminder.status === "failed" &&
+            reminder.attempts < REMINDER_MAX_ATTEMPTS) ||
+          (reminder.status === "queued" &&
+            args.now - reminder.createdAt >= REMINDER_STALE_MS),
+      );
+      if (existing.length > 0 && !retryable) continue;
+
+      const business =
+        user.role === "business"
+          ? await ctx.db
+              .query("businesses")
+              .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+              .first()
+          : null;
+      candidates.push({
+        ownerId: user._id,
+        role: user.role,
+        activeUntil,
+        phone,
+        message: subscriptionReminderMessage({
+          name: business?.name?.trim() || user.name?.trim() || "",
+          audience: user.role,
+          plan: subscription.plan,
+          amount: subscription.price,
+          activeUntil,
+          link: base ? `${base}/suscripcion` : null,
+        }),
+      });
+    }
+
+    return candidates;
+  },
+});
+
+/**
+ * Reserva el envío de un período antes de llamar a WhatsApp. La transacción
+ * evita que dos ciclos del cron manden el mismo recordatorio a la vez.
+ */
+export const claimReminder = internalMutation({
+  args: {
+    ownerId: v.id("users"),
+    role: subscriptionRoleValidator,
+    activeUntil: v.number(),
+    phone: v.string(),
+    message: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("subscriptionReminders")
+      .withIndex("by_period", (q) =>
+        q.eq("ownerId", args.ownerId).eq("activeUntil", args.activeUntil),
+      )
+      .collect();
+    if (existing.some((reminder) => reminder.status === "sent" || reminder.status === "skipped")) {
+      return null;
+    }
+    if (
+      existing.some(
+        (reminder) =>
+          reminder.status === "queued" &&
+          now - reminder.createdAt < REMINDER_STALE_MS,
+      )
+    ) {
+      return null;
+    }
+
+    const retry = existing.find(
+      (reminder) =>
+        (reminder.status === "failed" &&
+          reminder.attempts < REMINDER_MAX_ATTEMPTS) ||
+        (reminder.status === "queued" &&
+          now - reminder.createdAt >= REMINDER_STALE_MS),
+    );
+    if (retry) {
+      await ctx.db.patch(retry._id, {
+        phone: args.phone,
+        message: args.message,
+        status: "queued",
+        lastError: undefined,
+        createdAt: now,
+      });
+      return retry._id;
+    }
+    if (existing.length > 0) return null;
+
+    return await ctx.db.insert("subscriptionReminders", {
+      ownerId: args.ownerId,
+      role: args.role,
+      activeUntil: args.activeUntil,
+      phone: args.phone,
+      message: args.message,
+      status: "queued",
+      attempts: 0,
+      createdAt: now,
+    });
+  },
+});
+
+/** Cierra el intento con el resultado real de WhatsApp. */
+export const finishReminder = internalMutation({
+  args: {
+    id: v.id("subscriptionReminders"),
+    status: v.union(v.literal("sent"), v.literal("failed")),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const reminder = await ctx.db.get(args.id);
+    if (!reminder) return;
+    await ctx.db.patch(args.id, {
+      status: args.status,
+      attempts: reminder.attempts + 1,
+      lastError: args.error?.slice(0, 300),
+      sentAt: args.status === "sent" ? Date.now() : undefined,
+    });
+  },
+});
+
+/**
+ * Envía los recordatorios de pago por WhatsApp. Sin credenciales de WhatsApp
+ * no marca nada como enviado: cuando se configuren, el próximo ciclo manda
+ * los avisos de las cuentas que sigan dentro de la semana previa.
+ */
+export const sendDueReminders = internalAction({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const token = process.env.WHATSAPP_TOKEN?.trim();
+    const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
+    if (!token || !phoneId) {
+      return { configured: false, sent: 0, failed: 0 };
+    }
+
+    const template = process.env.WHATSAPP_TEMPLATE_NAME?.trim();
+    const candidates = await ctx.runQuery(
+      internal.subscriptions.reminderCandidates,
+      { now: Date.now(), limit: args.limit ?? 25 },
+    );
+    let sent = 0;
+    let failed = 0;
+
+    for (const candidate of candidates) {
+      const id = await ctx.runMutation(
+        internal.subscriptions.claimReminder,
+        candidate,
+      );
+      if (!id) continue;
+      try {
+        await sendWhatsapp({
+          token,
+          phoneId,
+          to: candidate.phone,
+          text: candidate.message,
+          template,
+        });
+        await ctx.runMutation(internal.subscriptions.finishReminder, {
+          id,
+          status: "sent",
+        });
+        sent += 1;
+      } catch (error) {
+        await ctx.runMutation(internal.subscriptions.finishReminder, {
+          id,
+          status: "failed",
+          error:
+            error instanceof Error ? error.message : "Error de envío",
+        });
+        failed += 1;
+      }
+    }
+
+    return { configured: true, sent, failed };
   },
 });
 

@@ -258,6 +258,29 @@ export function formatExpiryDate(timestamp: number) {
   }).format(timestamp);
 }
 
+const MONTH_NAMES = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "setiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+
+/** Fecha corta para mensajes de WhatsApp, sin depender del ICU del servidor. */
+export function formatReminderDate(timestamp: number) {
+  const parts = costaRicaParts(timestamp);
+  const hour = String(parts.hour).padStart(2, "0");
+  const minute = String(parts.minute).padStart(2, "0");
+  return `${parts.day} de ${MONTH_NAMES[parts.month]} de ${parts.year} a las ${hour}:${minute}`;
+}
+
 export const EXPIRY_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 export const EXPIRY_MINUTES = [0, 15, 30, 45];
 
@@ -366,6 +389,33 @@ export function cashPickupWhatsappMessage(input: {
     `Quiero que pasen a retirar el pago a la dirección de ${place}: ${input.address.trim()}.`,
     `Vencimiento deseado: ${formatExpiry(input.expiryAt)}`,
   ].join("\n");
+}
+
+/**
+ * Texto del recordatorio automático de pago. Se envía al WhatsApp de la
+ * cuenta una semana antes del vencimiento, una sola vez por período.
+ */
+export function subscriptionReminderMessage(input: {
+  name: string;
+  audience: SubscriptionAudience;
+  plan: SubscriptionPlanId;
+  amount: number;
+  activeUntil: number;
+  link?: string | null;
+}) {
+  const plan = planOf(input.plan);
+  const account = input.name.trim() || "una cuenta de Shop To Go";
+  const role = input.audience === "business" ? "negocio" : "repartidor";
+  return [
+    `Hola, ${account}.`,
+    `Tu suscripción de ${role} en Shop To Go vence el ${formatReminderDate(input.activeUntil)}.`,
+    `Plan ${plan.name}: ${money(input.amount)} por mes.`,
+    "Renová antes del vencimiento para no suspender la operación.",
+    "Pagá por SINPE Móvil, efectivo o depósito desde la app.",
+    input.link ?? null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function countdownText(msRemaining: number) {
