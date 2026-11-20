@@ -77,7 +77,7 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlan> = 
     benefits: {
       business: [
         "Todo lo del plan Pro",
-        "Primera posición en el directorio y el mazo",
+        "Tarjetas animadas y borde dorado en el directorio y el mazo",
         "Soporte prioritario por WhatsApp",
         "Revisión prioritaria de reclamos de efectivo",
       ],

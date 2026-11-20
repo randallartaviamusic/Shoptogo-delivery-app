@@ -6,6 +6,8 @@ import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { VerificationBanner } from "@/components/VerificationBanner";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
+import { ProductMedia } from "@/components/ProductMedia";
+import { ProductVideoUpload } from "@/components/ProductVideoUpload";
 import { PromoBadge } from "@/components/PromoBadge";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import {
@@ -189,8 +191,12 @@ export default function BusinessPage() {
     price: "",
     category: "Hamburguesas",
     image: "",
+    video: "",
     attributes: {} as Record<string, string>,
   });
+  const [productVideoStorageId, setProductVideoStorageId] =
+    useState<Id<"_storage"> | null>(null);
+  const [removeProductVideo, setRemoveProductVideo] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     name: "",
     tagline: "",
@@ -304,8 +310,11 @@ export default function BusinessPage() {
       price: "",
       category: departmentInfo.subcategories[0] ?? business.category,
       image: "",
+      video: "",
       attributes: {},
     });
+    setProductVideoStorageId(null);
+    setRemoveProductVideo(false);
     setProductDialog(true);
   };
 
@@ -317,6 +326,7 @@ export default function BusinessPage() {
       price: String(product.price),
       category: product.category,
       image: product.image,
+      video: product.video ?? "",
       attributes: Object.fromEntries(
         (product.attributes ?? []).map((attribute) => [
           attribute.key,
@@ -324,6 +334,8 @@ export default function BusinessPage() {
         ]),
       ),
     });
+    setProductVideoStorageId(null);
+    setRemoveProductVideo(false);
     setProductDialog(true);
   };
 
@@ -340,12 +352,20 @@ export default function BusinessPage() {
         .filter(([, value]) => value.length > 0)
         .map(([key, value]) => ({ key, value })),
     };
+    const videoPayload = productVideoStorageId
+      ? { videoStorageId: productVideoStorageId }
+      : {};
     try {
       if (editing) {
-        await updateProduct({ productId: editing._id, ...payload });
+        await updateProduct({
+          productId: editing._id,
+          ...payload,
+          ...videoPayload,
+          removeVideo: removeProductVideo || undefined,
+        });
         toast.success("Producto actualizado");
       } else {
-        await addProduct(payload);
+        await addProduct({ ...payload, ...videoPayload });
         toast.success("Producto publicado en el mazo");
       }
       setProductDialog(false);
@@ -1280,8 +1300,9 @@ export default function BusinessPage() {
                   className="surface-raised flex items-center gap-3 rounded-2xl p-3"
                 >
                   <div className="relative shrink-0">
-                    <DishImage
-                      src={product.image}
+                    <ProductMedia
+                      image={product.image}
+                      video={product.video}
                       alt={product.name}
                       className="size-16 rounded-xl"
                     />
@@ -1477,8 +1498,21 @@ export default function BusinessPage() {
                 </div>
               </div>
             )}
+            <ProductVideoUpload
+              preview={productForm.video || undefined}
+              onChange={(storageId, preview) => {
+                setProductVideoStorageId(storageId);
+                setRemoveProductVideo(false);
+                setProductForm((current) => ({ ...current, video: preview }));
+              }}
+              onRemove={() => {
+                setProductVideoStorageId(null);
+                setRemoveProductVideo(true);
+                setProductForm((current) => ({ ...current, video: "" }));
+              }}
+            />
             <div className="space-y-1.5">
-              <Label htmlFor="product-image">Imagen (URL)</Label>
+              <Label htmlFor="product-image">Imagen de respaldo (URL)</Label>
               <Input
                 id="product-image"
                 value={productForm.image}
@@ -1488,7 +1522,8 @@ export default function BusinessPage() {
                 placeholder="https://..."
               />
               <p className="text-[10px] text-muted-foreground">
-                Si la dejás vacía usamos una foto acorde a la categoría.
+                Se usa si no subís un video o mientras el video carga. Si la
+                dejás vacía usamos una foto acorde a la categoría.
               </p>
             </div>
             <Button

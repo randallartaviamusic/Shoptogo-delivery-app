@@ -126,6 +126,7 @@ export const deck = query({
           description: product.description,
           price: product.price,
           image: product.image,
+          video: product.video ?? null,
           category: product.category,
           department: departmentOf(product),
           attributes: product.attributes ?? [],
@@ -136,6 +137,7 @@ export const deck = query({
           businessName: business.name,
           businessCategory: business.category,
           businessImage: business.image,
+          elite: accessByBusiness.get(business._id)?.tier === 3,
           rating: business.rating,
           reviews: business.reviews,
           etaMinutes: business.etaMinutes,
@@ -144,10 +146,11 @@ export const deck = query({
         };
       })
       .sort((a, b) => {
-        // Pro y Élite aparecen primero: visibilidad, no comisión.
-        const tierDiff =
-          (accessByBusiness.get(b.businessId)?.tier ?? 1) -
-          (accessByBusiness.get(a.businessId)?.tier ?? 1);
+        // Pro y Élite comparten prioridad sobre Básico; Élite se distingue
+        // por la card animada, no por una primera posición fija.
+        const priority = (businessId: string) =>
+          Math.min(2, accessByBusiness.get(businessId)?.tier ?? 1);
+        const tierDiff = priority(b.businessId) - priority(a.businessId);
         if (tierDiff !== 0) return tierDiff;
         return (
           hash(`${userId ?? "guest"}:${a._id}`) -
@@ -370,6 +373,7 @@ export const saved = query({
         description: product.description,
         price: product.price,
         image: product.image,
+        video: product.video ?? null,
         category: product.category,
         tags: product.tags,
         promo: business.deliveryPromo ?? null,

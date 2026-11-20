@@ -1,5 +1,6 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DishImage } from "@/components/DishImage";
+import { ProductMedia } from "@/components/ProductMedia";
 import { PromoBadge } from "@/components/PromoBadge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
@@ -104,8 +105,9 @@ export default function FavoritesPage() {
               className="group overflow-hidden rounded-2xl border border-border/70 bg-card"
             >
               <div className="relative aspect-[4/3] overflow-hidden">
-                <DishImage
-                  src={item.image}
+                <ProductMedia
+                  image={item.image}
+                  video={item.video}
                   alt={item.name}
                   className="size-full transition-transform duration-500 group-hover:scale-105"
                 />

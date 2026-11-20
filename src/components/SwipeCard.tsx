@@ -1,4 +1,6 @@
 import { DishImage } from "@/components/DishImage";
+import { EliteAura } from "@/components/EliteAura";
+import { ProductMedia } from "@/components/ProductMedia";
 import { PromoBadge } from "@/components/PromoBadge";
 import { Button } from "@/components/ui/button";
 import { formatKm } from "@/lib/delivery";
@@ -22,6 +24,7 @@ export type Dish = {
   description: string;
   price: number;
   image: string;
+  video?: string | null;
   category: string;
   department?: string;
   attributes?: { key: string; value: string }[];
@@ -31,6 +34,7 @@ export type Dish = {
   businessName: string;
   businessCategory: string;
   businessImage: string;
+  elite?: boolean;
   rating: number;
   reviews: number;
   etaMinutes: number;
@@ -59,13 +63,15 @@ function deliveryText(delivery: Dish["delivery"], promo?: PromoKind | null) {
 function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
   return (
     <>
-      <DishImage
-        src={dish.image}
+      <ProductMedia
+        image={dish.image}
+        video={dish.video}
         alt={dish.name}
         className="absolute inset-0 size-full"
         imgClassName={cn("transition-transform duration-700", dimmed && "scale-105")}
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.72)_0%,rgba(6,6,7,0.05)_28%,rgba(6,6,7,0.35)_58%,rgba(6,6,7,0.94)_100%)]" />
+      {dish.elite && <EliteAura />}
 
       <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
         <div className="flex items-center gap-2 rounded-full border border-white/15 bg-black/45 py-1 pl-1 pr-3 backdrop-blur-md">
@@ -75,8 +81,13 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
             className="size-7 rounded-full"
           />
           <div className="leading-none">
-            <p className="text-[11px] font-semibold text-white">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-white">
               {dish.businessName}
+              {dish.elite && (
+                <span className="rounded bg-amber-300 px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-black">
+                  Élite
+                </span>
+              )}
             </p>
             <p className="mt-0.5 flex items-center gap-1 text-[10px] text-white/65">
               <Star className="size-2.5 fill-accent text-accent" />

@@ -316,6 +316,9 @@ const schema = defineSchema(
       description: v.string(),
       price: v.number(),
       image: v.string(),
+      // Video opcional subido por el local. Si existe, la card lo reproduce
+      // en lugar de la imagen.
+      video: v.optional(v.string()),
       category: v.string(),
       attributes: v.array(v.object({ key: v.string(), value: v.string() })),
       tags: v.array(v.string()),

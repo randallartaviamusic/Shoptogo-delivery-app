@@ -1,6 +1,8 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
+import { EliteAura } from "@/components/EliteAura";
+import { ProductMedia } from "@/components/ProductMedia";
 import { PromoBadge } from "@/components/PromoBadge";
 import { promoDiscount } from "@/lib/promo";
 import type { PromoKind } from "@/lib/promo";
@@ -540,6 +542,7 @@ function BusinessCard({
     reviews: number;
     productSearch: Array<{ name: string; category: string; price: number }>;
     isOpen: boolean;
+    elite: boolean;
     etaMinutes: number;
     delivery: DeliveryInfo;
     promo: PromoKind | null;
@@ -551,7 +554,13 @@ function BusinessCard({
   onToggleFavorite: (businessId: Id<"businesses">) => void;
 }) {
   return (
-    <article className="surface-raised group relative w-[15rem] shrink-0 overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]">
+    <article
+      className={cn(
+        "surface-raised group relative w-[15rem] shrink-0 overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]",
+        business.elite && "border-amber-300/70",
+      )}
+    >
+      {business.elite && <EliteAura />}
       <Link
         to={`/negocios/${business.slug}`}
         className="flex h-full flex-col"
@@ -579,7 +588,12 @@ function BusinessCard({
           {business.rating.toFixed(1)}
         </span>
         <div className="absolute inset-x-3 bottom-2.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-accent">
+          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+            {business.elite && (
+              <span className="rounded bg-amber-300 px-1 py-0.5 text-[8px] font-extrabold tracking-wider text-black">
+                Élite
+              </span>
+            )}
             {business.category}
           </p>
           <p className="truncate font-display text-sm font-extrabold text-white">
@@ -883,8 +897,9 @@ function Storefront({ slug }: { slug: string }) {
                     className="surface-raised flex gap-3 rounded-2xl p-3"
                   >
                     <div className="relative shrink-0">
-                      <DishImage
-                        src={product.image}
+                      <ProductMedia
+                        image={product.image}
+                        video={product.video}
                         alt={product.name}
                         className="size-20 rounded-xl"
                       />

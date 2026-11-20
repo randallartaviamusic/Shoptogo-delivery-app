@@ -29,6 +29,7 @@ import type { GeoPoint } from "../lib/delivery";
 type DbCtx = QueryCtx | MutationCtx;
 
 const DEFAULT_DEPARTMENT = "comida";
+const PRODUCT_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
 
 const DEPARTMENT_IMAGES: Record<string, string> = {
   comida:
@@ -89,6 +90,24 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
+}
+
+/** Valida el archivo y devuelve la URL pública del video del producto. */
+async function productVideoUrl(
+  ctx: MutationCtx,
+  storageId: Id<"_storage">,
+) {
+  const metadata = await ctx.storage.getMetadata(storageId);
+  if (!metadata) throw new ConvexError("No pudimos leer el video");
+  if (!metadata.contentType?.startsWith("video/")) {
+    throw new ConvexError("El archivo tiene que ser un video");
+  }
+  if (metadata.size > PRODUCT_VIDEO_MAX_BYTES) {
+    throw new ConvexError("El video no puede pesar más de 30 MB");
+  }
+  const url = await ctx.storage.getUrl(storageId);
+  if (!url) throw new ConvexError("No pudimos guardar el video");
+  return url;
 }
 
 async function requireUserId(ctx: DbCtx) {
@@ -246,6 +265,7 @@ export const directory = query({
           verified: Boolean(business.verifiedAt),
           isFavorite: favorites.has(String(business._id)),
           isOpen: business.isOpen,
+          elite: accessByBusiness.get(business._id)?.tier === 3,
           etaMinutes: business.etaMinutes,
           delivery: describeDelivery(business.location, viewer),
           promo: business.deliveryPromo ?? null,
@@ -256,14 +276,18 @@ export const directory = query({
           productSearch: productSearch.get(business._id) ?? [],
         };
       })
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        // Élite comparte la prioridad de Pro: su diferencial son las cards
+        // animadas, no una primera posición garantizada.
+        const priority = (id: Id<"businesses">) =>
+          Math.min(2, accessByBusiness.get(id)?.tier ?? 1);
+        return (
           Number(b.isOpen) - Number(a.isOpen) ||
-          (accessByBusiness.get(b._id)?.tier ?? 1) -
-            (accessByBusiness.get(a._id)?.tier ?? 1) ||
+          priority(b._id) - priority(a._id) ||
           b.rating - a.rating ||
-          a.name.localeCompare(b.name),
-      );
+          a.name.localeCompare(b.name)
+        );
+      });
   },
 });
 
@@ -386,6 +410,7 @@ export const storefront = query({
           description: product.description,
           price: product.price,
           image: product.image,
+          video: product.video ?? null,
           category: product.category,
           tags: product.tags,
           isAvailable: product.isAvailable,
@@ -400,6 +425,18 @@ export const generateCoverUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
     await requireUserId(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** URL temporal para subir el video de un producto desde la galería. */
+export const generateProductVideoUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    if (!(await ownedBusiness(ctx, userId))) {
+      throw new ConvexError("No tenés un negocio asociado");
+    }
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -671,6 +708,8 @@ export const addProduct = mutation({
     price: v.number(),
     category: v.string(),
     image: v.optional(v.string()),
+    // Video subido desde la galería; reemplaza a la imagen en las cards.
+    videoStorageId: v.optional(v.id("_storage")),
     tags: v.optional(v.array(v.string())),
     attributes: v.optional(
       v.array(v.object({ key: v.string(), value: v.string() })),
@@ -684,6 +723,9 @@ export const addProduct = mutation({
     if (name.length < 2) throw new Error("El producto necesita un nombre");
     if (args.price <= 0) throw new Error("El precio tiene que ser mayor a 0");
     const department = business.department ?? DEFAULT_DEPARTMENT;
+    const video = args.videoStorageId
+      ? await productVideoUrl(ctx, args.videoStorageId)
+      : undefined;
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
@@ -695,6 +737,7 @@ export const addProduct = mutation({
         args.image?.trim() ||
         departmentImage(department) ||
         business.image,
+      ...(video ? { video } : {}),
       category: args.category.trim() || "General",
       attributes: args.attributes ?? [],
       tags: args.tags ?? [],
@@ -712,6 +755,8 @@ export const updateProduct = mutation({
     price: v.optional(v.number()),
     category: v.optional(v.string()),
     image: v.optional(v.string()),
+    videoStorageId: v.optional(v.id("_storage")),
+    removeVideo: v.optional(v.boolean()),
     isAvailable: v.optional(v.boolean()),
     attributes: v.optional(
       v.array(v.object({ key: v.string(), value: v.string() })),
@@ -734,6 +779,10 @@ export const updateProduct = mutation({
     if (args.category !== undefined) patch.category = args.category.trim();
     if (args.image !== undefined && args.image.trim().length > 0)
       patch.image = args.image.trim();
+    if (args.removeVideo) patch.video = undefined;
+    if (args.videoStorageId) {
+      patch.video = await productVideoUrl(ctx, args.videoStorageId);
+    }
     if (args.isAvailable !== undefined) patch.isAvailable = args.isAvailable;
     if (args.attributes !== undefined) patch.attributes = args.attributes;
 
