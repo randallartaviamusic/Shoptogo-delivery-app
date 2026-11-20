@@ -69,6 +69,7 @@ import {
   Copy,
   Crown,
   DollarSign,
+  GripVertical,
   Loader2,
   MapPin,
   PackageCheck,
@@ -82,7 +83,7 @@ import {
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -147,6 +148,7 @@ export default function BusinessPage() {
   const addProduct = useMutation(api.businesses.addProduct);
   const updateProduct = useMutation(api.businesses.updateProduct);
   const duplicateProduct = useMutation(api.businesses.duplicateProduct);
+  const reorderProducts = useMutation(api.businesses.reorderProducts);
   const removeProduct = useMutation(api.businesses.removeProduct);
   const coupons = useQuery(api.coupons.mine);
   const createCoupon = useMutation(api.coupons.create);
@@ -192,6 +194,17 @@ export default function BusinessPage() {
   const [savingProduct, setSavingProduct] = useState(false);
   const [duplicatingProductId, setDuplicatingProductId] =
     useState<Id<"products"> | null>(null);
+  // Orden local mientras se arrastra; se conserva hasta que Convex confirma.
+  const [dragOrder, setDragOrder] = useState<Doc<"products">[] | null>(null);
+  const [draggingProductId, setDraggingProductId] =
+    useState<Id<"products"> | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const productRowRefs = useRef(new Map<Id<"products">, HTMLDivElement>());
+  const productDragRef = useRef<{
+    pointerId: number;
+    productId: Id<"products">;
+    order: Doc<"products">[];
+  } | null>(null);
   const [productForm, setProductForm] = useState({
     name: "",
     description: "",
@@ -223,6 +236,19 @@ export default function BusinessPage() {
   const [coverStorageId, setCoverStorageId] = useState<Id<"_storage"> | null>(
     null,
   );
+
+  // Suelta el orden optimista cuando el servidor ya devolvió el mismo orden.
+  useEffect(() => {
+    if (!dragOrder || draggingProductId || savingOrder) return;
+    const serverProducts = mine?.products;
+    if (!serverProducts) return;
+    const matches =
+      dragOrder.length === serverProducts.length &&
+      dragOrder.every(
+        (product, index) => product._id === serverProducts[index]?._id,
+      );
+    if (matches) setDragOrder(null);
+  }, [dragOrder, draggingProductId, mine, savingOrder]);
 
   if (user && user.role !== "business") {
     return (
@@ -271,6 +297,7 @@ export default function BusinessPage() {
 
   const business = mine.business;
   const products = mine.products;
+  const orderedProducts = dragOrder ?? products;
   const autoSchedule = Boolean(business.hours?.length);
   const isOpenNow = autoSchedule
     ? isBusinessOpenAt(business.hours, now)
@@ -374,6 +401,88 @@ export default function BusinessPage() {
       );
     } finally {
       setDuplicatingProductId(null);
+    }
+  };
+
+  const startProductDrag = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    product: Doc<"products">,
+  ) => {
+    if (savingOrder || draggingProductId) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    const order = dragOrder ?? products;
+    productDragRef.current = {
+      pointerId: event.pointerId,
+      productId: product._id,
+      order,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDraggingProductId(product._id);
+    setDragOrder(order);
+  };
+
+  const moveProductDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = productDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const dragged = drag.order.find((product) => product._id === drag.productId);
+    if (!dragged) return;
+    const others = drag.order.filter(
+      (product) => product._id !== drag.productId,
+    );
+    // Coloca el producto justo antes del primero cuya mitad ya pasó el dedo.
+    let insertAt = others.length;
+    for (let index = 0; index < others.length; index += 1) {
+      const rect = productRowRefs.current
+        .get(others[index]._id)
+        ?.getBoundingClientRect();
+      if (rect && event.clientY < rect.top + rect.height / 2) {
+        insertAt = index;
+        break;
+      }
+    }
+    const next = [...others];
+    next.splice(insertAt, 0, dragged);
+    if (next.every((product, index) => product._id === drag.order[index]?._id)) {
+      return;
+    }
+    drag.order = next;
+    setDragOrder(next);
+  };
+
+  const endProductDrag = async (
+    event: React.PointerEvent<HTMLButtonElement>,
+    commit: boolean,
+  ) => {
+    const drag = productDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    productDragRef.current = null;
+    setDraggingProductId(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    const next = drag.order;
+    const changed = next.some(
+      (product, index) => product._id !== products[index]?._id,
+    );
+    if (!commit || !changed) {
+      setDragOrder(null);
+      return;
+    }
+    setSavingOrder(true);
+    try {
+      await reorderProducts({ productIds: next.map((product) => product._id) });
+      toast.success("Orden actualizado", {
+        description: "Guardamos cómo querés mostrar tus productos.",
+      });
+    } catch (error) {
+      setDragOrder(null);
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos guardar el orden",
+      );
+    } finally {
+      setSavingOrder(false);
     }
   };
 
@@ -1312,12 +1421,20 @@ export default function BusinessPage() {
 
       {tab === "menu" && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              {products.length} productos ·{" "}
-              {products.filter((product) => product.isAvailable).length} visibles
-              en el mazo
-            </p>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted-foreground">
+                {products.length} productos ·{" "}
+                {products.filter((product) => product.isAvailable).length} visibles
+                en el mazo
+              </p>
+              <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <GripVertical className="size-3.5 shrink-0" />
+                {savingOrder
+                  ? "Guardando orden…"
+                  : "Arrastrá el mango para cambiar el orden"}
+              </p>
+            </div>
             <Button className="gap-2 bg-ember-gradient text-black" onClick={openNewProduct}>
               <Plus className="size-4" />
               Nuevo producto
@@ -1338,11 +1455,38 @@ export default function BusinessPage() {
             />
           ) : (
             <div className="space-y-2.5">
-              {products.map((product) => (
+              {orderedProducts.map((product) => (
                 <div
                   key={product._id}
-                  className="surface-raised flex items-center gap-3 rounded-2xl p-3"
+                  ref={(node) => {
+                    if (node) productRowRefs.current.set(product._id, node);
+                    else productRowRefs.current.delete(product._id);
+                  }}
+                  className={cn(
+                    "surface-raised flex flex-wrap items-center gap-2 rounded-2xl p-3 sm:flex-nowrap sm:gap-3",
+                    draggingProductId === product._id &&
+                      "relative z-10 ring-1 ring-primary/50",
+                  )}
                 >
+                  <button
+                    type="button"
+                    aria-label={`Reordenar ${product.name}`}
+                    title="Arrastrá para cambiar el orden"
+                    disabled={savingOrder}
+                    className="flex size-7 shrink-0 touch-none select-none items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-white/5 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40 sm:cursor-grab"
+                    onContextMenu={(event) => event.preventDefault()}
+                    onPointerDown={(event) => startProductDrag(event, product)}
+                    onPointerMove={moveProductDrag}
+                    onPointerUp={(event) => void endProductDrag(event, true)}
+                    onPointerCancel={(event) => void endProductDrag(event, false)}
+                    onLostPointerCapture={(event) => {
+                      if (productDragRef.current) {
+                        void endProductDrag(event, false);
+                      }
+                    }}
+                  >
+                    <GripVertical className="size-4" />
+                  </button>
                   <div className="relative shrink-0">
                     <ProductMedia
                       image={product.image}
@@ -1367,7 +1511,7 @@ export default function BusinessPage() {
                       {product.category} · {money(product.price)}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div className="flex shrink-0 items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:justify-end max-sm:border-t max-sm:border-border/40 max-sm:pt-2">
                     <span className={cn("hidden text-[10px] font-semibold sm:inline", product.isAvailable ? "text-accent" : "text-primary")}>
                       {product.isAvailable ? "Disponible" : "Agotado"}
                     </span>

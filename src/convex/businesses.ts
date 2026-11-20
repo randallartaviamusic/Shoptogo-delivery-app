@@ -32,6 +32,11 @@ const DEFAULT_DEPARTMENT = "comida";
 const PRODUCT_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
 const PRODUCT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 
+/** Orden manual del catálogo; sin posición explícita manda la creación. */
+function byProductOrder(a: Doc<"products">, b: Doc<"products">) {
+  return (a.sortOrder ?? a._creationTime) - (b.sortOrder ?? b._creationTime);
+}
+
 const DEPARTMENT_IMAGES: Record<string, string> = {
   comida:
     "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80",
@@ -210,6 +215,7 @@ export const mine = query({
       .query("products")
       .withIndex("by_business", (q) => q.eq("businessId", business._id))
       .collect();
+    products.sort(byProductOrder);
     return { business, products };
   },
 });
@@ -430,8 +436,7 @@ export const storefront = query({
       products: products
         .sort(
           (a, b) =>
-            a.category.localeCompare(b.category) ||
-            a.name.localeCompare(b.name),
+            a.category.localeCompare(b.category) || byProductOrder(a, b),
         )
         .map((product) => ({
           _id: product._id,
@@ -791,6 +796,7 @@ export const addProduct = mutation({
       attributes: args.attributes ?? [],
       tags: args.tags ?? [],
       isAvailable: true,
+      sortOrder: Date.now(),
     });
     return { productId };
   },
@@ -877,8 +883,42 @@ export const duplicateProduct = mutation({
       attributes: product.attributes,
       tags: product.tags,
       isAvailable: product.isAvailable,
+      sortOrder: Date.now(),
     });
     return await ctx.db.get(productId);
+  },
+});
+
+/** Guarda el orden en que el local arrastró sus productos. */
+export const reorderProducts = mutation({
+  args: { productIds: v.array(v.id("products")) },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const business = await ownedBusiness(ctx, userId);
+    if (!business) throw new Error("No tenés un negocio asociado");
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_business", (q) => q.eq("businessId", business._id))
+      .collect();
+    if (args.productIds.length !== products.length) {
+      throw new Error(
+        "La lista cambió mientras movías el producto. Probá otra vez.",
+      );
+    }
+    const ownedIds = new Set(products.map((product) => product._id));
+    const seen = new Set<Id<"products">>();
+    for (const productId of args.productIds) {
+      if (!ownedIds.has(productId) || seen.has(productId)) {
+        throw new Error("El orden incluye un producto inválido");
+      }
+      seen.add(productId);
+    }
+    await Promise.all(
+      args.productIds.map((productId, index) =>
+        ctx.db.patch(productId, { sortOrder: index * 1000 }),
+      ),
+    );
+    return null;
   },
 });
 

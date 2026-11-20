@@ -323,6 +323,9 @@ const schema = defineSchema(
       attributes: v.array(v.object({ key: v.string(), value: v.string() })),
       tags: v.array(v.string()),
       isAvailable: v.boolean(),
+      // Posición manual en el catálogo del local (menor primero). Los
+      // productos anteriores se ordenan por fecha de creación.
+      sortOrder: v.optional(v.number()),
       isDemo: v.optional(v.boolean()),
     })
       .index("by_business", ["businessId"])
