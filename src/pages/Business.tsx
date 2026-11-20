@@ -66,6 +66,7 @@ import {
   ChefHat,
   ClipboardList,
   Clock,
+  Copy,
   Crown,
   DollarSign,
   Loader2,
@@ -145,6 +146,7 @@ export default function BusinessPage() {
   const updateStatus = useMutation(api.orders.businessUpdateStatus);
   const addProduct = useMutation(api.businesses.addProduct);
   const updateProduct = useMutation(api.businesses.updateProduct);
+  const duplicateProduct = useMutation(api.businesses.duplicateProduct);
   const removeProduct = useMutation(api.businesses.removeProduct);
   const coupons = useQuery(api.coupons.mine);
   const createCoupon = useMutation(api.coupons.create);
@@ -188,6 +190,8 @@ export default function BusinessPage() {
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
   const [deleting, setDeleting] = useState<Doc<"products"> | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
+  const [duplicatingProductId, setDuplicatingProductId] =
+    useState<Id<"products"> | null>(null);
   const [productForm, setProductForm] = useState({
     name: "",
     description: "",
@@ -350,6 +354,27 @@ export default function BusinessPage() {
     setProductImageStorageId(null);
     setProductImagePreview(product.image);
     setProductDialog(true);
+  };
+
+  const handleDuplicateProduct = async (product: Doc<"products">) => {
+    if (duplicatingProductId) return;
+    setDuplicatingProductId(product._id);
+    try {
+      const copy = await duplicateProduct({ productId: product._id });
+      if (!copy) throw new Error("No pudimos duplicar el producto");
+      openEditProduct(copy);
+      toast.success("Producto duplicado", {
+        description: "La copia quedó lista para editar y guardar.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No pudimos duplicar el producto",
+      );
+    } finally {
+      setDuplicatingProductId(null);
+    }
   };
 
   const handleProductSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1378,6 +1403,21 @@ export default function BusinessPage() {
                       onClick={() => openEditProduct(product)}
                     >
                       <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Duplicar ${product.name}`}
+                      title="Duplicar producto"
+                      className="size-8 text-muted-foreground"
+                      disabled={duplicatingProductId !== null}
+                      onClick={() => void handleDuplicateProduct(product)}
+                    >
+                      {duplicatingProductId === product._id ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Copy className="size-3.5" />
+                      )}
                     </Button>
                     <Button
                       variant="ghost"

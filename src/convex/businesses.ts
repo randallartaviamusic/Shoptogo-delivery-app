@@ -845,6 +845,43 @@ export const updateProduct = mutation({
   },
 });
 
+/** Copia un producto del mismo negocio para editarlo como uno nuevo. */
+export const duplicateProduct = mutation({
+  args: { productId: v.id("products") },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const business = await ownedBusiness(ctx, userId);
+    if (!business) throw new Error("No tenés un negocio asociado");
+    const product = await ctx.db.get(args.productId);
+    if (!product || product.businessId !== business._id) {
+      throw new Error("Ese producto no pertenece a tu negocio");
+    }
+
+    // El video sigue siendo exclusivo de Élite vigente: si la cuenta perdió
+    // el acceso, la copia se crea sin video.
+    let video = product.video;
+    if (video) {
+      const access = await subscriptionAccess(ctx, userId);
+      if (access.plan !== "elite" || !access.hasAccess) video = undefined;
+    }
+
+    const productId = await ctx.db.insert("products", {
+      businessId: business._id,
+      department: product.department,
+      name: `Copia de ${product.name}`,
+      description: product.description,
+      price: product.price,
+      image: product.image,
+      ...(video ? { video } : {}),
+      category: product.category,
+      attributes: product.attributes,
+      tags: product.tags,
+      isAvailable: product.isAvailable,
+    });
+    return await ctx.db.get(productId);
+  },
+});
+
 export const removeProduct = mutation({
   args: { productId: v.id("products") },
   handler: async (ctx, args) => {
