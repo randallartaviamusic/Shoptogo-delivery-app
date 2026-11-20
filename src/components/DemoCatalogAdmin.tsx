@@ -664,7 +664,7 @@ export function DemoCatalogAdmin() {
           }
         }}
       >
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="phone-dialog max-h-[88vh] overflow-y-auto rounded-none sm:rounded-lg">
           <DialogHeader>
             <DialogTitle>Editar producto demo</DialogTitle>
             <DialogDescription>
