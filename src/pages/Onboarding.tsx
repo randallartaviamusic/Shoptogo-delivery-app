@@ -1,4 +1,5 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
+import { CoverUpload } from "@/components/CoverUpload";
 import { LocationField } from "@/components/LocationField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { DEPARTMENTS, getDepartment } from "@/lib/departments";
 import { useMutation } from "convex/react";
@@ -30,6 +32,10 @@ export default function OnboardingPage() {
 
   const [creating, setCreating] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
+  const [cover, setCover] = useState<{
+    storageId: Id<"_storage">;
+    preview: string;
+  } | null>(null);
   const [form, setForm] = useState({
     name: "",
     department: "comida",
@@ -78,6 +84,7 @@ export default function OnboardingPage() {
         location: form.location,
         etaMinutes: Number(form.etaMinutes) || 30,
         addStarterMenu: form.addStarterMenu,
+        coverStorageId: cover?.storageId,
       });
       toast.success("Tu negocio ya está en Shop To Go", {
         description: "Cargá productos para que aparezcan en el mazo.",
@@ -244,6 +251,15 @@ export default function OnboardingPage() {
                     value={form.tagline}
                     onChange={(event) => setForm({ ...form, tagline: event.target.value })}
                     placeholder="Carne al carbón, pan brioche"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <CoverUpload
+                    preview={cover?.preview}
+                    onChange={(storageId, preview) =>
+                      setCover({ storageId, preview })
+                    }
                   />
                 </div>
 

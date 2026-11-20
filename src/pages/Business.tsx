@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
+import { CoverUpload } from "@/components/CoverUpload";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { VerificationBanner } from "@/components/VerificationBanner";
@@ -192,6 +193,9 @@ export default function BusinessPage() {
     pickupInstructions: "",
     packagingInstructions: "",
   });
+  const [coverStorageId, setCoverStorageId] = useState<Id<"_storage"> | null>(
+    null,
+  );
 
   if (user && user.role !== "business") {
     return (
@@ -350,6 +354,7 @@ export default function BusinessPage() {
       pickupInstructions: business.pickupInstructions ?? "",
       packagingInstructions: business.packagingInstructions ?? "",
     });
+    setCoverStorageId(null);
     setSettingsDialog(true);
   };
 
@@ -397,6 +402,7 @@ export default function BusinessPage() {
         location: settingsForm.location ?? undefined,
         etaMinutes: Number(settingsForm.etaMinutes) || 20,
         image: settingsForm.image,
+        coverStorageId: coverStorageId ?? undefined,
         deliveryPromo: settingsForm.deliveryPromo,
         pickupInstructions: settingsForm.pickupInstructions,
         packagingInstructions: settingsForm.packagingInstructions,
@@ -1642,16 +1648,14 @@ export default function BusinessPage() {
               />
               <p className="text-[10px] text-muted-foreground">El repartidor las verá antes de retirar el pedido.</p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="settings-image">Portada (URL)</Label>
-              <Input
-                id="settings-image"
-                value={settingsForm.image}
-                onChange={(event) =>
-                  setSettingsForm({ ...settingsForm, image: event.target.value })
-                }
-              />
-            </div>
+            <CoverUpload
+              preview={settingsForm.image || undefined}
+              onChange={(storageId, preview) => {
+                setCoverStorageId(storageId);
+                setSettingsForm((current) => ({ ...current, image: preview }));
+              }}
+              hint="Reemplaza la portada actual del negocio. También podés dejarla como está."
+            />
 
             <div className="space-y-2 rounded-2xl border border-border/70 bg-black/20 p-3">
               <div>

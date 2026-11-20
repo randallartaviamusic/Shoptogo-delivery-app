@@ -386,6 +386,15 @@ export const storefront = query({
   },
 });
 
+/** URL temporal para subir la portada del local desde la galería. */
+export const generateCoverUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireUserId(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),
@@ -396,6 +405,8 @@ export const create = mutation({
     location: geoPointValidator,
     etaMinutes: v.number(),
     addStarterMenu: v.optional(v.boolean()),
+    // Imagen de portada subida desde la galería; si falta, se usa la del rubro.
+    coverStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -417,6 +428,9 @@ export const create = mutation({
       : DEFAULT_DEPARTMENT;
     const category = args.category.trim() || "General";
 
+    const coverUrl = args.coverStorageId
+      ? await ctx.storage.getUrl(args.coverStorageId)
+      : null;
     const businessId = await ctx.db.insert("businesses", {
       ownerId: userId,
       name,
@@ -424,7 +438,7 @@ export const create = mutation({
       department,
       category,
       tagline: args.tagline.trim() || "Productos elegidos con criterio",
-      image: departmentImage(department),
+      image: coverUrl ?? departmentImage(department),
       address: args.address.trim(),
       location,
       // Heredado: el envío se calcula por distancia, no lo define el local.
@@ -522,6 +536,8 @@ export const update = mutation({
     etaMinutes: v.optional(v.number()),
     isOpen: v.optional(v.boolean()),
     image: v.optional(v.string()),
+    // Portada nueva subida desde la galería. Tiene prioridad sobre `image`.
+    coverStorageId: v.optional(v.id("_storage")),
     // Promoción de envío del local. null = queda sin promoción.
     deliveryPromo: v.optional(v.union(promoKindValidator, v.null())),
     pickupInstructions: v.optional(v.string()),
@@ -549,6 +565,11 @@ export const update = mutation({
     if (args.isOpen !== undefined) patch.isOpen = args.isOpen;
     if (args.image !== undefined && args.image.trim().length > 0)
       patch.image = args.image.trim();
+    if (args.coverStorageId) {
+      const coverUrl = await ctx.storage.getUrl(args.coverStorageId);
+      if (!coverUrl) throw new Error("No pudimos guardar la portada");
+      patch.image = coverUrl;
+    }
     if (args.deliveryPromo !== undefined)
       patch.deliveryPromo = args.deliveryPromo ?? undefined;
     if (args.pickupInstructions !== undefined) {
