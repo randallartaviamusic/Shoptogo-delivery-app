@@ -19,6 +19,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -42,6 +49,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
+  ArrowLeftRight,
   Bike,
   Camera,
   Check,
@@ -390,6 +398,45 @@ export default function ProfilePage() {
         title="Perfil"
         description={
           "Tus datos de entrega, tu rol en Shop To Go y tus números de antojos."
+        }
+        action={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="gap-2 self-start border-border/80"
+                disabled={switching !== null}
+              >
+                {switching ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ArrowLeftRight className="size-4" />
+                )}
+                Cambiar de cuenta
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Entrar como
+              </DropdownMenuLabel>
+              {ROLES.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  disabled={role === option.value}
+                  onClick={() => handleRole(option.value)}
+                  className="gap-2"
+                >
+                  <option.icon className="size-4" />
+                  <span className="flex-1">{option.label}</span>
+                  {role === option.value && (
+                    <span className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent">
+                      Actual
+                    </span>
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         }
       />
 
