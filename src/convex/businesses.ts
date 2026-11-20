@@ -30,6 +30,7 @@ type DbCtx = QueryCtx | MutationCtx;
 
 const DEFAULT_DEPARTMENT = "comida";
 const PRODUCT_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
+const PRODUCT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 
 const DEPARTMENT_IMAGES: Record<string, string> = {
   comida:
@@ -108,6 +109,34 @@ async function productVideoUrl(
   const url = await ctx.storage.getUrl(storageId);
   if (!url) throw new ConvexError("No pudimos guardar el video");
   return url;
+}
+
+/** Valida la imagen y devuelve la URL pública del producto. */
+async function productImageUrl(
+  ctx: MutationCtx,
+  storageId: Id<"_storage">,
+) {
+  const metadata = await ctx.storage.getMetadata(storageId);
+  if (!metadata) throw new ConvexError("No pudimos leer la imagen");
+  if (!metadata.contentType?.startsWith("image/")) {
+    throw new ConvexError("El archivo tiene que ser una imagen");
+  }
+  if (metadata.size > PRODUCT_IMAGE_MAX_BYTES) {
+    throw new ConvexError("La imagen no puede pesar más de 8 MB");
+  }
+  const url = await ctx.storage.getUrl(storageId);
+  if (!url) throw new ConvexError("No pudimos guardar la imagen");
+  return url;
+}
+
+/** El video del producto es un beneficio sólo del plan Élite vigente. */
+async function requireEliteVideo(ctx: DbCtx, userId: Id<"users">) {
+  const access = await subscriptionAccess(ctx, userId);
+  if (access.plan !== "elite" || !access.hasAccess) {
+    throw new ConvexError(
+      "El video del producto está disponible sólo con la suscripción Élite activa",
+    );
+  }
 }
 
 async function requireUserId(ctx: DbCtx) {
@@ -429,7 +458,19 @@ export const generateCoverUploadUrl = mutation({
   },
 });
 
-/** URL temporal para subir el video de un producto desde la galería. */
+/** URL temporal para subir una imagen de producto desde la galería. */
+export const generateProductImageUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    if (!(await ownedBusiness(ctx, userId))) {
+      throw new ConvexError("No tenés un negocio asociado");
+    }
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** URL temporal para subir el video de un producto (sólo plan Élite vigente). */
 export const generateProductVideoUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
@@ -437,6 +478,7 @@ export const generateProductVideoUploadUrl = mutation({
     if (!(await ownedBusiness(ctx, userId))) {
       throw new ConvexError("No tenés un negocio asociado");
     }
+    await requireEliteVideo(ctx, userId);
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -708,7 +750,9 @@ export const addProduct = mutation({
     price: v.number(),
     category: v.string(),
     image: v.optional(v.string()),
-    // Video subido desde la galería; reemplaza a la imagen en las cards.
+    // Imagen subida desde la galería; tiene prioridad sobre la URL.
+    imageStorageId: v.optional(v.id("_storage")),
+    // Video subido desde la galería; sólo plan Élite vigente.
     videoStorageId: v.optional(v.id("_storage")),
     tags: v.optional(v.array(v.string())),
     attributes: v.optional(
@@ -723,6 +767,10 @@ export const addProduct = mutation({
     if (name.length < 2) throw new Error("El producto necesita un nombre");
     if (args.price <= 0) throw new Error("El precio tiene que ser mayor a 0");
     const department = business.department ?? DEFAULT_DEPARTMENT;
+    const uploadedImage = args.imageStorageId
+      ? await productImageUrl(ctx, args.imageStorageId)
+      : null;
+    if (args.videoStorageId) await requireEliteVideo(ctx, userId);
     const video = args.videoStorageId
       ? await productVideoUrl(ctx, args.videoStorageId)
       : undefined;
@@ -734,6 +782,7 @@ export const addProduct = mutation({
       description: args.description.trim(),
       price: Math.round(args.price),
       image:
+        uploadedImage ||
         args.image?.trim() ||
         departmentImage(department) ||
         business.image,
@@ -755,6 +804,7 @@ export const updateProduct = mutation({
     price: v.optional(v.number()),
     category: v.optional(v.string()),
     image: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     videoStorageId: v.optional(v.id("_storage")),
     removeVideo: v.optional(v.boolean()),
     isAvailable: v.optional(v.boolean()),
@@ -777,10 +827,14 @@ export const updateProduct = mutation({
       patch.description = args.description.trim();
     if (args.price !== undefined) patch.price = Math.round(args.price);
     if (args.category !== undefined) patch.category = args.category.trim();
-    if (args.image !== undefined && args.image.trim().length > 0)
+    if (args.imageStorageId) {
+      patch.image = await productImageUrl(ctx, args.imageStorageId);
+    } else if (args.image !== undefined && args.image.trim().length > 0) {
       patch.image = args.image.trim();
+    }
     if (args.removeVideo) patch.video = undefined;
     if (args.videoStorageId) {
+      await requireEliteVideo(ctx, userId);
       patch.video = await productVideoUrl(ctx, args.videoStorageId);
     }
     if (args.isAvailable !== undefined) patch.isAvailable = args.isAvailable;

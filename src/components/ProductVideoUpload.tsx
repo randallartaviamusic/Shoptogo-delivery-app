@@ -58,7 +58,12 @@ export function ProductVideoUpload({
 
   return (
     <div className="space-y-1.5">
-      <p className="text-sm font-medium">Video del producto (opcional)</p>
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium">Video del producto</p>
+        <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent">
+          Élite
+        </span>
+      </div>
       <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-black/20 p-3">
         {preview ? (
           <video

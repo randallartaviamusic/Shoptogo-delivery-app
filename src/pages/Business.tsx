@@ -6,6 +6,7 @@ import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { VerificationBanner } from "@/components/VerificationBanner";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
+import { ProductImageUpload } from "@/components/ProductImageUpload";
 import { ProductMedia } from "@/components/ProductMedia";
 import { ProductVideoUpload } from "@/components/ProductVideoUpload";
 import { PromoBadge } from "@/components/PromoBadge";
@@ -65,6 +66,7 @@ import {
   ChefHat,
   ClipboardList,
   Clock,
+  Crown,
   DollarSign,
   Loader2,
   MapPin,
@@ -138,6 +140,7 @@ export default function BusinessPage() {
 
   const mine = useQuery(api.businesses.mine);
   const board = useQuery(api.orders.businessBoard);
+  const subscription = useQuery(api.subscriptions.mine);
   const updateBusiness = useMutation(api.businesses.update);
   const updateStatus = useMutation(api.orders.businessUpdateStatus);
   const addProduct = useMutation(api.businesses.addProduct);
@@ -197,6 +200,9 @@ export default function BusinessPage() {
   const [productVideoStorageId, setProductVideoStorageId] =
     useState<Id<"_storage"> | null>(null);
   const [removeProductVideo, setRemoveProductVideo] = useState(false);
+  const [productImageStorageId, setProductImageStorageId] =
+    useState<Id<"_storage"> | null>(null);
+  const [productImagePreview, setProductImagePreview] = useState("");
   const [settingsForm, setSettingsForm] = useState({
     name: "",
     tagline: "",
@@ -269,6 +275,9 @@ export default function BusinessPage() {
   const productCategories = departmentInfo.subcategories;
   const stats = board?.stats;
   const orders = (board?.orders ?? []) as unknown as OrderView[];
+  // La subida de video se habilita sola cuando el plan Élite está vigente.
+  const eliteVideoEnabled =
+    subscription?.plan === "elite" && subscription?.hasAccess === true;
 
   const handleStatus = async (
     orderId: string,
@@ -315,6 +324,8 @@ export default function BusinessPage() {
     });
     setProductVideoStorageId(null);
     setRemoveProductVideo(false);
+    setProductImageStorageId(null);
+    setProductImagePreview("");
     setProductDialog(true);
   };
 
@@ -336,6 +347,8 @@ export default function BusinessPage() {
     });
     setProductVideoStorageId(null);
     setRemoveProductVideo(false);
+    setProductImageStorageId(null);
+    setProductImagePreview(product.image);
     setProductDialog(true);
   };
 
@@ -355,21 +368,27 @@ export default function BusinessPage() {
     const videoPayload = productVideoStorageId
       ? { videoStorageId: productVideoStorageId }
       : {};
+    const imagePayload = productImageStorageId
+      ? { imageStorageId: productImageStorageId }
+      : {};
     try {
       if (editing) {
         await updateProduct({
           productId: editing._id,
           ...payload,
+          ...imagePayload,
           ...videoPayload,
           removeVideo: removeProductVideo || undefined,
         });
         toast.success("Producto actualizado");
       } else {
-        await addProduct({ ...payload, ...videoPayload });
+        await addProduct({ ...payload, ...imagePayload, ...videoPayload });
         toast.success("Producto publicado en el mazo");
       }
       setProductDialog(false);
       setEditing(null);
+      setProductImageStorageId(null);
+      setProductImagePreview("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos guardar el producto");
     } finally {
@@ -1498,34 +1517,101 @@ export default function BusinessPage() {
                 </div>
               </div>
             )}
-            <ProductVideoUpload
-              preview={productForm.video || undefined}
+            <ProductImageUpload
+              preview={productImagePreview || undefined}
               onChange={(storageId, preview) => {
-                setProductVideoStorageId(storageId);
-                setRemoveProductVideo(false);
-                setProductForm((current) => ({ ...current, video: preview }));
-              }}
-              onRemove={() => {
-                setProductVideoStorageId(null);
-                setRemoveProductVideo(true);
-                setProductForm((current) => ({ ...current, video: "" }));
+                setProductImageStorageId(storageId);
+                setProductImagePreview(preview);
               }}
             />
             <div className="space-y-1.5">
-              <Label htmlFor="product-image">Imagen de respaldo (URL)</Label>
+              <Label htmlFor="product-image">Imagen desde URL (opcional)</Label>
               <Input
                 id="product-image"
                 value={productForm.image}
-                onChange={(event) =>
-                  setProductForm({ ...productForm, image: event.target.value })
-                }
+                onChange={(event) => {
+                  setProductImageStorageId(null);
+                  setProductImagePreview(event.target.value);
+                  setProductForm({ ...productForm, image: event.target.value });
+                }}
                 placeholder="https://..."
               />
               <p className="text-[10px] text-muted-foreground">
-                Se usa si no subís un video o mientras el video carga. Si la
-                dejás vacía usamos una foto acorde a la categoría.
+                Si no subís una imagen desde la galería, podés pegar un enlace.
+                Si la dejás vacía usamos una foto acorde a la categoría.
               </p>
             </div>
+            {eliteVideoEnabled ? (
+              <ProductVideoUpload
+                preview={productForm.video || undefined}
+                onChange={(storageId, preview) => {
+                  setProductVideoStorageId(storageId);
+                  setRemoveProductVideo(false);
+                  setProductForm((current) => ({ ...current, video: preview }));
+                }}
+                onRemove={() => {
+                  setProductVideoStorageId(null);
+                  setRemoveProductVideo(true);
+                  setProductForm((current) => ({ ...current, video: "" }));
+                }}
+              />
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">Video del producto</p>
+                  <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent">
+                    Élite
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-accent/30 bg-accent/[0.04] p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2.5">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                      <Crown className="size-4" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold">
+                        Subir video es exclusivo del plan Élite
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
+                        Se activa automáticamente cuando tu suscripción Élite
+                        está vigente.
+                        {productForm.video
+                          ? " Tu producto tiene un video publicado; podés quitarlo cuando quieras."
+                          : " Mientras tanto, el producto se muestra con su imagen."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    {productForm.video && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 border-border/80"
+                        onClick={() => {
+                          setProductVideoStorageId(null);
+                          setRemoveProductVideo(true);
+                          setProductForm((current) => ({
+                            ...current,
+                            video: "",
+                          }));
+                        }}
+                      >
+                        Quitar video
+                      </Button>
+                    )}
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 border-accent/40 text-accent"
+                    >
+                      <Link to="/suscripcion">Ver Élite</Link>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             <Button
               type="submit"
               className="h-11 w-full gap-2 bg-ember-gradient text-black"
