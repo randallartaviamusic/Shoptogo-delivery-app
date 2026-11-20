@@ -531,9 +531,11 @@
   max-width: 390px;
 }
 
-@media (max-width: 639px), (pointer: coarse) {
+@media (max-width: 639px) {
   .phone-dialog {
-    width: 100vw;
-    max-width: 100vw;
+    /* Deja 1rem a cada lado: 100vw/100% incluyen la barra de scroll y la
+       ventana se salía por la derecha en el teléfono. */
+    width: calc(100% - 2rem);
+    max-width: calc(100% - 2rem);
   }
 }
