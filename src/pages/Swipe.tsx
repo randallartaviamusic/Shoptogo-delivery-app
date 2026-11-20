@@ -282,25 +282,27 @@ export default function SwipePage() {
         </div>
       )}
 
-      <PageHeader
-        title={department.headline}
-        description={department.blurb}
-        action={
-          <Button
-            variant="outline"
-            onClick={() => setFiltersOpen(true)}
-            className="glass-sheen gap-2 border-border/80"
-          >
-            <SlidersHorizontal className="size-4 text-accent" />
-            Filtros
-            {selectedCount > 0 && (
-              <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-accent-foreground">
-                {selectedCount}
-              </span>
-            )}
-          </Button>
-        }
-      />
+      <div className="-mt-5">
+        <PageHeader
+          title={department.headline}
+          description={department.blurb}
+          action={
+            <Button
+              variant="outline"
+              onClick={() => setFiltersOpen(true)}
+              className="glass-sheen gap-2 border-border/80"
+            >
+              <SlidersHorizontal className="size-4 text-accent" />
+              Filtros
+              {selectedCount > 0 && (
+                <span className="rounded-full bg-accent px-1.5 text-[10px] font-bold text-accent-foreground">
+                  {selectedCount}
+                </span>
+              )}
+            </Button>
+          }
+        />
+      </div>
 
       <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
         {DEPARTMENTS.map((item) => {
