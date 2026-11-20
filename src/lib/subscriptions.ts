@@ -6,6 +6,7 @@
  * comisión. El pago es mensual y lo verifica una persona administradora:
  * SINPE Móvil, efectivo o depósito.
  */
+import { normalizeCostaRicaPhone } from "./trust";
 const moneyFormatter = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
 });
@@ -296,7 +297,7 @@ export const PAYMENT_METHODS: Array<{
   {
     id: "cash",
     label: "Efectivo",
-    hint: "Entregá el monto a la persona administradora.",
+    hint: "Coordinamos el retiro del pago en tu dirección por WhatsApp.",
   },
   {
     id: "deposit",
@@ -336,6 +337,34 @@ export function paymentWhatsappMessage(input: {
     `Referencia: ${input.reference}.`,
     `Vencimiento solicitado: ${formatExpiry(input.expiryAt)}.`,
     "Adjunto el comprobante para que activen la cuenta.",
+  ].join("\n");
+}
+
+/** WhatsApp fijo de Shop To Go para coordinar el retiro del efectivo. */
+export const CASH_PICKUP_WHATSAPP = "+506 8492 3074";
+
+/** Mensaje que se abre desde el WhatsApp de la persona suscriptora. */
+export function cashPickupWhatsappMessage(input: {
+  name: string;
+  audience: SubscriptionAudience;
+  plan: SubscriptionPlanId;
+  amount: number;
+  phone: string;
+  address: string;
+  expiryAt: number;
+  businessName?: string | null;
+}) {
+  const plan = planOf(input.plan);
+  const audience = input.audience === "business" ? "negocio" : "repartidor";
+  const place = input.audience === "business" ? "mi negocio" : "mi domicilio";
+  const account = input.businessName?.trim() || input.name.trim();
+  return [
+    `Hola, soy ${account || "una cuenta de Shop To Go"}.`,
+    `Quiero suscribirme con pago en efectivo como ${audience}.`,
+    `Suscripción: Plan ${plan.name} (${money(input.amount)} por mes).`,
+    `Mi número de WhatsApp es ${normalizeCostaRicaPhone(input.phone)}.`,
+    `Quiero que pasen a retirar el pago a la dirección de ${place}: ${input.address.trim()}.`,
+    `Vencimiento deseado: ${formatExpiry(input.expiryAt)}`,
   ].join("\n");
 }
 

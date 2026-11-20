@@ -188,6 +188,23 @@ export const mine = query({
 
     const doc = await subscriptionDoc(ctx, userId);
     const settings = await subscriptionSettings(ctx);
+    // Datos para coordinar el retiro del pago en efectivo. El local usa su
+    // dirección comercial; el repartidor, la de su cuenta.
+    const business =
+      user.role === "business"
+        ? await ctx.db
+            .query("businesses")
+            .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+            .first()
+        : null;
+    const personAddress = [user.address, user.city]
+      .map((part) => part?.trim())
+      .filter(Boolean)
+      .join(", ");
+    const pickupAddress =
+      user.role === "business"
+        ? business?.address?.trim() || personAddress
+        : personAddress;
     const now = Date.now();
     const status: SubscriptionStatus = subscriptionStatus(
       doc?.activeUntil,
@@ -209,6 +226,10 @@ export const mine = query({
 
     return {
       role: user.role,
+      accountName: user.name ?? "",
+      contactPhone: user.phone ?? "",
+      pickupAddress,
+      businessName: business?.name ?? null,
       plan: approvedPlan ? (doc?.plan ?? approvedPlan) : null,
       price: approvedPlan
         ? (doc?.price ?? planOf(approvedPlan).price)

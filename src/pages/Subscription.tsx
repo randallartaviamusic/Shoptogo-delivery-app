@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import {
+  CASH_PICKUP_WHATSAPP,
   EXPIRY_HOURS,
   EXPIRY_MINUTES,
   PAYMENT_METHODS,
@@ -22,6 +23,7 @@ import {
   SUBSCRIPTION_PLAN_IDS,
   SUBSCRIPTION_STATUS_META,
   SUSPENDED_CAPABILITIES,
+  cashPickupWhatsappMessage,
   countdownText,
   formatExpiry,
   formatExpiryDate,
@@ -34,6 +36,7 @@ import {
 import type { PaymentMethod, SubscriptionPlanId } from "@/lib/subscriptions";
 import { money } from "@/lib/format";
 import { playReminderSound } from "@/lib/reminderSounds";
+import { isValidCostaRicaPhone } from "@/lib/trust";
 import { cn } from "@/lib/utils";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -81,6 +84,9 @@ export default function SubscriptionPage() {
   const [payerIdentification, setPayerIdentification] = useState("");
   const [identificationType, setIdentificationType] = useState("0");
   const [payerPhone, setPayerPhone] = useState("");
+  // Datos para que la administración retire el efectivo en la dirección.
+  const [cashPhone, setCashPhone] = useState("");
+  const [cashAddress, setCashAddress] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [sound, setSound] = useState("campana");
@@ -111,6 +117,8 @@ export default function SubscriptionPage() {
     }
     setSound(data.reminderSound ?? "campana");
     setReminderEnabled(data.reminderEnabled ?? true);
+    setCashPhone(data.contactPhone ?? "");
+    setCashAddress(data.pickupAddress ?? "");
   }, [data]);
 
   if (user && user.role !== "business" && user.role !== "courier") {
@@ -136,6 +144,20 @@ export default function SubscriptionPage() {
     minute,
   );
   const remaining = data.activeUntil ? data.activeUntil - now : 0;
+  const cashPhoneValid = isValidCostaRicaPhone(cashPhone);
+  const cashAddressValid = cashAddress.trim().length >= 5;
+  const cashReady = cashPhoneValid && cashAddressValid;
+  const cashMessage = cashPickupWhatsappMessage({
+    name: user?.name ?? "",
+    audience: data.role,
+    plan,
+    amount: selected.price,
+    phone: cashPhone,
+    address: cashAddress,
+    expiryAt,
+    businessName: data.businessName,
+  });
+  const cashHref = whatsappHref(CASH_PICKUP_WHATSAPP, cashMessage);
 
   const copy = async (value: string, label: string) => {
     try {
@@ -443,8 +465,8 @@ export default function SubscriptionPage() {
                   {money(selected.price)} al mes
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Pagás por SINPE Móvil, efectivo o depósito y después reportás la
-                  referencia.
+                  Pagás por SINPE Móvil, efectivo o depósito. En efectivo
+                  coordinamos el retiro en tu dirección por WhatsApp.
                 </p>
               </div>
               <p className="rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground">
@@ -600,12 +622,82 @@ export default function SubscriptionPage() {
                     <p className="text-[10px] text-muted-foreground">ONVO empareja la transferencia con el monto exacto y la identificación de esta cuenta. No guardamos la cédula en el historial de pago.</p>
                   </div>
                 </div>
+              ) : method === "cash" ? (
+                <div className="space-y-3 rounded-2xl border border-accent/30 bg-accent/[0.05] p-3.5">
+                  <div>
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                      <MessageCircle className="size-3.5" /> Retiro de efectivo
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      Dejanos tu WhatsApp y la dirección. El botón abre tu WhatsApp
+                      con el mensaje listo para enviar a {CASH_PICKUP_WHATSAPP};
+                      ahí coordinamos el retiro.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cash-whatsapp">Tu número de WhatsApp</Label>
+                      <Input
+                        id="cash-whatsapp"
+                        value={cashPhone}
+                        onChange={(event) => setCashPhone(event.target.value)}
+                        placeholder="8888 8888"
+                        inputMode="tel"
+                        autoComplete="tel"
+                      />
+                      {cashPhone.length > 0 && !cashPhoneValid && (
+                        <p className="text-[10px] text-primary">
+                          Escribí un número de Costa Rica de 8 dígitos.
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cash-address">
+                        Dirección donde retiramos el pago
+                      </Label>
+                      <Input
+                        id="cash-address"
+                        value={cashAddress}
+                        onChange={(event) => setCashAddress(event.target.value)}
+                        placeholder="Ej: Barrio El Carmen, 200 m sur del parque"
+                      />
+                      {cashAddress.length > 0 && !cashAddressValid && (
+                        <p className="text-[10px] text-primary">
+                          Escribí la dirección completa del retiro.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {cashReady ? (
+                    <Button asChild className="h-11 w-full gap-2 bg-[#25d366] text-black hover:bg-[#1ebe5b]">
+                      <a href={cashHref} target="_blank" rel="noreferrer">
+                        <MessageCircle className="size-4" />
+                        Activar pago en efectivo
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      className="h-11 w-full gap-2 bg-[#25d366] text-black opacity-60"
+                      disabled
+                    >
+                      <MessageCircle className="size-4" />
+                      Activar pago en efectivo
+                    </Button>
+                  )}
+                  <p className="text-center text-[10px] text-muted-foreground">
+                    Se abre WhatsApp con el mensaje completo: plan, tu número y la
+                    dirección de retiro. Tocá enviar para que lo coordinemos.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-1.5">
                   <Label htmlFor="sub-reference">Referencia o comprobante</Label>
                   <Input id="sub-reference" value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Ej: 2026-0451 / SINPE 8492..." />
                 </div>
               )}
+              {method !== "cash" && (
+                <>
               <div className="space-y-1.5">
                 <Label htmlFor="sub-note">Nota (opcional)</Label>
                 <Textarea
@@ -639,6 +731,8 @@ export default function SubscriptionPage() {
                   ? "Se activa automáticamente sólo después de la confirmación de pago firmada por ONVO."
                   : "El pago manual no se activa solo: un administrador verifica el comprobante."}
               </p>
+                </>
+              )}
             </div>
           </section>
         )}
