@@ -1,45 +1,12 @@
+import { StarPicker } from "@/components/StarPicker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2, Star, Store, Bike } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-
-function StarPicker({
-  value,
-  onChange,
-  label,
-}: {
-  value: number;
-  onChange: (value: number) => void;
-  label: string;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          type="button"
-          aria-label={`${label}: ${star} ${star === 1 ? "estrella" : "estrellas"}`}
-          onClick={() => onChange(star)}
-          className="rounded-md p-0.5 transition-transform hover:scale-110"
-        >
-          <Star
-            className={cn(
-              "size-5",
-              star <= value
-                ? "fill-accent text-accent"
-                : "text-muted-foreground/50",
-            )}
-          />
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Calificación separada del negocio y del repartidor, una vez por pedido. */
 export function OrderReview({

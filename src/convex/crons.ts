@@ -39,6 +39,15 @@ crons.interval(
   {},
 );
 
+// Los favoritos del local tienen unos minutos de prioridad. Al vencer, esta
+// tarea abre la entrega al resto de los repartidores disponibles.
+crons.interval(
+  "liberar prioridad de favoritos",
+  { minutes: 1 },
+  internal.orders.releaseFavoritePriorityOffers,
+  {},
+);
+
 // Las ofertas duran pocos minutos: se cierran solas para que el tablero no
 // muestre entregas que ya no están disponibles.
 crons.interval(

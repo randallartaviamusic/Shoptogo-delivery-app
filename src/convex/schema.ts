@@ -285,7 +285,9 @@ const schema = defineSchema(
       // Calificación que recibe un repartidor (promedio y cantidad).
       rating: v.optional(v.number()),
       reviews: v.optional(v.number()),
-    }).index("email", ["email"]), // index for the email. do not remove or modify
+    })
+      .index("email", ["email"]) // index for the email. do not remove or modify
+      .index("by_role", ["role"]),
 
     businesses: defineTable({
       ownerId: v.optional(v.id("users")),
@@ -325,6 +327,9 @@ const schema = defineSchema(
       // Se completa cuando la administración verifica al dueño del local.
       // Sirve para mostrar el sello de confianza sin exponer datos privados.
       verifiedAt: v.optional(v.number()),
+      // Repartidores preferidos del local. Reciben primero las entregas de
+      // este negocio; si no están disponibles, se ofrecen al resto.
+      favoriteCourierIds: v.optional(v.array(v.id("users"))),
     })
       .index("by_owner", ["ownerId"])
       .index("by_slug", ["slug"]),
@@ -432,6 +437,12 @@ const schema = defineSchema(
       sameCourier: v.optional(v.boolean()),
       // Repartidor que tomó la primera entrega y queda reservado para el resto.
       reservedCourierId: v.optional(v.id("users")),
+      // Foto de los repartidores favoritos de las tiendas de esta entrega al
+      // momento de ofrecerla. La prioridad dura unos minutos y luego la
+      // entrega se libera a cualquier repartidor disponible.
+      favoriteCourierIds: v.optional(v.array(v.id("users"))),
+      favoritePriorityUntil: v.optional(v.number()),
+      favoritePriorityReleasedAt: v.optional(v.number()),
       buyerId: v.id("users"),
       businessId: v.id("businesses"),
       courierId: v.optional(v.id("users")),
@@ -609,6 +620,22 @@ const schema = defineSchema(
     })
       .index("by_owner", ["ownerId"])
       .index("by_status", ["status"]),
+
+    // Calificación del negocio al repartidor que hizo una entrega. Se guarda
+    // aparte de la reseña del comprador para que cada parte tenga su voz y su
+    // comentario sin pisar al otro.
+    businessCourierReviews: defineTable({
+      orderId: v.id("orders"),
+      businessId: v.id("businesses"),
+      courierId: v.id("users"),
+      reviewerId: v.id("users"),
+      rating: v.number(),
+      comment: v.optional(v.string()),
+      createdAt: v.number(),
+    })
+      .index("by_order", ["orderId"])
+      .index("by_courier", ["courierId", "createdAt"])
+      .index("by_business", ["businessId", "createdAt"]),
 
     // Calificación del comprador al negocio y al repartidor, por separado.
     reviews: defineTable({

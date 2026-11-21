@@ -84,6 +84,123 @@ export const submit = mutation({
   },
 });
 
+/**
+ * Entregas completadas que el negocio todavía no calificó. Cada pedido se
+ * puede reseñar una sola vez y la fila desaparece en cuanto se envía.
+ */
+export const pendingBusinessCourierReviews = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .first();
+    if (!business) return [];
+
+    const [orders, given] = await Promise.all([
+      ctx.db
+        .query("orders")
+        .withIndex("by_business", (q) => q.eq("businessId", business._id))
+        .collect(),
+      ctx.db
+        .query("businessCourierReviews")
+        .withIndex("by_business", (q) => q.eq("businessId", business._id))
+        .collect(),
+    ]);
+    const reviewed = new Set(given.map((review) => String(review.orderId)));
+    const pending = orders
+      .filter(
+        (order) =>
+          order.status === "delivered" &&
+          !!order.courierId &&
+          !reviewed.has(String(order._id)),
+      )
+      .sort(
+        (a, b) =>
+          (b.deliveredAt ?? b.createdAt) - (a.deliveredAt ?? a.createdAt),
+      )
+      .slice(0, 20);
+
+    const rows = [];
+    for (const order of pending) {
+      if (!order.courierId) continue;
+      const courier = await ctx.db.get(order.courierId);
+      if (!courier || courier.role !== "courier") continue;
+      rows.push({
+        orderId: order._id,
+        code: order.code,
+        deliveredAt: order.deliveredAt ?? order.createdAt,
+        courierId: courier._id,
+        courierName: courier.name?.trim() || "Repartidor Shop To Go",
+        courierImage: courier.image ?? "",
+      });
+    }
+    return rows;
+  },
+});
+
+/**
+ * El negocio califica al repartidor de una entrega completada. La reseña se
+ * guarda separada de la del comprador y actualiza el promedio del repartidor.
+ */
+export const submitBusinessCourierReview = mutation({
+  args: {
+    orderId: v.id("orders"),
+    rating: v.number(),
+    comment: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const business = await ctx.db
+      .query("businesses")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .first();
+    if (!business) throw new Error("No tenés un negocio asociado");
+    const order = await ctx.db.get(args.orderId);
+    if (!order || order.businessId !== business._id) {
+      throw new Error("Ese pedido no pertenece a tu negocio");
+    }
+    if (order.status !== "delivered") {
+      throw new Error("Podés calificar cuando la entrega ya se completó");
+    }
+    if (!order.courierId) {
+      throw new Error("Ese pedido no tiene un repartidor asignado");
+    }
+    const rating = clampRating(args.rating);
+    if (!rating) throw new Error("Elegí una calificación para el repartidor");
+    const existing = await ctx.db
+      .query("businessCourierReviews")
+      .withIndex("by_order", (q) => q.eq("orderId", args.orderId))
+      .unique();
+    if (existing) throw new Error("Ya calificaste esta entrega");
+
+    const courier = await ctx.db.get(order.courierId);
+    if (!courier || courier.role !== "courier") {
+      throw new Error("Ese repartidor ya no está disponible");
+    }
+    const comment = (args.comment ?? "").trim().slice(0, 500);
+    const reviewId = await ctx.db.insert("businessCourierReviews", {
+      orderId: args.orderId,
+      businessId: business._id,
+      courierId: order.courierId,
+      reviewerId: userId,
+      rating,
+      comment: comment || undefined,
+      createdAt: Date.now(),
+    });
+    const next = average(
+      courier.rating ?? 0,
+      courier.reviews ?? 0,
+      rating,
+    );
+    await ctx.db.patch(courier._id, next);
+    return { reviewId, rating };
+  },
+});
+
 /** Calificación de un pedido, visible sólo para las partes involucradas. */
 export const forOrder = query({
   args: { orderId: v.id("orders") },

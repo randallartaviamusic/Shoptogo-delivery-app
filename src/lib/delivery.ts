@@ -59,10 +59,49 @@ export const ASSIGNMENT_RULES = {
   groupMaxExtraMinutes: 10,
   /** Margen antes de avisar que la entrega va demorada. */
   delayToleranceMinutes: 5,
+  /** Minutos de prioridad para los repartidores favoritos de un local. */
+  favoritePriorityMinutes: 3,
   /** Minutos fijos de retiro y de entrega para las estimaciones. */
   pickupHandoffMinutes: 3,
   dropoffHandoffMinutes: 4,
 } as const;
+
+/** Datos de una entrega que definen la ventana de prioridad de un favorito. */
+export type FavoritePriorityTrip = {
+  favoriteCourierIds?: readonly string[];
+  favoritePriorityUntil?: number;
+  reservedCourierId?: string | null;
+};
+
+/**
+ * Estado de prioridad de una entrega para un repartidor. Los favoritos de las
+ * tiendas tienen una ventana corta; el repartidor reservado por el comprador
+ * siempre puede tomarla, aunque no sea favorito.
+ */
+export function favoritePriorityState(
+  trip: readonly FavoritePriorityTrip[],
+  courierId: string,
+  now = Date.now(),
+) {
+  const favorite = trip.some((member) =>
+    member.favoriteCourierIds?.includes(courierId),
+  );
+  const reserved = trip.some(
+    (member) => member.reservedCourierId === courierId,
+  );
+  const until = Math.max(
+    0,
+    ...trip.map((member) => member.favoritePriorityUntil ?? 0),
+  );
+  const active = until > now;
+  return {
+    favorite,
+    reserved,
+    active,
+    allowed: !active || favorite || reserved,
+    until,
+  };
+}
 
 /**
  * Un repartidor no lleva más de 3 unidades de producto en una entrega. Si la

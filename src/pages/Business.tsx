@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
+import { StarPicker } from "@/components/StarPicker";
 import { CoverUpload } from "@/components/CoverUpload";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { SubscriptionReminder } from "@/components/SubscriptionReminder";
@@ -64,6 +65,8 @@ import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  BadgeCheck,
+  Bike,
   ChefHat,
   ClipboardList,
   Clock,
@@ -71,6 +74,7 @@ import {
   Crown,
   DollarSign,
   GripVertical,
+  Heart,
   Loader2,
   MapPin,
   MessageCircle,
@@ -79,10 +83,12 @@ import {
   Plus,
   ReceiptText,
   Settings2,
+  Star,
   Store,
   TicketPercent,
   Timer,
   Trash2,
+  Users,
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
@@ -93,6 +99,7 @@ import { toast } from "sonner";
 const TABS = [
   { key: "overview", label: "Panel", to: "/business" },
   { key: "orders", label: "Pedidos", to: "/business?tab=orders" },
+  { key: "couriers", label: "Repartidores", to: "/business?tab=couriers" },
   { key: "menu", label: "Productos", to: "/business?tab=menu" },
 ];
 
@@ -160,6 +167,14 @@ export default function BusinessPage() {
   const confirmCash = useMutation(api.orders.businessConfirmCash);
   const reportIssue = useMutation(api.orders.reportCashIssue);
   const resolveIssue = useMutation(api.orders.resolveCashIssue);
+  const couriersDirectory = useQuery(api.couriers.forBusiness);
+  const pendingCourierReviews = useQuery(
+    api.reviews.pendingBusinessCourierReviews,
+  );
+  const toggleFavoriteCourier = useMutation(api.couriers.toggleFavorite);
+  const submitCourierReview = useMutation(
+    api.reviews.submitBusinessCourierReview,
+  );
 
   const [busyOrder, setBusyOrder] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<OrderView | null>(null);
@@ -181,6 +196,16 @@ export default function BusinessPage() {
   const [issueAmount, setIssueAmount] = useState("");
   const [issueNote, setIssueNote] = useState("");
   const [savingIssue, setSavingIssue] = useState(false);
+  // Repartidores favoritos y reseñas del local a la entrega.
+  const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
+  const [reviewCourier, setReviewCourier] = useState<{
+    orderId: string;
+    code: string;
+    courierName: string;
+  } | null>(null);
+  const [courierRating, setCourierRating] = useState(0);
+  const [courierComment, setCourierComment] = useState("");
+  const [savingCourierReview, setSavingCourierReview] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
   const [couponForm, setCouponForm] = useState({
@@ -344,6 +369,79 @@ export default function BusinessPage() {
       toast.error(error instanceof Error ? error.message : "No pudimos actualizar");
     } finally {
       setBusyOrder(null);
+    }
+  };
+
+  const handleToggleFavoriteCourier = async (courierId: string) => {
+    if (favoriteBusy) return;
+    setFavoriteBusy(courierId);
+    try {
+      const result = await toggleFavoriteCourier({
+        courierId: courierId as Id<"users">,
+      });
+      toast.success(
+        result.favorite
+          ? "Repartidor agregado a favoritos"
+          : "Repartidor quitado de favoritos",
+        {
+          description: result.favorite
+            ? "Cuando haya pedidos de tu local, va a tener prioridad si está disponible."
+            : "Las próximas entregas se ofrecerán a todos por igual.",
+        },
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No pudimos guardar tu favorito",
+      );
+    } finally {
+      setFavoriteBusy(null);
+    }
+  };
+
+  const openCourierReview = (row: {
+    orderId: string;
+    code: string;
+    courierName: string;
+  }) => {
+    setReviewCourier({
+      orderId: row.orderId,
+      code: row.code,
+      courierName: row.courierName,
+    });
+    setCourierRating(0);
+    setCourierComment("");
+  };
+
+  const handleCourierReview = async () => {
+    if (!reviewCourier) return;
+    if (!courierRating) {
+      toast.error("Elegí una calificación para el repartidor");
+      return;
+    }
+    setSavingCourierReview(true);
+    try {
+      await submitCourierReview({
+        orderId: reviewCourier.orderId as Id<"orders">,
+        rating: courierRating,
+        comment: courierComment.trim() || undefined,
+      });
+      toast.success("Reseña enviada", {
+        description:
+          "La calificación se suma al promedio del repartidor en la plataforma.",
+      });
+      setReviewCourier(null);
+      setCourierRating(0);
+      setCourierComment("");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No pudimos guardar la reseña",
+      );
+    } finally {
+      setSavingCourierReview(false);
     }
   };
 
@@ -827,6 +925,231 @@ export default function BusinessPage() {
           </Link>
         ))}
       </div>
+
+      {tab === "couriers" && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-5"
+        >
+          <div className="surface-raised rounded-3xl p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                  <Heart className="size-5 fill-current" />
+                </span>
+                <div>
+                  <p className="font-display text-lg font-bold">
+                    Tus repartidores favoritos
+                  </p>
+                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                    Marcá con un corazón a los repartidores que preferís. Cuando
+                    un pedido de tu local esté listo, primero se les ofrece a
+                    ellos si están disponibles. Si ninguno lo toma en{" "}
+                    {ASSIGNMENT_RULES.favoritePriorityMinutes} minutos, la
+                    entrega se libera a cualquier otro repartidor.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[10px] font-semibold text-primary">
+                  {couriersDirectory?.favorites ?? 0} favoritos
+                </span>
+                <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[10px] font-semibold text-accent">
+                  {couriersDirectory?.couriers.filter((courier) => courier.available)
+                    .length ?? 0}{" "}
+                  disponibles ahora
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <section>
+            <div className="mb-3">
+              <h2 className="font-display text-lg font-bold">
+                Repartidores de Shop To Go
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Todos los repartidores registrados en la plataforma. Los
+                favoritos de tu local aparecen primero.
+              </p>
+            </div>
+
+            {couriersDirectory === undefined ? (
+              <div className="flex h-32 items-center justify-center">
+                <Loader2 className="size-5 animate-spin text-primary" />
+              </div>
+            ) : !couriersDirectory || couriersDirectory.couriers.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="Todavía no hay repartidores registrados"
+                description="Cuando se sumen repartidores a la plataforma, van a aparecer acá para que los marques como favoritos."
+              />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {couriersDirectory.couriers.map((courier) => (
+                  <article
+                    key={courier._id}
+                    className={cn(
+                      "surface-raised rounded-2xl p-4",
+                      courier.favorite && "border-primary/40",
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <DishImage
+                        src={courier.image}
+                        alt={courier.name}
+                        className="size-12 shrink-0 rounded-full"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="flex flex-wrap items-center gap-1.5 font-display text-sm font-bold">
+                          <span className="truncate">{courier.name}</span>
+                          {courier.verified && (
+                            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-accent/35 bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
+                              <BadgeCheck className="size-3" /> Verificado
+                            </span>
+                          )}
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                          <Bike className="size-3 shrink-0" /> {courier.vehicle}
+                        </p>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-0.5 text-accent">
+                            <Star className="size-3 fill-current" />
+                            {courier.rating !== null
+                              ? courier.rating.toFixed(1)
+                              : "Sin nota"}
+                            {courier.reviews > 0 && ` (${courier.reviews})`}
+                          </span>
+                          <span>
+                            · {courier.deliveries}{" "}
+                            {courier.deliveries === 1 ? "entrega" : "entregas"}
+                          </span>
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={
+                          courier.favorite
+                            ? `Quitar a ${courier.name} de favoritos`
+                            : `Marcar a ${courier.name} como favorito`
+                        }
+                        aria-pressed={courier.favorite}
+                        disabled={favoriteBusy !== null}
+                        onClick={() =>
+                          void handleToggleFavoriteCourier(courier._id)
+                        }
+                        className={cn(
+                          "size-9 shrink-0 rounded-full border",
+                          courier.favorite
+                            ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                            : "border-border/70 text-muted-foreground hover:text-primary",
+                        )}
+                      >
+                        {favoriteBusy === courier._id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Heart
+                            className={cn(
+                              "size-5",
+                              courier.favorite && "fill-current",
+                            )}
+                          />
+                        )}
+                      </Button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px]">
+                      <span
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 font-semibold",
+                          courier.available
+                            ? "border-accent/40 bg-accent/10 text-accent"
+                            : courier.online
+                              ? "border-border/70 bg-secondary/30 text-muted-foreground"
+                              : "border-border/60 text-muted-foreground/70",
+                        )}
+                      >
+                        {courier.available
+                          ? "Disponible ahora"
+                          : courier.online
+                            ? "En línea"
+                            : "Desconectado"}
+                      </span>
+                      {courier.favorite && (
+                        <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+                          Favorito de tu local
+                        </span>
+                      )}
+                      {courier.activeDeliveries > 0 && (
+                        <span className="rounded-full border border-border/70 bg-secondary/30 px-2 py-0.5 text-muted-foreground">
+                          {courier.activeDeliveries}{" "}
+                          {courier.activeDeliveries === 1
+                            ? "entrega en curso"
+                            : "entregas en curso"}
+                        </span>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <div className="mb-3">
+              <h2 className="font-display text-lg font-bold">
+                Calificá a tus repartidores
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Cada entrega completada se puede reseñar una vez. Tu
+                calificación se suma al promedio del repartidor.
+              </p>
+            </div>
+
+            {pendingCourierReviews === undefined ? (
+              <div className="flex h-24 items-center justify-center">
+                <Loader2 className="size-5 animate-spin text-primary" />
+              </div>
+            ) : pendingCourierReviews.length === 0 ? (
+              <p className="rounded-2xl border border-border/70 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
+                No tenés entregas completadas pendientes de calificar.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {pendingCourierReviews.map((row) => (
+                  <div
+                    key={row.orderId}
+                    className="surface-raised flex flex-wrap items-center gap-3 rounded-2xl p-3"
+                  >
+                    <DishImage
+                      src={row.courierImage}
+                      alt={row.courierName}
+                      className="size-10 shrink-0 rounded-full"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">
+                        {row.courierName}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Pedido {row.code} · entregado {relativeTime(row.deliveredAt)}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 border-accent/40 text-accent"
+                      onClick={() => openCourierReview(row)}
+                    >
+                      <Star className="size-3.5" /> Calificar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </motion.div>
+      )}
 
       {tab === "overview" && (
         <motion.div
@@ -1670,6 +1993,56 @@ export default function BusinessPage() {
           )}
         </motion.div>
       )}
+
+      <Dialog
+        open={reviewCourier !== null}
+        onOpenChange={(open) => {
+          if (!open) setReviewCourier(null);
+        }}
+      >
+        <DialogContent className="border-border/80 bg-card sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Calificar a {reviewCourier?.courierName ?? "tu repartidor"}
+            </DialogTitle>
+            <DialogDescription>
+              Pedido {reviewCourier?.code}. Contale a la plataforma cómo fue la
+              entrega; tu reseña queda separada de la del comprador.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border/70 bg-black/20 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold">
+                <Bike className="size-4 text-accent" /> Puntualidad y trato
+              </p>
+              <StarPicker
+                value={courierRating}
+                onChange={setCourierRating}
+                label={`Calificación para ${reviewCourier?.courierName ?? "el repartidor"}`}
+              />
+            </div>
+            <Textarea
+              value={courierComment}
+              onChange={(event) => setCourierComment(event.target.value)}
+              maxLength={500}
+              placeholder="¿Llegó a tiempo? ¿Cuidó los productos? (opcional)"
+              className="min-h-24 resize-none text-xs"
+            />
+            <Button
+              className="w-full gap-1.5 bg-ember-gradient text-black"
+              disabled={savingCourierReview || courierRating === 0}
+              onClick={() => void handleCourierReview()}
+            >
+              {savingCourierReview ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Star className="size-4" />
+              )}
+              Enviar reseña
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={productDialog} onOpenChange={setProductDialog}>
         <DialogContent className="phone-dialog max-h-[88vh] overflow-y-auto border-border/80 bg-card [&>*]:min-w-0">

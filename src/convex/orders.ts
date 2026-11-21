@@ -8,6 +8,7 @@ import {
   DELIVERY_RULES,
   assignmentWindow,
   deliveryQuote,
+  favoritePriorityState,
   formatKm,
   groupRouteExtra,
   isValidPoint,
@@ -72,6 +73,19 @@ async function tripOrders(ctx: DbCtx, order: Doc<"orders">) {
 
 function tripKey(order: Doc<"orders">) {
   return `${order.groupCode ?? order.code}#${order.batchIndex ?? 1}`;
+}
+
+/** Repartidores favoritos de todas las tiendas de una entrega. */
+async function favoriteCourierSnapshot(
+  ctx: DbCtx,
+  trip: Doc<"orders">[],
+) {
+  const ids = new Set<Id<"users">>();
+  for (const member of trip) {
+    const business = await ctx.db.get(member.businessId);
+    for (const id of business?.favoriteCourierIds ?? []) ids.add(id);
+  }
+  return [...ids];
 }
 
 /** Órdenes vigentes de la entrega (sin las tiendas canceladas). */
@@ -720,6 +734,10 @@ export const courierBoard = query({
       ) {
         continue;
       }
+      // Los favoritos del local tienen unos minutos de prioridad. Si no hay
+      // ninguno disponible, o ya pasó la ventana, la entrega queda abierta.
+      const priority = favoritePriorityState(trip, userId, now);
+      if (!priority.allowed) continue;
       seenTrips.add(key);
       const business = await ctx.db.get(order.businessId);
       const decorated = await decorateOrder(ctx, order, business, "courier");
@@ -1572,7 +1590,11 @@ async function closeOffersForTrip(
  * propio, así el enlace de WhatsApp acepta en un toque sin exponer el pedido a
  * quien no fue invitado.
  */
-async function offerTripToCouriers(ctx: MutationCtx, order: Doc<"orders">) {
+async function offerTripToCouriers(
+  ctx: MutationCtx,
+  order: Doc<"orders">,
+  options?: { general?: boolean },
+) {
   const trip = (await tripOrders(ctx, order)).filter(
     (member) => member.status !== "cancelled",
   );
@@ -1586,6 +1608,17 @@ async function offerTripToCouriers(ctx: MutationCtx, order: Doc<"orders">) {
   const key = tripKey(order);
   const now = Date.now();
   const expiresAt = now + OFFER_WINDOW_MS;
+  // La primera oferta toma foto de los favoritos del local y reserva unos
+  // minutos para ellos. La segunda ronda, disparada por el cron, es general.
+  const snapshot = options?.general
+    ? ([] as Id<"users">[])
+    : await favoriteCourierSnapshot(ctx, trip);
+  const favoriteIds = new Set(
+    (options?.general
+      ? trip.flatMap((member) => member.favoriteCourierIds ?? [])
+      : snapshot
+    ).map(String),
+  );
   const existing = await ctx.db
     .query("deliveryOffers")
     .withIndex("by_trip", (q) => q.eq("tripKey", key))
@@ -1614,6 +1647,9 @@ async function offerTripToCouriers(ctx: MutationCtx, order: Doc<"orders">) {
     if (courier.verificationStatus !== "verified") continue;
     // No se ofrece una entrega que la cuenta no va a poder aceptar.
     if ((await courierStandingFor(ctx, presence.ownerId)).restricted) continue;
+    if (!(await requireSubscriptionAccessForBoard(ctx, presence.ownerId))) {
+      continue;
+    }
     // Con "mismo repartidor", la entrega sólo se le ofrece a quien ya hizo la
     // anterior: los demás quedarían invitados a algo que no pueden tomar.
     if (
@@ -1643,8 +1679,27 @@ async function offerTripToCouriers(ctx: MutationCtx, order: Doc<"orders">) {
   }
 
   candidates.sort((a, b) => a.pickupKm - b.pickupKm);
+  const availableFavorites = candidates.filter((candidate) =>
+    favoriteIds.has(String(candidate.userId)),
+  );
+  const priorityUntil =
+    !options?.general && availableFavorites.length > 0
+      ? now + ASSIGNMENT_RULES.favoritePriorityMinutes * 60_000
+      : undefined;
+  if (!options?.general) {
+    for (const member of trip) {
+      await ctx.db.patch(member._id, {
+        favoriteCourierIds: snapshot,
+        favoritePriorityUntil: priorityUntil,
+        favoritePriorityReleasedAt: undefined,
+      });
+    }
+  }
+  // Con favoritos disponibles, la primera ronda es sólo para ellos. Si no hay
+  // ninguno, la entrega sale de una vez a todos los que pueden tomarla.
+  const recipients = priorityUntil ? availableFavorites : candidates;
   let created = 0;
-  for (const candidate of candidates.slice(0, MAX_OFFERS_PER_TRIP)) {
+  for (const candidate of recipients.slice(0, MAX_OFFERS_PER_TRIP)) {
     const token = newOfferToken();
     await ctx.db.insert("deliveryOffers", {
       token,
@@ -1676,6 +1731,53 @@ async function offerTripToCouriers(ctx: MutationCtx, order: Doc<"orders">) {
   }
   return created;
 }
+
+/**
+ * Libera las entregas cuya ventana de favoritos ya venció. La oferta general
+ * sale recién ahora: así un favorito disponible tiene una oportunidad real y,
+ * si no aparece, la entrega no queda esperándolo.
+ */
+export const releaseFavoritePriorityOffers = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const ready = await ctx.db
+      .query("orders")
+      .withIndex("by_status", (q) => q.eq("status", "ready"))
+      .collect();
+    const seen = new Set<string>();
+    let released = 0;
+
+    for (const order of ready) {
+      if (
+        order.courierId ||
+        !order.favoritePriorityUntil ||
+        order.favoritePriorityUntil > now ||
+        order.favoritePriorityReleasedAt
+      ) {
+        continue;
+      }
+      const key = tripKey(order);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const trip = (await tripOrders(ctx, order)).filter(
+        (member) => member.status !== "cancelled",
+      );
+      if (
+        trip.length === 0 ||
+        trip.some((member) => member.courierId || member.status !== "ready")
+      ) {
+        continue;
+      }
+      for (const member of trip) {
+        await ctx.db.patch(member._id, { favoritePriorityReleasedAt: now });
+      }
+      await offerTripToCouriers(ctx, trip[0], { general: true });
+      released += 1;
+    }
+    return { released };
+  },
+});
 
 /**
  * Avisos de "repartidor asignado": el local necesita saber quién va a retirar
@@ -1838,6 +1940,18 @@ async function acceptTripForCourier(
     ) {
       throw new Error(
         "El cliente pidió que el mismo repartidor haga todas las entregas de esta compra",
+      );
+    }
+    // Ventana de prioridad para los favoritos del local. Si no hay favoritos
+    // disponibles, la entrega nace sin ventana y la puede tomar cualquiera.
+    const priority = favoritePriorityState(trip, userId);
+    if (!priority.allowed) {
+      const minutes = Math.max(
+        1,
+        Math.ceil((priority.until - Date.now()) / 60_000),
+      );
+      throw new Error(
+        `Este pedido tiene prioridad para los repartidores favoritos del local. Se libera para todos en ${minutes} min`,
       );
     }
     if (await previousDeliveryOpen(ctx, order)) {
