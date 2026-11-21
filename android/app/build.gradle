@@ -3,6 +3,7 @@ apply plugin: 'com.android.application'
 android {
     namespace = "cr.shoptogo.app"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildToolsVersion = "35.0.0"
     defaultConfig {
         applicationId "cr.shoptogo.app"
         minSdkVersion rootProject.ext.minSdkVersion
