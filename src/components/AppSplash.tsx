@@ -1,6 +1,7 @@
 import { api } from "@/convex/_generated/api";
 import { Capacitor } from "@capacitor/core";
 import { useQuery } from "convex/react";
+import { Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const IMAGE_SPLASH_MS = 2400;
@@ -17,6 +18,7 @@ export function AppSplash() {
   const splashUrl = branding?.splashUrl ?? null;
   const splashKind = branding?.splashKind ?? "image";
   const [visible, setVisible] = useState(false);
+  const [needsSoundTap, setNeedsSoundTap] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -42,6 +44,7 @@ export function AppSplash() {
     }
 
     setVisible(true);
+    setNeedsSoundTap(false);
 
     // El video se reproduce completo y cierra solo al terminar. La imagen sí
     // tiene un tiempo fijo.
@@ -59,7 +62,6 @@ export function AppSplash() {
     const video = videoRef.current;
     if (!video) return;
     let cancelled = false;
-    const native = Capacitor.isNativePlatform();
 
     const start = async () => {
       video.volume = 1;
@@ -70,11 +72,10 @@ export function AppSplash() {
         if (cancelled) return;
 
         // Si no fue un bloqueo de autoplay (por ejemplo, la reproducción se
-        // interrumpió mientras cargaba), reintentamos con audio. En el APK
-        // nunca aceptamos silencio.
+        // interrumpió mientras cargaba), reintentamos con audio.
         const blocked =
           error instanceof DOMException && error.name === "NotAllowedError";
-        if (!blocked || native) {
+        if (!blocked) {
           try {
             await video.play();
           } catch {
@@ -83,10 +84,10 @@ export function AppSplash() {
           return;
         }
 
-        // Navegador sin interacción previa: el sistema bloquea el audio y no
-        // hay forma de forzarlo. Reproducimos en silencio para no trabar la
-        // entrada; el APK de Android no pasa por este caso.
+        // El sistema bloqueó el audio: reproducimos en silencio para no trabar
+        // la entrada y mostramos el botón para activarlo con un toque.
         video.muted = true;
+        setNeedsSoundTap(true);
         try {
           await video.play();
         } catch {
@@ -111,6 +112,7 @@ export function AppSplash() {
       if (!video) return;
       video.volume = 1;
       video.muted = false;
+      setNeedsSoundTap(false);
       if (video.paused) void video.play();
     };
 
@@ -131,6 +133,15 @@ export function AppSplash() {
     };
   }, [visible]);
 
+  function enableSound() {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = false;
+    video.volume = 1;
+    setNeedsSoundTap(false);
+    void video.play();
+  }
+
   if (!visible || !splashUrl) return null;
 
   return (
@@ -149,11 +160,14 @@ export function AppSplash() {
           playsInline
           preload="auto"
           onPlaying={(event) => {
-            if (!Capacitor.isNativePlatform()) return;
-            // Dentro del APK aseguramos audio y volumen completo al arrancar.
             const video = event.currentTarget;
-            video.volume = 1;
-            video.muted = false;
+            if (Capacitor.isNativePlatform()) {
+              // Dentro del APK aseguramos audio y volumen completo al arrancar.
+              video.volume = 1;
+              video.muted = false;
+            }
+            // Si el sistema lo dejó en silencio, ofrecemos activar el audio.
+            if (video.muted) setNeedsSoundTap(true);
           }}
           onEnded={() => setVisible(false)}
           onError={() => setVisible(false)}
@@ -169,6 +183,16 @@ export function AppSplash() {
       )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/70 to-transparent" />
+      {needsSoundTap && (
+        <button
+          type="button"
+          onClick={enableSound}
+          className="absolute bottom-5 left-5 flex items-center gap-2 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[11px] font-semibold text-white backdrop-blur transition-colors hover:bg-black/75"
+        >
+          <Volume2 className="size-3.5" />
+          Activar sonido
+        </button>
+      )}
       <button
         type="button"
         onClick={() => setVisible(false)}
