@@ -72,7 +72,6 @@ import {
   Clock,
   Copy,
   Crown,
-  DollarSign,
   GripVertical,
   Heart,
   Loader2,
@@ -2083,7 +2082,7 @@ export default function BusinessPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="product-price">Precio ($)</Label>
+                <Label htmlFor="product-price">Precio (₡)</Label>
                 <Input
                   id="product-price"
                   type="number"
@@ -2817,7 +2816,9 @@ export default function BusinessPage() {
               </ul>
             </div>
             <Button type="submit" className="h-11 w-full gap-2 bg-ember-gradient text-black">
-              <DollarSign className="size-4" />
+              <span aria-hidden className="text-base font-bold leading-none">
+                ₡
+              </span>
               Guardar local
             </Button>
           </form>
