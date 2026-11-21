@@ -40,11 +40,12 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Instalar Java 17
+      # Capacitor 8 compila el módulo Android con Java 21.
+      - name: Instalar Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       # v4 ya no instala el paquete "tools", que Google eliminó. Le pedimos
       # explícitamente la plataforma y las build-tools que usa la app.
