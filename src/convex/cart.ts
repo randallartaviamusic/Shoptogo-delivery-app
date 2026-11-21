@@ -16,11 +16,13 @@ import {
 } from "../lib/delivery";
 import { promoBadge, promoDiscount } from "../lib/promo";
 import { businessDue, checkoutSummary } from "../lib/orders";
+import { money } from "../lib/format";
 import { normalizePhone } from "../lib/notify";
 import { normalizeSinpeNumber } from "../lib/sinpe";
 import { scheduleBlocker } from "../lib/scheduling";
 import { discountFor, findCoupon } from "./coupons";
 import { queueNotice } from "./notifications";
+import { internal } from "./_generated/api";
 import type { PromoKind } from "../lib/promo";
 
 type DbCtx = QueryCtx | MutationCtx;
@@ -701,30 +703,43 @@ export const checkout = mutation({
         // como omitido, sin frenar la compra.
         if (store.ownerId) {
           const owner = await ctx.db.get(store.ownerId);
+          const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
+          // Con SINPE el local recibe el total de su pedido (productos más su
+          // parte del envío); en efectivo recibe los productos.
+          const businessAmount =
+            paymentMethod === "sinpe"
+              ? orderTotal
+              : businessDue({ subtotal, deliveryDiscount, couponDiscount });
+          const phone =
+            normalizePhone(store.whatsappPhone) ?? normalizePhone(owner?.phone);
+
           await queueNotice(ctx, {
             order: (await ctx.db.get(orderId))!,
             tripKey: `${groupCode}#${trip.index}`,
             recipientId: store.ownerId,
             recipientRole: "business",
-            phone: normalizePhone(owner?.phone),
+            phone,
             link: "/business?tab=orders",
             draft: {
               kind: "new_order",
               tripNumber: `${groupCode}${suffix}`,
-              itemCount: items.reduce((acc, item) => acc + item.quantity, 0),
-              // Con SINPE el local recibe el total de su pedido (productos más
-              // su parte del envío); en efectivo recibe los productos.
-              businessAmount:
-                paymentMethod === "sinpe"
-                  ? orderTotal
-                  : businessDue({
-                      subtotal,
-                      deliveryDiscount,
-                      couponDiscount,
-                    }),
+              itemCount,
+              businessAmount,
               paidBySinpe: paymentMethod === "sinpe",
               dropAddress: address,
             },
+          });
+
+          // Aviso al teléfono: despierta al dueño aunque la app esté cerrada.
+          // Si el equipo no está suscrito la acción no envía nada y termina.
+          await ctx.scheduler.runAfter(0, internal.pushNode.sendOrderAlert, {
+            userId: store.ownerId,
+            title: "¡Pedido nuevo! 🎉",
+            body: `${groupCode}${suffix}: ${itemCount} ${
+              itemCount === 1 ? "producto" : "productos"
+            } por ${money(businessAmount)}. Entrega en ${address}.`,
+            url: "/business?tab=orders",
+            tag: `order-${orderId}`,
           });
         }
       }

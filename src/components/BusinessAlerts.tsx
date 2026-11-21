@@ -1,5 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import { money } from "@/lib/format";
+import { playOrderChime } from "@/lib/orderChime";
 import { useQuery } from "convex/react";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
@@ -11,6 +12,19 @@ export function BusinessAlerts({ enabled }: { enabled: boolean }) {
   const navigate = useNavigate();
   const seen = useRef<Set<string>>(new Set());
   const primed = useRef(false);
+
+  // Si llega un push con la app abierta, la melodía suena igual que en el
+  // aviso en vivo. El antiduplicado evita dos campanitas por el mismo pedido.
+  useEffect(() => {
+    if (!enabled || !("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string } | null;
+      if (data?.type === "shop-to-go:order-push") playOrderChime();
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () =>
+      navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled || !board) return;
@@ -28,6 +42,7 @@ export function BusinessAlerts({ enabled }: { enabled: boolean }) {
     for (const id of ids) seen.current.add(id);
     if (fresh.length === 0) return;
 
+    playOrderChime();
     const order = fresh[0];
     toast("Nuevo pedido para confirmar", {
       description: `${order.code} · ${order.buyerName} · ${order.itemCount} productos · ${money(order.subtotal)} · preparación estimada ${board.business.etaMinutes} min`,

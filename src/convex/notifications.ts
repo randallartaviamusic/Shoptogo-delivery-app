@@ -1,8 +1,10 @@
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import {
   internalAction,
   internalMutation,
   internalQuery,
+  query,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
@@ -153,6 +155,25 @@ export const prune = internalMutation({
 });
 
 /**
+ * Estado de los canales externos, sin exponer secretos: la UI del negocio
+ * muestra si el WhatsApp automático ya está conectado.
+ */
+export const channelStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    return {
+      whatsappReady: Boolean(
+        process.env.WHATSAPP_TOKEN?.trim() &&
+          process.env.WHATSAPP_PHONE_NUMBER_ID?.trim(),
+      ),
+      webhookReady: Boolean(process.env.NOTIFY_WEBHOOK_URL?.trim()),
+    };
+  },
+});
+
+/**
  * Envía los avisos en cola. Se ejecuta por cron y también puede dispararse a
  * mano desde el panel de administración.
  */
@@ -169,7 +190,9 @@ export const dispatch = internalAction({
     const template = process.env.WHATSAPP_TEMPLATE_NAME?.trim();
     const webhook = process.env.NOTIFY_WEBHOOK_URL?.trim();
     const base = appUrl();
-    const whatsappReady = Boolean(token && phoneId && base);
+    // El enlace es opcional: el pedido se avisa igual aunque la URL pública no
+    // esté configurada todavía.
+    const whatsappReady = Boolean(token && phoneId);
 
     let sent = 0;
     let skipped = 0;
@@ -187,7 +210,7 @@ export const dispatch = internalAction({
           id: notification._id,
           status: "skipped",
           error:
-            "Falta configurar WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID + PUBLIC_APP_URL, o NOTIFY_WEBHOOK_URL",
+            "Falta configurar WHATSAPP_TOKEN + WHATSAPP_PHONE_NUMBER_ID, o NOTIFY_WEBHOOK_URL",
         });
         skipped++;
         continue;

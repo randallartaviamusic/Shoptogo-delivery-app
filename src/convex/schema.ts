@@ -738,6 +738,23 @@ const schema = defineSchema(
       .index("by_recipient", ["recipientId", "createdAt"])
       .index("by_order", ["orderId"]),
 
+    // Dispositivo suscrito a los avisos del teléfono (Web Push). Cada negocio
+    // puede tener varios: el endpoint es único por navegador y se vuelve a
+    // enlazar con la cuenta cuando alguien activa los avisos en ese equipo.
+    pushSubscriptions: defineTable({
+      userId: v.id("users"),
+      endpoint: v.string(),
+      p256dh: v.string(),
+      auth: v.string(),
+      userAgent: v.optional(v.string()),
+      createdAt: v.number(),
+      lastSuccessAt: v.optional(v.number()),
+      failures: v.optional(v.number()),
+      lastError: v.optional(v.string()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_endpoint", ["endpoint"]),
+
     // Oferta directa de una entrega lista a un repartidor concreto. El token va
     // en el aviso de WhatsApp: abrirlo permite aceptar con un toque.
     deliveryOffers: defineTable({

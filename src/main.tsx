@@ -109,6 +109,16 @@ class RootErrorBoundary extends React.Component<
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+// El service worker es quien muestra la notificación con la app cerrada. Se
+// registra siempre, pero sólo recibe push quien active los avisos en su local.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* sin service worker la app funciona igual, sólo se pierden los avisos */
+    });
+  });
+}
+
 function RouteSyncer() {
   const location = useLocation();
   const savedPath = useRef<string | null>(null);

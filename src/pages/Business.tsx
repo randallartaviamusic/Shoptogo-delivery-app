@@ -11,6 +11,7 @@ import { ProductImageUpload } from "@/components/ProductImageUpload";
 import { ProductMedia } from "@/components/ProductMedia";
 import { ProductVideoUpload } from "@/components/ProductVideoUpload";
 import { PromoBadge } from "@/components/PromoBadge";
+import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import {
   AlertDialog,
@@ -1195,6 +1196,8 @@ export default function BusinessPage() {
               </Button>
             </div>
           )}
+
+          <OrderAlertsSettings whatsappPhone={business.whatsappPhone} />
 
           {business.deliveryPromo && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">
