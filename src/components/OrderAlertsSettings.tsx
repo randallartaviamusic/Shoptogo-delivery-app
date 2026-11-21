@@ -10,6 +10,7 @@ import {
 import {
   currentNativePushState,
   enableNativePush,
+  isNativeApp,
   isNativePushPlatform,
   type NativePushState,
 } from "@/lib/native-push";
@@ -77,7 +78,8 @@ export function OrderAlertsSettings({
 }) {
   const convex = useConvex();
   const channels = useQuery(api.notifications.channelStatus, {});
-  const native = isNativePushPlatform();
+  const native = isNativeApp();
+  const nativePushAvailable = isNativePushPlatform();
   const [state, setState] = useState<PushState | "loading">("loading");
   const [nativeState, setNativeState] = useState<NativePushState | "loading">(
     "loading",
@@ -102,6 +104,10 @@ export function OrderAlertsSettings({
   useEffect(() => {
     if (!native) return;
     let alive = true;
+    if (!nativePushAvailable) {
+      setNativeState("unsupported");
+      return;
+    }
     currentNativePushState()
       .then((next) => {
         if (alive) setNativeState(next);
@@ -112,7 +118,7 @@ export function OrderAlertsSettings({
     return () => {
       alive = false;
     };
-  }, [native]);
+  }, [native, nativePushAvailable]);
 
   const copy = COPY[audience];
 
@@ -154,6 +160,11 @@ export function OrderAlertsSettings({
         toast.error("Las notificaciones están bloqueadas", {
           description:
             "Habilitá las notificaciones de Shop To Go desde los ajustes del teléfono.",
+        });
+      } else if (next === "unsupported") {
+        toast.error("Esta versión del APK no incluye los avisos nativos", {
+          description:
+            "El WhatsApp automático sigue funcionando. Para activar la barra de Android, la app necesita Firebase configurado.",
         });
       }
     } catch (error) {
@@ -292,7 +303,12 @@ export function OrderAlertsSettings({
               type="button"
               size="sm"
               onClick={activateNative}
-              disabled={busy || nativeLoading || nativeState === "denied"}
+              disabled={
+                busy ||
+                nativeLoading ||
+                nativeState === "denied" ||
+                !nativePushAvailable
+              }
             >
               {busy ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -318,7 +334,14 @@ export function OrderAlertsSettings({
             Go → Notificaciones y permitilas.
           </p>
         )}
-        {channels && !channels.nativePushReady && (
+        {!nativePushAvailable && (
+          <p className="text-[10px] leading-relaxed text-amber-300">
+            Esta versión del APK se compiló sin Firebase, así que los avisos en
+            la barra de Android están desactivados. Los mensajes automáticos de
+            WhatsApp siguen funcionando.
+          </p>
+        )}
+        {nativePushAvailable && channels && !channels.nativePushReady && (
           <p className="text-[10px] leading-relaxed text-amber-300">
             El teléfono ya está listo; falta conectar Firebase en el servidor
             para que el aviso salga.

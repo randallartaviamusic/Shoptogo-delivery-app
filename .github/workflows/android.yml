@@ -74,7 +74,7 @@ jobs:
 
       # Firebase necesita google-services.json para que el APK reciba push
       # nativo. Se puede subir al repo o guardar el contenido en el secreto
-      # GOOGLE_SERVICES_JSON; si falta, el APK compila pero no suena cerrado.
+      # GOOGLE_SERVICES_JSON; si falta, el APK abre igual pero sin push.
       - name: Configurar Firebase para notificaciones
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -85,7 +85,7 @@ jobs:
           elif [ -f android/app/google-services.json ]; then
             echo "Usando android/app/google-services.json del repositorio."
           else
-            echo "::warning::Falta google-services.json: el APK compila pero no recibirá push nativo."
+            echo "::warning::Falta google-services.json: el APK compila sin push nativo."
           fi
 
       # Si el administrador subió icono o splash, los bajamos de Convex y los
@@ -106,6 +106,12 @@ jobs:
 
       - name: Copiar los assets a Android
         run: bunx cap sync android
+
+      # Sin Firebase, llamar al plugin nativo de push cierra la app al abrir.
+      # Lo sacamos del APK cuando no hay google-services.json válido para
+      # cr.shoptogo.app; con Firebase configurado se queda y suena la barra.
+      - name: Ajustar push nativo según Firebase
+        run: bun scripts/configure-android-push.ts
 
       - name: Compilar APK
         working-directory: android

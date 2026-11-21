@@ -47,35 +47,43 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CredentialStorePlugin.class);
         super.onCreate(savedInstanceState);
 
+        // Nada de lo que sigue es imprescindible para abrir la app: si un
+        // fabricante bloquea el canal o el audio, la app igual tiene que
+        // arrancar en vez de cerrarse.
+
         // Canal de alta prioridad: con la app cerrada, FCM usa este canal para
         // mostrar el pedido en la barra y reproducir el sonido del sistema.
-        createOrdersNotificationChannel();
-
-        // La splash es un video: permitimos que arranque con audio sin que el
-        // usuario tenga que tocar la pantalla.
-        if (getBridge() != null && getBridge().getWebView() != null) {
-            WebSettings settings = getBridge().getWebView().getSettings();
-            settings.setMediaPlaybackRequiresUserGesture(false);
+        try {
+            createOrdersNotificationChannel();
+        } catch (Exception ignored) {
+            // Sin canal la app abre igual; Android usa el canal por defecto.
         }
 
-        // El administrador pidió que la splash suene a volumen completo. Android
-        // usa el volumen multimedia del teléfono, así que lo llevamos al máximo.
-        AudioManager audioManager =
-            (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        if (audioManager != null && !audioManager.isVolumeFixed()) {
-            try {
+        try {
+            // La splash es un video: permitimos que arranque con audio sin que
+            // el usuario tenga que tocar la pantalla.
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                WebSettings settings = getBridge().getWebView().getSettings();
+                settings.setMediaPlaybackRequiresUserGesture(false);
+            }
+
+            // El administrador pidió que la splash suene a volumen completo.
+            // Android usa el volumen multimedia del teléfono.
+            AudioManager audioManager =
+                (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager != null && !audioManager.isVolumeFixed()) {
                 audioManager.setStreamVolume(
                     AudioManager.STREAM_MUSIC,
                     audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
                     0
                 );
-            } catch (SecurityException ignored) {
-                // Algunos fabricantes bloquean el cambio de volumen.
             }
-        }
 
-        // Que los botones de volumen del teléfono controlen el audio del video.
-        setVolumeControlStream(AudioManager.STREAM_MUSIC);
+            // Que los botones de volumen del teléfono controlen el audio.
+            setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        } catch (Exception ignored) {
+            // Algunos fabricantes bloquean el cambio de volumen.
+        }
     }
 
     private void createOrdersNotificationChannel() {
@@ -111,7 +119,11 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         if (permissionPromptChecked) return;
         permissionPromptChecked = true;
-        maybeAskForPermissions();
+        try {
+            maybeAskForPermissions();
+        } catch (Exception ignored) {
+            // Nunca cerramos la app por un problema al mostrar los permisos.
+        }
     }
 
     /**

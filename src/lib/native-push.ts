@@ -23,8 +23,19 @@ export type NativePushState =
 let started = false;
 let lastToken: string | null = null;
 
-export function isNativePushPlatform() {
+export function isNativeApp() {
   return Capacitor.getPlatform() === "android";
+}
+
+/**
+ * El APK sólo trae el plugin nativo cuando se compiló con google-services.json.
+ * Si falta Firebase, el plugin no está registrado y hay que evitar llamarlo:
+ * `register()` revienta el proceso en Android en vez de devolver un error.
+ */
+export function isNativePushPlatform() {
+  return (
+    isNativeApp() && Capacitor.isPluginAvailable("PushNotifications")
+  );
 }
 
 export async function currentNativePushState(): Promise<NativePushState> {
@@ -122,12 +133,21 @@ async function start(
 
 /** Se llama al entrar a la app: registra sin volver a pedir permiso. */
 export async function setupNativePush(convex: ConvexReactClient) {
-  return await start(convex, false);
+  try {
+    return await start(convex, false);
+  } catch {
+    // Sin Firebase o sin plugin, la app sigue abierta y WhatsApp avisa igual.
+    return "unsupported" as const;
+  }
 }
 
 /** Botón de la configuración: pide permiso y registra este teléfono. */
 export async function enableNativePush(convex: ConvexReactClient) {
-  return await start(convex, true);
+  try {
+    return await start(convex, true);
+  } catch {
+    return "unsupported" as const;
+  }
 }
 
 /** Al cerrar sesión, este teléfono deja de recibir avisos de esa cuenta. */
