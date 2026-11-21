@@ -13,9 +13,9 @@ export type GeoPoint = { lat: number; lng: number };
 export const TILARAN_CENTER: GeoPoint = { lat: 10.47093, lng: -84.96745 };
 
 export const DELIVERY_RULES = {
-  /** ₡1.000 cubre los primeros 2 km de recorrido del repartidor. */
+  /** ₡1.000 cubre el primer kilómetro de recorrido del repartidor. */
   baseFee: 1000,
-  baseKm: 2,
+  baseKm: 1,
   /** ₡350 por cada km adicional (o fracción). */
   perKm: 350,
   /** Radio máximo de entrega desde el local, en km de recorrido. */
