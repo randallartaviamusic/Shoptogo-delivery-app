@@ -20,4 +20,9 @@
         <item name="android:background">@drawable/splash</item>
         <item name="windowSplashScreenBackground">@color/colorPrimary</item>
     </style>
+
+    <!-- Cuadro de permisos del primer arranque. -->
+    <style name="ShopToGoDialog" parent="Theme.AppCompat.DayNight.Dialog.Alert">
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
 </resources>
