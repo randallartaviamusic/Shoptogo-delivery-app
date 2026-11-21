@@ -17,6 +17,7 @@ import {
 import { promoBadge, promoDiscount } from "../lib/promo";
 import { businessDue, checkoutSummary } from "../lib/orders";
 import { normalizePhone } from "../lib/notify";
+import { normalizeSinpeNumber } from "../lib/sinpe";
 import { scheduleBlocker } from "../lib/scheduling";
 import { discountFor, findCoupon } from "./coupons";
 import { queueNotice } from "./notifications";
@@ -57,6 +58,12 @@ export type CartGroup = {
   etaMinutes: number;
   isOpen: boolean;
   rating: number;
+  /** Cobro directo: SINPE Móvil y WhatsApp configurados por el local. */
+  sinpePhone: string | null;
+  whatsappPhone: string | null;
+  sinpeReady: boolean;
+  /** Total de esta tienda si el comprador paga por SINPE (productos + envío). */
+  paymentAmount: number;
   items: Array<{
     cartItemId: Id<"cartItems">;
     productId: Id<"products">;
@@ -116,6 +123,13 @@ async function buildCart(
         etaMinutes: business.etaMinutes,
         isOpen: business.isOpen,
         rating: business.rating,
+        sinpePhone: normalizeSinpeNumber(business.sinpePhone),
+        whatsappPhone: normalizeSinpeNumber(business.whatsappPhone),
+        sinpeReady: Boolean(
+          normalizeSinpeNumber(business.sinpePhone) &&
+            normalizeSinpeNumber(business.whatsappPhone),
+        ),
+        paymentAmount: 0,
         items: [],
         subtotal: 0,
       };
@@ -174,12 +188,31 @@ async function buildCart(
     }
   }
 
+  // Lo que cada tienda cobra por SINPE: sus productos menos su cupón más la
+  // parte del envío que le corresponde en cada entrega. El comprador lo
+  // transfiere directo al número del local.
+  const deliveryByBusiness = new Map<string, number>();
+  for (const trip of trips) {
+    for (const stop of trip.stops) {
+      deliveryByBusiness.set(
+        stop.businessId,
+        (deliveryByBusiness.get(stop.businessId) ?? 0) +
+          stop.fee -
+          stop.deliveryDiscount,
+      );
+    }
+  }
+
   // El cupón es de un local concreto: descuenta sólo los productos de esa
   // tienda y nunca toca el envío ni la parte de los demás locales.
   for (const group of groups) {
     const coupon = couponByBusiness.get(group.businessId) ?? null;
     const discount = discountFor(coupon, group.subtotal);
     group.couponDiscount = discount;
+    group.paymentAmount =
+      group.subtotal -
+      discount +
+      (deliveryByBusiness.get(group.businessId) ?? 0);
     group.coupon = coupon
       ? {
           code: coupon.code,
@@ -357,6 +390,10 @@ export const checkout = mutation({
     couponCode: v.optional(v.string()),
     // Pedido programado: hora exacta en la que el local debe prepararlo.
     scheduledFor: v.optional(v.number()),
+    // Efectivo al entregar o SINPE directo a cada local (productos + envío).
+    paymentMethod: v.optional(
+      v.union(v.literal("cash"), v.literal("sinpe")),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -396,6 +433,7 @@ export const checkout = mutation({
       throw new Error("Marcá en el mapa el punto donde querés recibir el pedido");
     }
     const dropoff = normalizePoint(args.location);
+    const paymentMethod = args.paymentMethod === "sinpe" ? "sinpe" : "cash";
     const scheduledFor = args.scheduledFor
       ? Math.round(args.scheduledFor)
       : null;
@@ -460,6 +498,8 @@ export const checkout = mutation({
         fee: number;
         distanceKm: number;
         promoKind: PromoKind | null;
+        sinpePhone: string | null;
+        whatsappPhone: string | null;
       }
     >();
 
@@ -477,6 +517,13 @@ export const checkout = mutation({
           `Tu punto de entrega queda fuera del área de reparto de ${business.name}.`,
         );
       }
+      const sinpePhone = normalizeSinpeNumber(business.sinpePhone);
+      const whatsappPhone = normalizeSinpeNumber(business.whatsappPhone);
+      if (paymentMethod === "sinpe" && (!sinpePhone || !whatsappPhone)) {
+        throw new Error(
+          `${business.name} todavía no configuró su cobro por SINPE. Elegí efectivo o quitá sus productos.`,
+        );
+      }
       stores.set(businessId, {
         id: businessId,
         name: business.name,
@@ -484,6 +531,8 @@ export const checkout = mutation({
         fee: quote.fee,
         distanceKm: quote.distanceKm,
         promoKind: business.deliveryPromo ?? null,
+        sinpePhone,
+        whatsappPhone,
       });
     }
 
@@ -627,6 +676,13 @@ export const checkout = mutation({
           couponDiscount: couponDiscount || undefined,
           total: orderTotal,
           status: "pending",
+          paymentMethod,
+          paymentSinpePhone:
+            paymentMethod === "sinpe" ? store.sinpePhone ?? undefined : undefined,
+          paymentWhatsappPhone:
+            paymentMethod === "sinpe"
+              ? store.whatsappPhone ?? undefined
+              : undefined,
           address,
           deliveryLocation: dropoff,
           distanceKm: store.distanceKm,
@@ -656,11 +712,17 @@ export const checkout = mutation({
               kind: "new_order",
               tripNumber: `${groupCode}${suffix}`,
               itemCount: items.reduce((acc, item) => acc + item.quantity, 0),
-              businessAmount: businessDue({
-                subtotal,
-                deliveryDiscount,
-                couponDiscount,
-              }),
+              // Con SINPE el local recibe el total de su pedido (productos más
+              // su parte del envío); en efectivo recibe los productos.
+              businessAmount:
+                paymentMethod === "sinpe"
+                  ? orderTotal
+                  : businessDue({
+                      subtotal,
+                      deliveryDiscount,
+                      couponDiscount,
+                    }),
+              paidBySinpe: paymentMethod === "sinpe",
               dropAddress: address,
             },
           });

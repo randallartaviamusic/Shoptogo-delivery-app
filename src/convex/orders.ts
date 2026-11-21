@@ -33,6 +33,7 @@ import { cancellationStanding } from "../lib/trust";
 import { scheduleNotReadyYet } from "../lib/scheduling";
 import { isAdminEmail } from "./branding";
 import { normalizePhone } from "../lib/notify";
+import { normalizeSinpeNumber } from "../lib/sinpe";
 import { queueNotice } from "./notifications";
 
 type OrderViewer = "buyer" | "business" | "courier";
@@ -244,10 +245,14 @@ async function decorateOrder(
     trip[0],
   );
   const due = businessDue(order);
+  const paymentMethod = order.paymentMethod ?? "cash";
   const tripDue = trip.reduce((acc, member) => acc + businessDue(member), 0);
   const tripHanded = trip.reduce(
     (acc, member) => acc + (member.cashHanded ?? 0),
     0,
+  );
+  const tripPaidBySinpe = trip.every(
+    (member) => member.paymentMethod === "sinpe",
   );
   const collectorName = await userName(ctx, leader.cashCollectedBy);
   const handedByName = await userName(ctx, order.cashHandedBy);
@@ -354,7 +359,26 @@ async function decorateOrder(
     tripTotal,
     // Efectivo verificable: montos esperados, confirmados y diferencias.
     businessDue: due,
-    businessPending: due - (order.cashHanded ?? 0),
+    // Con SINPE el local ya recibe directo: no hay efectivo pendiente con el
+    // repartidor. En efectivo se descuenta lo que el local ya confirmó.
+    businessPending:
+      paymentMethod === "sinpe" ? 0 : due - (order.cashHanded ?? 0),
+    // Pago elegido al confirmar y datos de cobro copiados a la orden.
+    paymentMethod,
+    paymentSinpePhone:
+      viewer === "buyer"
+        ? order.paymentSinpePhone ??
+          normalizeSinpeNumber(business?.sinpePhone)
+        : null,
+    paymentWhatsappPhone:
+      viewer === "buyer"
+        ? order.paymentWhatsappPhone ??
+          normalizeSinpeNumber(business?.whatsappPhone)
+        : null,
+    paymentReceipt: order.paymentReceipt
+      ? { url: order.paymentReceipt.url, at: order.paymentReceipt.at }
+      : null,
+    paymentWhatsappSentAt: order.paymentWhatsappSentAt ?? null,
     expectedTotal: tripTotal,
     expectedEarnings: tripEarnings,
     cashCollected: leader.cashCollected ?? null,
@@ -376,7 +400,8 @@ async function decorateOrder(
         ? leader.cashCollected - tripTotal
         : null,
     // Dinero de los locales que el repartidor todavía tiene en la mano.
-    cashPending: tripDue - tripHanded,
+    // Con SINPE el comprador pagó directo: no hay efectivo en la mano.
+    cashPending: tripPaidBySinpe ? 0 : tripDue - tripHanded,
     cashIssue: leader.cashIssue
       ? {
           ...leader.cashIssue,
@@ -610,13 +635,20 @@ export const businessBoard = query({
         deliveredToday: deliveredToday.length,
         ordersToday: createdToday.length,
         cancelledToday: cancelledToday.length,
-        cashDueToday: deliveredToday.reduce((acc, o) => acc + businessDue(o), 0),
+        cashDueToday: deliveredToday.reduce(
+          (acc, o) =>
+            o.paymentMethod === "sinpe" ? acc : acc + businessDue(o),
+          0,
+        ),
         cashReceivedToday: cashHandedToday.reduce(
           (acc, o) => acc + (o.cashHanded ?? 0),
           0,
         ),
         cashPendingToday: deliveredToday.reduce(
-          (acc, o) => acc + Math.max(0, businessDue(o) - (o.cashHanded ?? 0)),
+          (acc, o) =>
+            o.paymentMethod === "sinpe"
+              ? acc
+              : acc + Math.max(0, businessDue(o) - (o.cashHanded ?? 0)),
           0,
         ),
         cashDifferenceCountToday: cashDifferencesToday.length,
@@ -628,7 +660,7 @@ export const businessBoard = query({
         // (de todo el historial, no sólo de hoy).
         cashPending: sorted.reduce(
           (acc, o) =>
-            o.status === "delivered"
+            o.status === "delivered" && o.paymentMethod !== "sinpe"
               ? acc + Math.max(0, businessDue(o) - (o.cashHanded ?? 0))
               : acc,
           0,
@@ -1000,6 +1032,7 @@ async function collectCashDay(
       cashHanded: order.cashHanded ?? null,
       cashCollected: order.cashCollected ?? null,
       isLeader: leaderIds.has(order._id),
+      paidBySinpe: order.paymentMethod === "sinpe",
     });
   }
 
@@ -1031,6 +1064,7 @@ async function carryOverPending(
   let pending = 0;
   for (const order of mine) {
     if (order.status !== "delivered") continue;
+    if (order.paymentMethod === "sinpe") continue;
     if (settledAt(order) >= before) continue;
     pending += Math.max(0, businessDue(order) - (order.cashHanded ?? 0));
   }
@@ -2238,22 +2272,31 @@ export const courierUpdateStatus = mutation({
       throw new Error("El PIN de entrega no coincide. Verificalo con el comprador");
     }
 
-    // Sin el registro del efectivo la entrega no se puede cerrar: es lo que
-    // permite verificar que el dinero llegó al local.
-    if (args.cashAmount === undefined) {
-      throw new Error("Confirmá cuánto efectivo cobraste antes de cerrar la entrega");
-    }
-    const cashAmount = Math.round(args.cashAmount);
-    if (!Number.isFinite(cashAmount) || cashAmount < 0) {
-      throw new Error("Ese monto en efectivo no es válido");
-    }
-    const expectedTotal = trip.reduce((acc, member) => acc + member.total, 0);
-    const difference = cashAmount - expectedTotal;
+    // El SINPE se transfiere directo al local al confirmar el pedido: el
+    // repartidor no cobra nada y no debe registrar efectivo. En efectivo, sin
+    // el registro del monto la entrega no se puede cerrar: es lo que permite
+    // verificar que el dinero llegó al local.
+    const paidBySinpe = trip.every(
+      (member) => member.paymentMethod === "sinpe",
+    );
+    let cashAmount = 0;
+    let difference = 0;
     const note = (args.cashNote ?? "").trim();
-    if (difference !== 0 && note.length < 4) {
-      throw new Error(
-        "El efectivo no coincide con el total: escribí una nota con lo que pasó",
-      );
+    if (!paidBySinpe) {
+      if (args.cashAmount === undefined) {
+        throw new Error("Confirmá cuánto efectivo cobraste antes de cerrar la entrega");
+      }
+      cashAmount = Math.round(args.cashAmount);
+      if (!Number.isFinite(cashAmount) || cashAmount < 0) {
+        throw new Error("Ese monto en efectivo no es válido");
+      }
+      const expectedTotal = trip.reduce((acc, member) => acc + member.total, 0);
+      difference = cashAmount - expectedTotal;
+      if (difference !== 0 && note.length < 4) {
+        throw new Error(
+          "El efectivo no coincide con el total: escribí una nota con lo que pasó",
+        );
+      }
     }
 
     const leader = trip.reduce(
@@ -2269,39 +2312,41 @@ export const courierUpdateStatus = mutation({
         courierLocationAt: undefined,
       });
     }
-    const cashPatch: Partial<Doc<"orders">> = {
-      cashCollected: cashAmount,
-      cashCollectedAt: now,
-      cashCollectedBy: userId,
-      cashCollectedLog: [
+    const closePatch: Partial<Doc<"orders">> = {};
+    if (!paidBySinpe) {
+      closePatch.cashCollected = cashAmount;
+      closePatch.cashCollectedAt = now;
+      closePatch.cashCollectedBy = userId;
+      closePatch.cashCollectedLog = [
         ...(leader.cashCollectedLog ?? []),
         { amount: cashAmount, at: now, by: userId },
-      ],
-    };
-    const issue = courierCashIssue(difference);
-    if (issue) {
-      cashPatch.cashIssue = { ...issue, note, at: now, by: userId };
+      ];
+      const issue = courierCashIssue(difference);
+      if (issue) {
+        closePatch.cashIssue = { ...issue, note, at: now, by: userId };
+      }
     }
     if (args.proofStorageId) {
       const url = await ctx.storage.getUrl(args.proofStorageId);
       if (!url) throw new Error("No pudimos guardar la foto de entrega");
-      cashPatch.deliveryProof = {
+      closePatch.deliveryProof = {
         storageId: args.proofStorageId,
         url,
         at: now,
         by: userId,
       };
     }
-    cashPatch.deliveryConfirmation = {
+    closePatch.deliveryConfirmation = {
       buyerPinVerifiedAt: now,
       courierConfirmedAt: now,
       courierId: userId,
     };
-    await ctx.db.patch(leader._id, cashPatch);
+    await ctx.db.patch(leader._id, closePatch);
     return {
       status: args.status,
       orders: trip.length,
       cashDifference: difference,
+      paidBySinpe,
       proofSaved: Boolean(args.proofStorageId),
       doubleConfirmed: true,
     };
@@ -2319,6 +2364,68 @@ export const generateDeliveryProofUploadUrl = mutation({
       throw new Error("Sólo las cuentas de repartidor pueden subir evidencia de entrega");
     }
     return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** URL temporal para que el comprador suba la captura del SINPE. */
+export const generatePaymentReceiptUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Verifica que el pedido sea del comprador y se pague por SINPE. */
+async function buyerSinpeOrder(
+  ctx: DbCtx,
+  userId: Id<"users">,
+  orderId: Id<"orders">,
+) {
+  const order = await ctx.db.get(orderId);
+  if (!order || order.buyerId !== userId) {
+    throw new Error("Ese pedido no pertenece a tu cuenta");
+  }
+  if ((order.paymentMethod ?? "cash") !== "sinpe") {
+    throw new Error("Este pedido se paga en efectivo al entregar");
+  }
+  if (order.status === "cancelled") {
+    throw new Error("El pedido fue cancelado: no tenés que transferir");
+  }
+  return order;
+}
+
+/** Adjunta la captura del pago SINPE al pedido del comprador. */
+export const attachPaymentReceipt = mutation({
+  args: { orderId: v.id("orders"), storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    await buyerSinpeOrder(ctx, userId, args.orderId);
+    const url = await ctx.storage.getUrl(args.storageId);
+    if (!url) throw new Error("No pudimos guardar la captura del pago");
+    const now = Date.now();
+    await ctx.db.patch(args.orderId, {
+      paymentReceipt: { storageId: args.storageId, url, at: now, by: userId },
+      paymentWhatsappSentAt: undefined,
+    });
+    return { url };
+  },
+});
+
+/** Marca que el comprador abrió el WhatsApp del local con el comprobante. */
+export const markPaymentWhatsappSent = mutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const order = await buyerSinpeOrder(ctx, userId, args.orderId);
+    if (!order.paymentReceipt) {
+      throw new Error("Subí primero la captura del pago");
+    }
+    await ctx.db.patch(args.orderId, { paymentWhatsappSentAt: Date.now() });
+    return null;
   },
 });
 
@@ -2487,6 +2594,10 @@ export const receipt = query({
       deliveryFee: order.deliveryFee,
       deliveryDiscount: order.deliveryDiscount ?? 0,
       total: order.total,
+      paymentMethod: order.paymentMethod ?? "cash",
+      paymentReceipt: order.paymentReceipt
+        ? { url: order.paymentReceipt.url, at: order.paymentReceipt.at }
+        : null,
       address: order.address,
       notes: order.notes ?? null,
       // Cada secreto se entrega sólo a quien debe validarlo.

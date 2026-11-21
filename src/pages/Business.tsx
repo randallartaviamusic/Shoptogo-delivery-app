@@ -56,6 +56,7 @@ import {
 } from "@/lib/hours";
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
 import { ASSIGNMENT_RULES } from "@/lib/delivery";
+import { formatSinpeNumber, normalizeSinpeNumber } from "@/lib/sinpe";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
 import type { DeliveryPromo } from "@/lib/promo";
 import { cn } from "@/lib/utils";
@@ -72,9 +73,11 @@ import {
   GripVertical,
   Loader2,
   MapPin,
+  MessageCircle,
   PackageCheck,
   Pencil,
   Plus,
+  ReceiptText,
   Settings2,
   Store,
   TicketPercent,
@@ -228,6 +231,8 @@ export default function BusinessPage() {
     etaMinutes: "",
     image: "",
     deliveryPromo: null as DeliveryPromo,
+    sinpePhone: "",
+    whatsappPhone: "",
     pickupInstructions: "",
     packagingInstructions: "",
     hoursEnabled: false,
@@ -539,6 +544,8 @@ export default function BusinessPage() {
       etaMinutes: String(business.etaMinutes),
       image: business.image,
       deliveryPromo: business.deliveryPromo ?? null,
+      sinpePhone: formatSinpeNumber(business.sinpePhone) ?? "",
+      whatsappPhone: formatSinpeNumber(business.whatsappPhone) ?? "",
       pickupInstructions: business.pickupInstructions ?? "",
       packagingInstructions: business.packagingInstructions ?? "",
       hoursEnabled: Boolean(business.hours?.length),
@@ -610,6 +617,16 @@ export default function BusinessPage() {
       toast.error("Escribí la dirección del local");
       return;
     }
+    const sinpePhone = normalizeSinpeNumber(settingsForm.sinpePhone);
+    if (!sinpePhone) {
+      toast.error("El número de SINPE Móvil es obligatorio: escribí 8 dígitos");
+      return;
+    }
+    const whatsappPhone = normalizeSinpeNumber(settingsForm.whatsappPhone);
+    if (!whatsappPhone) {
+      toast.error("El número de WhatsApp es obligatorio: escribí 8 dígitos");
+      return;
+    }
     if (settingsForm.hoursEnabled) {
       if (settingsForm.hours.length === 0) {
         toast.error("Elegí al menos un día de atención");
@@ -637,6 +654,8 @@ export default function BusinessPage() {
         image: settingsForm.image,
         coverStorageId: coverStorageId ?? undefined,
         deliveryPromo: settingsForm.deliveryPromo,
+        sinpePhone,
+        whatsappPhone,
         pickupInstructions: settingsForm.pickupInstructions,
         packagingInstructions: settingsForm.packagingInstructions,
         hours: settingsForm.hoursEnabled ? settingsForm.hours : null,
@@ -828,6 +847,29 @@ export default function BusinessPage() {
                 onClick={openSettings}
               >
                 Fijar ubicación
+              </Button>
+            </div>
+          )}
+
+          {(!business.sinpePhone || !business.whatsappPhone) && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <Wallet className="size-3.5" /> Falta tu cobro por SINPE Móvil
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Agregá el número de SINPE y el WhatsApp de la tienda en los
+                  ajustes. Son obligatorios para que los compradores que no pagan
+                  en efectivo puedan transferirte y mandarte el comprobante.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-primary/40 text-primary"
+                onClick={openSettings}
+              >
+                Completar cobro
               </Button>
             </div>
           )}
@@ -1174,6 +1216,54 @@ export default function BusinessPage() {
                     </div>
                   )}
 
+                {order.paymentMethod === "sinpe" ? (
+                  <div className="mt-3 rounded-xl border border-accent/30 bg-accent/[0.05] p-3">
+                    <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                      <Wallet className="size-3.5" /> Pago por SINPE Móvil
+                    </p>
+                    <div className="mt-2 space-y-1 text-[11px]">
+                      <div className="flex justify-between font-semibold">
+                        <span>Monto del pedido para tu tienda</span>
+                        <span>{money(order.total)}</span>
+                      </div>
+                      <p className="text-[10px] leading-relaxed text-muted-foreground">
+                        Incluye{" "}
+                        {money(order.subtotal - (order.couponDiscount ?? 0))} de tus
+                        productos y{" "}
+                        {money(
+                          Math.max(
+                            0,
+                            order.deliveryFee - (order.deliveryDiscount ?? 0),
+                          ),
+                        )}{" "}
+                        del envío de esta tienda. El repartidor no cobra efectivo.
+                      </p>
+                    </div>
+                    {order.paymentReceipt ? (
+                      <div className="mt-2 space-y-1">
+                        <a
+                          href={order.paymentReceipt.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent hover:underline"
+                        >
+                          <ReceiptText className="size-3.5" /> Ver captura del comprobante
+                        </a>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground">
+                          Subido {relativeTime(order.paymentReceipt.at)}
+                          {order.paymentWhatsappSentAt
+                            ? ` · enviado por WhatsApp ${relativeTime(order.paymentWhatsappSentAt)}`
+                            : " · todavía no lo envió por WhatsApp"}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                        El comprador todavía no subió la captura del SINPE. Cuando
+                        lo haga vas a poder verla acá.
+                      </p>
+                    )}
+                  </div>
+                ) : (
                 <div className="mt-3 rounded-xl border border-border/70 p-3">
                   <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
                     <Wallet className="size-3.5" /> Efectivo de este pedido
@@ -1271,6 +1361,7 @@ export default function BusinessPage() {
                     Reportar problema de efectivo
                   </Button>
                 </div>
+                )}
 
                 {order.cashIssue && (
                   <CashIssueNote
@@ -2007,6 +2098,62 @@ export default function BusinessPage() {
                 entre tu local y el punto de entrega del cliente.
               </p>
             </div>
+            <div className="space-y-2.5 rounded-2xl border border-border/70 bg-black/20 p-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                  <Wallet className="size-3.5" /> Cobro por SINPE Móvil
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                  Obligatorio: los compradores que no pagan en efectivo
+                  transfieren a tu SINPE los productos de tu tienda más la parte
+                  del envío que te corresponde, y te mandan la captura al
+                  WhatsApp que pongas acá. El mensaje sale desde el WhatsApp del
+                  comprador.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="settings-sinpe">Número de SINPE Móvil</Label>
+                  <Input
+                    id="settings-sinpe"
+                    required
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={settingsForm.sinpePhone}
+                    onChange={(event) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        sinpePhone: event.target.value,
+                      })
+                    }
+                    placeholder="8888-1234"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="settings-whatsapp">WhatsApp para comprobantes</Label>
+                  <Input
+                    id="settings-whatsapp"
+                    required
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={settingsForm.whatsappPhone}
+                    onChange={(event) =>
+                      setSettingsForm({
+                        ...settingsForm,
+                        whatsappPhone: event.target.value,
+                      })
+                    }
+                    placeholder="8888-1234"
+                  />
+                </div>
+              </div>
+              <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                <MessageCircle className="mt-0.5 size-3.5 shrink-0 text-accent" />
+                Usá el mismo número o uno distinto: el comprador te escribe
+                directo desde su propio WhatsApp al tocar “Enviar comprobante”.
+              </p>
+            </div>
+
             <div className="space-y-2.5 rounded-2xl border border-border/70 bg-black/20 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>

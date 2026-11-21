@@ -52,8 +52,10 @@ export type NotifyInput =
       kind: "new_order";
       tripNumber: string;
       itemCount: number;
-      /** Lo que el local recibe en efectivo por los productos. */
+      /** Lo que recibe el local: productos, o el total si ya pagó por SINPE. */
       businessAmount: number;
+      /** El comprador pagó por SINPE directo al local. */
+      paidBySinpe?: boolean;
       /** A dónde va el pedido, en una línea. */
       dropAddress: string;
     }
@@ -90,7 +92,9 @@ export function buildNotifyDraft(input: NotifyInput): NotifyDraft {
         title: "Pedido nuevo",
         body: [
           `Pedido ${input.tripNumber}: ${items}.`,
-          `Cobrás ${money(input.businessAmount)} en efectivo.`,
+          input.paidBySinpe
+            ? `El comprador pagará ${money(input.businessAmount)} por SINPE directo a tu tienda.`
+            : `Cobrás ${money(input.businessAmount)} en efectivo.`,
           `Entrega en ${input.dropAddress}.`,
           "Confirmalo en Shop To Go para arrancar la cocina.",
         ].join("\n"),

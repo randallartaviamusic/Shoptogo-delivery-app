@@ -122,6 +122,8 @@ export type CashDayRow = {
   /** Efectivo confirmado por el repartidor al entregar (sólo en la líder). */
   cashCollected?: number | null;
   isLeader: boolean;
+  /** El comprador pagó directo al local por SINPE: no hay efectivo. */
+  paidBySinpe?: boolean;
 };
 
 export type CashBusinessLine = {
@@ -171,8 +173,12 @@ export function summarizeCashDay(rows: CashDayRow[]): CashDaySummary {
 
   for (const row of rows) {
     trips.add(row.tripKey);
-    expectedToCollect += row.total;
+    // La ganancia del envío se cuenta aunque el comprador haya pagado por
+    // SINPE: el repartidor hizo la entrega igual. La conciliación de efectivo
+    // y lo que se le debe a los locales sí excluye esos pedidos.
     earnings += row.deliveryFee + (row.extraStopFee ?? 0);
+    if (row.paidBySinpe) continue;
+    expectedToCollect += row.total;
     if (row.isLeader) collected += row.cashCollected ?? 0;
 
     const due = businessDue(row);

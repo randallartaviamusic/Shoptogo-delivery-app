@@ -16,18 +16,22 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
+import { formatSinpeNumber } from "@/lib/sinpe";
 import { costaRicaLocalToTimestamp, SCHEDULE_RULES } from "@/lib/scheduling";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  Banknote,
   BookmarkPlus,
   Loader2,
   Minus,
+  MessageCircle,
   PackageCheck,
   Plus,
   ShoppingCart,
+  Smartphone,
   Star,
   Store,
   Tag,
@@ -60,6 +64,7 @@ export default function CartPage() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduledLocal, setScheduledLocal] = useState("");
   const [placing, setPlacing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "sinpe">("cash");
   // Para compras de más de 3 productos: mismo repartidor en todas las entregas.
   const [sameCourier, setSameCourier] = useState(true);
   const [saveLabel, setSaveLabel] = useState("Casa");
@@ -73,6 +78,8 @@ export default function CartPage() {
   const multiStore = trips.some((trip) => trip.stops.length > 1);
   const hasClosed = groups.some((group) => !group.isOpen);
   const allCovered = groups.every((group) => group.deliveryAvailable);
+  // Todos los locales del carrito tienen SINPE y WhatsApp para cobrar directo.
+  const sinpeReady = groups.length > 0 && groups.every((group) => group.sinpeReady);
   const canConfirm = Boolean(dropoff) && address.trim().length >= 6 && allCovered;
   const scheduledFor = scheduleEnabled
     ? costaRicaLocalToTimestamp(scheduledLocal)
@@ -180,6 +187,12 @@ export default function CartPage() {
       toast.error("Marcá en el mapa el punto donde querés recibir el pedido");
       return;
     }
+    if (paymentMethod === "sinpe" && !sinpeReady) {
+      toast.error("Una tienda del carrito todavía no configuró su SINPE", {
+        description: "Elegí efectivo o quitá sus productos para continuar.",
+      });
+      return;
+    }
 
     setPlacing(true);
     try {
@@ -195,6 +208,7 @@ export default function CartPage() {
         requestKey: requestKey.current,
         couponCode: cart?.couponTotal ? couponCode : undefined,
         scheduledFor: scheduleEnabled ? (scheduledFor ?? undefined) : undefined,
+        paymentMethod,
       });
       // La compra quedó registrada: el próximo intento es un pedido nuevo.
       requestKey.current = null;
@@ -208,7 +222,10 @@ export default function CartPage() {
             ? "Pedido confirmado"
             : `${result.created} entregas confirmadas`,
           {
-            description: `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`,
+            description:
+              paymentMethod === "sinpe"
+                ? `Total ${money(result.total)}. En Pedidos subí la captura de cada SINPE y enviála por WhatsApp a la tienda.`
+                : `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`,
           },
         );
       }
@@ -580,6 +597,105 @@ export default function CartPage() {
               />
             </div>
 
+            <div className="mt-5 space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Forma de pago
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod === "cash"}
+                  onClick={() => setPaymentMethod("cash")}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition-colors",
+                    paymentMethod === "cash"
+                      ? "border-accent/50 bg-accent/10"
+                      : "border-border/70 hover:border-accent/30",
+                  )}
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-semibold">
+                    <Banknote className="size-3.5 text-accent" /> Efectivo al entregar
+                  </span>
+                  <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                    Le pagás el total al repartidor cuando recibís el pedido.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={paymentMethod === "sinpe"}
+                  disabled={!sinpeReady}
+                  onClick={() => setPaymentMethod("sinpe")}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                    paymentMethod === "sinpe"
+                      ? "border-accent/50 bg-accent/10"
+                      : "border-border/70 hover:border-accent/30",
+                  )}
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-semibold">
+                    <Smartphone className="size-3.5 text-accent" /> SINPE Móvil
+                  </span>
+                  <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                    Transferís a cada tienda sus productos más el envío.
+                  </span>
+                </button>
+              </div>
+
+              {!sinpeReady && (() => {
+                const pending = groups
+                  .filter((group) => !group.sinpeReady)
+                  .map((group) => group.businessName);
+                return (
+                  <p className="rounded-xl border border-primary/25 bg-primary/[0.06] p-2.5 text-[10px] leading-relaxed text-primary">
+                    {pending.join(", ")}{" "}
+                    {pending.length === 1
+                      ? "todavía no configuró SINPE y WhatsApp para cobrar."
+                      : "todavía no configuraron SINPE y WhatsApp para cobrar."}{" "}
+                    Podés pagar en efectivo o quitar sus productos.
+                  </p>
+                );
+              })()}
+
+              {paymentMethod === "sinpe" && (
+                <div className="rounded-xl border border-accent/30 bg-accent/[0.05] p-3">
+                  <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                    <Smartphone className="size-3.5" /> Transferí directo a cada tienda
+                  </p>
+                  <ul className="mt-2 space-y-1.5">
+                    {groups.map((group) => (
+                      <li
+                        key={group.businessId}
+                        className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 rounded-lg bg-black/20 px-2.5 py-1.5 text-[10px]"
+                      >
+                        <span className="max-w-full truncate font-semibold">
+                          {group.businessName}
+                        </span>
+                        <span className="text-muted-foreground">
+                          SINPE{" "}
+                          {group.sinpePhone
+                            ? formatSinpeNumber(group.sinpePhone)
+                            : "—"}{" "}
+                          · WhatsApp{" "}
+                          {group.whatsappPhone
+                            ? formatSinpeNumber(group.whatsappPhone)
+                            : "—"}
+                        </span>
+                        <span className="font-display text-sm font-bold text-accent">
+                          {money(group.paymentAmount)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 flex items-start gap-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                    <MessageCircle className="mt-0.5 size-3 shrink-0 text-accent" />
+                    Al confirmar, en Pedidos subís la captura de cada transferencia
+                    y tocás “Enviar comprobante”: se abre tu WhatsApp con el
+                    mensaje escrito para la tienda.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {(splitInDeliveries || multiStore) && (
               <div className="mt-5 rounded-2xl border border-border/70 bg-black/20 p-3">
                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
@@ -699,13 +815,19 @@ export default function CartPage() {
                 </div>
               )}
               <div className="flex items-end justify-between pt-2">
-                <span className="font-semibold">Efectivo exacto a entregar</span>
+                <span className="font-semibold">
+                  {paymentMethod === "sinpe"
+                    ? "Total a transferir por SINPE"
+                    : "Efectivo exacto a entregar"}
+                </span>
                 <span className="font-display text-2xl font-extrabold">
                   {money(cart?.total ?? 0)}
                 </span>
               </div>
               <p className="text-right text-[10px] leading-relaxed text-muted-foreground">
-                Total de productos y envíos tras descuentos. El repartidor registrará este monto al entregar; si no coincide, la diferencia queda anotada.
+                {paymentMethod === "sinpe"
+                  ? "Es la suma de lo que le transferís a cada tienda: tus productos más la parte del envío de esa tienda, después de descuentos."
+                  : "Total de productos y envíos tras descuentos. El repartidor registrará este monto al entregar; si no coincide, la diferencia queda anotada."}
               </p>
             </div>
 
@@ -731,7 +853,7 @@ export default function CartPage() {
 
             <Button
               className="mt-5 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
-              disabled={placing || !canConfirm || Boolean(scheduleError) || hasClosed || groups.some((group) => group.items.some((item) => !item.isAvailable))}
+              disabled={placing || !canConfirm || Boolean(scheduleError) || hasClosed || (paymentMethod === "sinpe" && !sinpeReady) || groups.some((group) => group.items.some((item) => !item.isAvailable))}
               onClick={handleCheckout}
             >
               {placing ? (
@@ -741,7 +863,9 @@ export default function CartPage() {
                 </>
               ) : (
                 <>
-                  Confirmar pedido
+                  {paymentMethod === "sinpe"
+                    ? "Confirmar pedido y pagar por SINPE"
+                    : "Confirmar pedido"}
                   <ArrowRight className="size-4" />
                 </>
               )}
@@ -751,7 +875,8 @@ export default function CartPage() {
               <Store className="size-3.5" />
               {groups.length} {groups.length === 1 ? "negocio" : "negocios"} ·{" "}
               {deliveries || groups.length}{" "}
-              {deliveries === 1 ? "entrega" : "entregas"} · Pago en la entrega
+              {deliveries === 1 ? "entrega" : "entregas"} ·{" "}
+              {paymentMethod === "sinpe" ? "Pago por SINPE" : "Pago en la entrega"}
             </p>
 
 

@@ -9,6 +9,7 @@ import {
   promoKindValidator,
 } from "./schema";
 import { planTier } from "../lib/subscriptions";
+import { normalizeSinpeNumber } from "../lib/sinpe";
 import {
   isBusinessOpenAt,
   normalizeBusinessHours,
@@ -635,6 +636,10 @@ export const update = mutation({
     hours: v.optional(v.union(v.array(businessHourValidator), v.null())),
     // Promoción de envío del local. null = queda sin promoción.
     deliveryPromo: v.optional(v.union(promoKindValidator, v.null())),
+    // Cobro directo por SINPE Móvil. Se guardan 8 dígitos y son obligatorios
+    // cuando la tienda guarda sus ajustes de cobro.
+    sinpePhone: v.optional(v.string()),
+    whatsappPhone: v.optional(v.string()),
     pickupInstructions: v.optional(v.string()),
     packagingInstructions: v.optional(v.string()),
   },
@@ -703,6 +708,42 @@ export const update = mutation({
     }
     if (args.deliveryPromo !== undefined)
       patch.deliveryPromo = args.deliveryPromo ?? undefined;
+
+    // Los números se piden juntos: sin SINPE y WhatsApp el comprador no puede
+    // pagar ni enviar el comprobante. El interruptor de abierto/cerrado no
+    // envía estos campos, así que los locales viejos igual pueden operar
+    // mientras completan sus ajustes.
+    let nextSinpe = business.sinpePhone;
+    let nextWhatsapp = business.whatsappPhone;
+    if (args.sinpePhone !== undefined) {
+      const sinpe = normalizeSinpeNumber(args.sinpePhone);
+      if (!sinpe) {
+        throw new ConvexError(
+          "El número de SINPE Móvil debe tener 8 dígitos (ej. 8888-1234)",
+        );
+      }
+      patch.sinpePhone = sinpe;
+      nextSinpe = sinpe;
+    }
+    if (args.whatsappPhone !== undefined) {
+      const whatsapp = normalizeSinpeNumber(args.whatsappPhone);
+      if (!whatsapp) {
+        throw new ConvexError(
+          "El número de WhatsApp debe tener 8 dígitos (ej. 8888-1234)",
+        );
+      }
+      patch.whatsappPhone = whatsapp;
+      nextWhatsapp = whatsapp;
+    }
+    if (
+      (args.sinpePhone !== undefined || args.whatsappPhone !== undefined) &&
+      (!nextSinpe || !nextWhatsapp)
+    ) {
+      throw new ConvexError(
+        "Agregá el SINPE Móvil y el WhatsApp de la tienda: son obligatorios para recibir pagos",
+      );
+    }
+
     if (args.pickupInstructions !== undefined) {
       const instructions = args.pickupInstructions.trim();
       if (instructions.length > 500) {

@@ -188,6 +188,21 @@ export const orderStatusValidator = v.union(
 );
 export type OrderStatus = Infer<typeof orderStatusValidator>;
 
+/** Forma de pago elegida al confirmar la compra. Ausente = efectivo. */
+export const orderPaymentMethodValidator = v.union(
+  v.literal("cash"),
+  v.literal("sinpe"),
+);
+export type OrderPaymentMethod = Infer<typeof orderPaymentMethodValidator>;
+
+/** Captura del comprobante SINPE que sube el comprador. */
+export const paymentReceiptValidator = v.object({
+  storageId: v.id("_storage"),
+  url: v.string(),
+  at: v.number(),
+  by: v.id("users"),
+});
+
 /** Punto exacto en el mapa (latitud/longitud) dentro de la zona de reparto. */
 export const geoPointValidator = v.object({
   lat: v.number(),
@@ -281,6 +296,11 @@ const schema = defineSchema(
       tagline: v.string(),
       image: v.string(),
       address: v.string(),
+      // Cobro directo de los pedidos: el comprador que no paga en efectivo
+      // transfiere por SINPE Móvil a este número y manda el comprobante al
+      // WhatsApp del local. Son obligatorios al guardar los ajustes.
+      sinpePhone: v.optional(v.string()),
+      whatsappPhone: v.optional(v.string()),
       // Información operativa que el repartidor necesita al llegar al local.
       pickupInstructions: v.optional(v.string()),
       packagingInstructions: v.optional(v.string()),
@@ -427,6 +447,14 @@ const schema = defineSchema(
       deliveryDiscount: v.optional(v.number()),
       total: v.number(),
       status: orderStatusValidator,
+      // Forma de pago y datos de cobro copiados al crear el pedido: si el
+      // local cambia su número después, el comprador sigue pagando el que se
+      // le mostró. En efectivo, sin estos campos, el repartidor cobra al cerrar.
+      paymentMethod: v.optional(orderPaymentMethodValidator),
+      paymentSinpePhone: v.optional(v.string()),
+      paymentWhatsappPhone: v.optional(v.string()),
+      paymentReceipt: v.optional(paymentReceiptValidator),
+      paymentWhatsappSentAt: v.optional(v.number()),
       address: v.string(),
       // Punto de entrega y distancia del repartidor que definieron la tarifa.
       deliveryLocation: v.optional(geoPointValidator),

@@ -224,7 +224,11 @@ export default function ReceiptPage() {
               </div>
             )}
             <div className="flex justify-between border-t border-[#d9cbb4] pt-2 font-display text-base font-extrabold">
-              <span>Total en efectivo</span>
+              <span>
+                {receipt.paymentMethod === "sinpe"
+                  ? "Total por SINPE Móvil"
+                  : "Total en efectivo"}
+              </span>
               <span>{money(receipt.total)}</span>
             </div>
           </div>
@@ -233,25 +237,49 @@ export default function ReceiptPage() {
         <div className="grid gap-3 border-t border-[#d9cbb4] px-6 py-5 sm:grid-cols-2 sm:px-8">
           <div className="rounded-xl border border-[#d9cbb4] bg-white/50 p-3">
             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#8a765c]">
-              <Wallet className="size-3.5" /> Efectivo
+              <Wallet className="size-3.5" />{" "}
+              {receipt.paymentMethod === "sinpe" ? "SINPE Móvil" : "Efectivo"}
             </p>
-            <p className="mt-1 text-xs">
-              Cobrado al cliente:{" "}
-              <strong>
-                {receipt.cashCollected !== null ? money(receipt.cashCollected) : "Pendiente"}
-              </strong>
-            </p>
-            <p className="text-xs">
-              Entregado al negocio:{" "}
-              <strong>
-                {receipt.cashHanded !== null ? money(receipt.cashHanded) : "Pendiente"}
-              </strong>
-            </p>
-            {receipt.cashIssue && (
-              <p className="mt-1.5 text-[11px] leading-relaxed text-[#8f2d25]">
-                <strong>Incidencia:</strong> {receipt.cashIssue.note}
-                {receipt.cashIssue.resolvedAt ? " (resuelta)" : " (abierta)"}
-              </p>
+            {receipt.paymentMethod === "sinpe" ? (
+              <>
+                <p className="mt-1 text-xs">
+                  {receipt.paymentReceipt ? "Transferido" : "A transferir"} a la
+                  tienda: <strong>{money(receipt.total)}</strong>
+                </p>
+                {receipt.paymentReceipt ? (
+                  <a
+                    href={receipt.paymentReceipt.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-xs font-semibold underline"
+                  >
+                    Ver captura del comprobante
+                  </a>
+                ) : (
+                  <p className="mt-1 text-xs">Captura del comprobante: pendiente</p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-xs">
+                  Cobrado al cliente:{" "}
+                  <strong>
+                    {receipt.cashCollected !== null ? money(receipt.cashCollected) : "Pendiente"}
+                  </strong>
+                </p>
+                <p className="text-xs">
+                  Entregado al negocio:{" "}
+                  <strong>
+                    {receipt.cashHanded !== null ? money(receipt.cashHanded) : "Pendiente"}
+                  </strong>
+                </p>
+                {receipt.cashIssue && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-[#8f2d25]">
+                    <strong>Incidencia:</strong> {receipt.cashIssue.note}
+                    {receipt.cashIssue.resolvedAt ? " (resuelta)" : " (abierta)"}
+                  </p>
+                )}
+              </>
             )}
           </div>
           <div className="rounded-xl border border-[#d9cbb4] bg-white/50 p-3">

@@ -4,6 +4,7 @@ import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
 import { OrderReview } from "@/components/OrderReview";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,12 @@ import type { CashIssueView } from "@/lib/cash";
 import type { GeoPoint } from "@/lib/delivery";
 import { ASSIGNMENT_RULES, formatKm } from "@/lib/delivery";
 import { ACTIVE_STATUSES, clockTime, money, ORDER_STATUS, relativeTime } from "@/lib/format";
+import {
+  formatSinpeNumber,
+  normalizeSinpeNumber,
+  sinpePaymentMessage,
+  sinpeWhatsappHref,
+} from "@/lib/sinpe";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -26,17 +33,20 @@ import {
   Check,
   ChefHat,
   CircleSlash,
+  ImagePlus,
   Loader2,
   MapPin,
+  MessageCircle,
   PackageCheck,
   ReceiptText,
   ShoppingCart,
+  Smartphone,
   Star,
   Store,
   Wallet,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { toast } from "sonner";
 
@@ -99,6 +109,12 @@ export type OrderView = {
   cashDifference: number | null;
   cashPending: number;
   cashIssue: CashIssueView | null;
+  // Pago elegido al confirmar y cobro directo por SINPE.
+  paymentMethod: "cash" | "sinpe";
+  paymentSinpePhone: string | null;
+  paymentWhatsappPhone: string | null;
+  paymentReceipt: { url: string; at: number } | null;
+  paymentWhatsappSentAt: number | null;
   pickupCode: string | null;
   deliveryPin: string | null;
   stops: Array<{
@@ -257,6 +273,268 @@ export function OrderProgress({ status }: { status: OrderStatus }) {
   );
 }
 
+function canShareFile(file: File | null) {
+  if (
+    !file ||
+    typeof navigator === "undefined" ||
+    typeof navigator.canShare !== "function"
+  ) {
+    return false;
+  }
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pago directo a la tienda: monto exacto (productos + envío de esa tienda),
+ * número de SINPE, captura del comprobante y envío por WhatsApp desde el
+ * teléfono del comprador. El local ve la captura y la fecha en su panel.
+ */
+function SinpePaymentPanel({ order }: { order: OrderView }) {
+  const generateUploadUrl = useMutation(
+    api.orders.generatePaymentReceiptUploadUrl,
+  );
+  const attachReceipt = useMutation(api.orders.attachPaymentReceipt);
+  const markSent = useMutation(api.orders.markPaymentWhatsappSent);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  // La imagen queda en memoria para poder compartirla adjunta desde el teléfono.
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+
+  // Al abrir otro pedido no se arrastra la captura del anterior.
+  useEffect(() => {
+    setPreview(null);
+    setReceiptFile(null);
+  }, [order._id]);
+
+  const sinpe = normalizeSinpeNumber(order.paymentSinpePhone);
+  const whatsapp = normalizeSinpeNumber(order.paymentWhatsappPhone);
+  const receiptUrl = order.paymentReceipt?.url ?? preview;
+  const message = sinpePaymentMessage({
+    businessName: order.businessName,
+    orderCode: order.code,
+    amount: order.total,
+    buyerName: order.buyerName,
+    buyerPhone: order.buyerPhone,
+    receiptUrl,
+  });
+  const href = sinpeWhatsappHref(whatsapp, message);
+  const canShareImage = canShareFile(receiptFile);
+
+  const handleShareImage = async () => {
+    if (!receiptFile) return;
+    try {
+      await navigator.share({ files: [receiptFile], text: message });
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No pudimos compartir la captura",
+        );
+      }
+    }
+  };
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Subí una imagen de la captura (JPG, PNG o WebP)");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("La captura no puede pesar más de 8 MB");
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir la captura");
+      const payload = (await response.json()) as { storageId: string };
+      const saved = await attachReceipt({
+        orderId: order._id as Id<"orders">,
+        storageId: payload.storageId as Id<"_storage">,
+      });
+      setPreview(saved.url);
+      setReceiptFile(file);
+      toast.success("Captura guardada", {
+        description: "Ya quedó adjunta al pedido. Ahora enviála por WhatsApp.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos guardar la captura",
+      );
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const handleSend = async () => {
+    if (!href) {
+      toast.error("La tienda todavía no tiene un número de WhatsApp válido");
+      return;
+    }
+    setSending(true);
+    // Se abre dentro del gesto del toque para que el navegador no lo bloquee.
+    const opened = window.open(href, "_blank", "noopener,noreferrer");
+    if (!opened) window.location.href = href;
+    try {
+      await markSent({ orderId: order._id as Id<"orders"> });
+      toast.success("Abriendo WhatsApp", {
+        description: "El mensaje sale desde tu WhatsApp al número de la tienda.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos abrir WhatsApp",
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-accent/35 bg-accent/[0.06] p-3">
+      <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+        <Smartphone className="size-3.5" /> Pago por SINPE Móvil
+      </p>
+      <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] text-muted-foreground">
+            Transferí a {order.businessName}:
+          </p>
+          <p className="font-display text-xl font-extrabold text-accent">
+            {money(order.total)}
+          </p>
+          <p className="text-[10px] leading-relaxed text-muted-foreground">
+            Productos más el envío de esta tienda, después de descuentos.
+          </p>
+        </div>
+        <div className="rounded-xl border border-accent/30 bg-black/20 px-3 py-2 text-right">
+          <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+            SINPE Móvil
+          </p>
+          <p className="font-display text-base font-bold tracking-wide">
+            {sinpe ? formatSinpeNumber(sinpe) : "Sin número"}
+          </p>
+        </div>
+      </div>
+
+      {receiptUrl ? (
+        <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-border/70 bg-black/20 p-2.5">
+          <a href={receiptUrl} target="_blank" rel="noreferrer" className="shrink-0">
+            <img
+              src={receiptUrl}
+              alt="Captura del pago SINPE"
+              className="size-14 rounded-lg border border-border/60 object-cover"
+            />
+          </a>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold text-accent">
+              Captura adjunta al pedido
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {order.paymentReceipt
+                ? `Subida ${relativeTime(order.paymentReceipt.at)}`
+                : "Lista para enviar"}
+              {order.paymentWhatsappSentAt
+                ? ` · WhatsApp abierto ${relativeTime(order.paymentWhatsappSentAt)}`
+                : ""}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 gap-1 border-border/80 px-2 text-[10px]"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <ImagePlus className="size-3" />
+            )}
+            Cambiar
+          </Button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-accent/40 bg-black/20 py-3 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:opacity-60"
+        >
+          {uploading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <ImagePlus className="size-4" />
+          )}
+          {uploading ? "Subiendo captura..." : "Subir captura del pago por SINPE"}
+        </button>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => void handleFile(event.target.files?.[0] ?? null)}
+      />
+
+      <details className="mt-2.5 rounded-lg border border-border/60 bg-black/20 px-2.5 py-2">
+        <summary className="cursor-pointer text-[10px] font-semibold text-muted-foreground">
+          Mensaje que se envía a la tienda
+        </summary>
+        <pre className="mt-1.5 whitespace-pre-wrap font-sans text-[10px] leading-relaxed text-muted-foreground">
+          {message}
+        </pre>
+      </details>
+
+      <Button
+        type="button"
+        className="mt-2.5 h-10 w-full gap-2 bg-[#25d366] text-black hover:bg-[#1ebe5b]"
+        disabled={!receiptUrl || !whatsapp || sending}
+        onClick={() => void handleSend()}
+      >
+        {sending ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <MessageCircle className="size-4" />
+        )}
+        Enviar comprobante por WhatsApp
+      </Button>
+      {canShareImage && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-2 h-9 w-full gap-2 border-border/80 text-[11px]"
+          onClick={() => void handleShareImage()}
+        >
+          <ImagePlus className="size-3.5" /> Compartir captura con la imagen adjunta
+        </Button>
+      )}
+      <p className="mt-1.5 text-center text-[9px] leading-relaxed text-muted-foreground">
+        {whatsapp
+          ? `Se abre tu WhatsApp con el mensaje escrito para ${formatSinpeNumber(whatsapp)} de ${order.businessName}.`
+          : "La tienda todavía no tiene un WhatsApp configurado para comprobantes."}
+        {receiptUrl
+          ? " La captura queda adjunta al pedido y su enlace va en el mensaje."
+          : " Subí primero la captura para habilitar el envío."}
+      </p>
+    </div>
+  );
+}
+
 function OrderDetailDialog({
   order,
   open,
@@ -364,7 +642,10 @@ function OrderDetailDialog({
                 </p>
                 <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                   Dalo al repartidor solo cuando tengas el pedido en la mano. Él lo
-                  ingresa para cerrar la entrega; el efectivo se registra aparte.
+                  ingresa para cerrar la entrega;{" "}
+                  {order.paymentMethod === "sinpe"
+                    ? "el pago va por SINPE a la tienda."
+                    : "el efectivo se registra aparte."}
                 </p>
               </div>
             )}
@@ -466,6 +747,11 @@ function OrderDetailDialog({
             </div>
           </div>
 
+          {order.paymentMethod === "sinpe" && order.status !== "cancelled" && (
+            <SinpePaymentPanel order={order} />
+          )}
+
+          {order.paymentMethod !== "sinpe" && (
           <div className="rounded-xl border border-border/70 p-3">
             <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
               <Wallet className="size-3.5" /> Efectivo del pedido
@@ -529,6 +815,7 @@ function OrderDetailDialog({
               )}
             </div>
           </div>
+          )}
 
           {order.cashIssue && <CashIssueNote issue={order.cashIssue} />}
 
@@ -819,6 +1106,24 @@ export default function OrdersPage() {
                         </>
                       )}
                       {order.tripStops > 1 && <> · {order.tripStops} tiendas</>}
+                      {order.paymentMethod === "sinpe" && (
+                        <>
+                          {" "}
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold",
+                              order.paymentReceipt
+                                ? "border-accent/40 bg-accent/10 text-accent"
+                                : "border-primary/40 bg-primary/10 text-primary",
+                            )}
+                          >
+                            <Smartphone className="size-2.5" />
+                            {order.paymentReceipt
+                              ? "SINPE · comprobante subido"
+                              : "SINPE · falta captura"}
+                          </span>
+                        </>
+                      )}
                     </p>
                   </div>
                   <StatusPill status={order.status} />

@@ -62,6 +62,7 @@ import {
   MapPin,
   Navigation,
   PackageCheck,
+  Smartphone,
   Store,
   Timer,
   Wallet,
@@ -338,9 +339,11 @@ export default function CourierPage() {
             status === "picked_up"
               ? "Ahora andá a la dirección de entrega."
               : `Sumaste ${money(order.tripEarnings)} a tus ganancias. ${
-                  result.cashDifference === 0
-                    ? "Efectivo confirmado por el total."
-                    : "Quedó registrada la diferencia de efectivo."
+                  order.paymentMethod === "sinpe"
+                    ? "El pago va por SINPE directo al local."
+                    : result.cashDifference === 0
+                      ? "Efectivo confirmado por el total."
+                      : "Quedó registrada la diferencia de efectivo."
                 }`,
         },
       );
@@ -369,6 +372,7 @@ export default function CourierPage() {
   const deliveryDifference = deliveryOrder
     ? Math.round(Number(cashAmount) || 0) - deliveryOrder.tripTotal
     : 0;
+  const sinpeDelivery = deliveryOrder?.paymentMethod === "sinpe";
 
   const openIssue = (order: OrderView) => {
     setIssueTarget(order);
@@ -836,7 +840,9 @@ export default function CourierPage() {
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3">
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      Cobrás al cliente
+                      {order.paymentMethod === "sinpe"
+                        ? "Pago por SINPE · no cobrar"
+                        : "Cobrás al cliente"}
                     </p>
                     <p className="font-display text-lg font-extrabold text-accent">
                       {money(order.tripTotal)}
@@ -911,7 +917,8 @@ export default function CourierPage() {
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {order.items.reduce((acc, item) => acc + item.quantity, 0)}{" "}
-                      productos en esta tienda · {money(order.tripTotal)} a cobrar
+                      productos en esta tienda · {money(order.tripTotal)}{" "}
+                      {order.paymentMethod === "sinpe" ? "por SINPE" : "a cobrar"}
                       {order.tripStops > 1 ? ` · ${order.tripStops} tiendas` : ""}
                       {order.batchCount && order.batchCount > 1
                         ? ` · Entrega ${order.batchIndex} de ${order.batchCount}`
@@ -1015,6 +1022,22 @@ export default function CourierPage() {
                   </div>
                 )}
 
+                {order.paymentMethod === "sinpe" ? (
+                  <div className="mt-3 rounded-xl border border-accent/30 bg-accent/[0.05] p-3">
+                    <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                      <Smartphone className="size-3.5" /> Pago por SINPE
+                    </p>
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                      El pedido se paga por SINPE directo al local ({" "}
+                      {money(order.tripTotal)}). En esta entrega no cobrás
+                      efectivo ni tenés que entregar dinero a la tienda.
+                    </p>
+                    <p className="mt-1.5 flex justify-between text-[11px] font-semibold text-accent">
+                      <span>Tu envío</span>
+                      <span>{money(order.tripEarnings)}</span>
+                    </p>
+                  </div>
+                ) : (
                 <div className="mt-3 rounded-xl border border-border/70 p-3">
                   <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
                     <Wallet className="size-3.5" /> Efectivo de esta entrega
@@ -1066,6 +1089,7 @@ export default function CourierPage() {
                     Reportar problema de efectivo
                   </Button>
                 </div>
+                )}
 
                 {order.cashIssue && (
                   <CashIssueNote issue={order.cashIssue} className="mt-2" />
@@ -1162,9 +1186,11 @@ export default function CourierPage() {
                       {(order.cashDifference ?? 0) !== 0 &&
                         ` · diferencia ${money(order.cashDifference ?? 0)}`}
                       {order.status === "delivered" &&
-                        (order.cashPending > 0
-                          ? ` · falta entregar ${money(order.cashPending)} a los locales`
-                          : " · efectivo confirmado por los locales")}
+                        (order.paymentMethod === "sinpe"
+                          ? " · pago por SINPE"
+                          : order.cashPending > 0
+                            ? ` · falta entregar ${money(order.cashPending)} a los locales`
+                            : " · efectivo confirmado por los locales")}
                     </p>
                   </div>
                   <p className="font-display text-sm font-bold text-accent">
@@ -1204,8 +1230,10 @@ export default function CourierPage() {
                 {pickupOrder?.businessName} · {pickupOrder?.code}
               </p>
               <p className="mt-1 text-muted-foreground">
-                Cobrás {money(pickupOrder?.tripTotal ?? 0)} al comprador. Tu envío:{" "}
-                {money(pickupOrder?.tripEarnings ?? 0)}.
+                {pickupOrder?.paymentMethod === "sinpe"
+                  ? `Este pedido se paga por SINPE directo al local (${money(pickupOrder?.tripTotal ?? 0)}).`
+                  : `Cobrás ${money(pickupOrder?.tripTotal ?? 0)} al comprador.`}{" "}
+                Tu envío: {money(pickupOrder?.tripEarnings ?? 0)}.
               </p>
             </div>
             <div className="space-y-1.5">
@@ -1239,8 +1267,10 @@ export default function CourierPage() {
               Confirmar retiro
             </Button>
             <p className="text-[10px] leading-relaxed text-muted-foreground">
-              El código confirma la custodia del pedido, no el dinero: el efectivo
-              se registra al entregar.
+              El código confirma la custodia del pedido, no el dinero:{" "}
+              {pickupOrder?.paymentMethod === "sinpe"
+                ? "el pago va directo al local por SINPE."
+                : "el efectivo se registra al entregar."}
             </p>
           </div>
         </DialogContent>
@@ -1252,27 +1282,34 @@ export default function CourierPage() {
       >
         <DialogContent className="border-border/80 bg-card sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-display">Entregar y cobrar</DialogTitle>
+            <DialogTitle className="font-display">
+              {sinpeDelivery ? "Entregar pedido" : "Entregar y cobrar"}
+            </DialogTitle>
             <DialogDescription>
-              Pedile el PIN al comprador y confirmá el efectivo antes de cerrar la
-              entrega del pedido {deliveryOrder?.code}.
+              {sinpeDelivery
+                ? `Pedile el PIN al comprador y confirmá la entrega del pedido ${deliveryOrder?.code}. El pago es por SINPE directo al local.`
+                : `Pedile el PIN al comprador y confirmá el efectivo antes de cerrar la entrega del pedido ${deliveryOrder?.code}.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1 rounded-xl border border-border/70 bg-black/20 p-3 text-[11px]">
               <div className="flex justify-between text-muted-foreground">
-                <span>Total a cobrar</span>
+                <span>
+                  {sinpeDelivery ? "Monto por SINPE al local" : "Total a cobrar"}
+                </span>
                 <span>{money(deliveryOrder?.tripTotal ?? 0)}</span>
               </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>Para los locales (productos)</span>
-                <span>
-                  {money(
-                    (deliveryOrder?.tripTotal ?? 0) -
-                      (deliveryOrder?.tripEarnings ?? 0),
-                  )}
-                </span>
-              </div>
+              {!sinpeDelivery && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Para los locales (productos)</span>
+                  <span>
+                    {money(
+                      (deliveryOrder?.tripTotal ?? 0) -
+                        (deliveryOrder?.tripEarnings ?? 0),
+                    )}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between font-semibold text-accent">
                 <span>Tu envío</span>
                 <span>{money(deliveryOrder?.tripEarnings ?? 0)}</span>
@@ -1316,36 +1353,45 @@ export default function CourierPage() {
                 El PIN del comprador y tu confirmación de entrega son obligatorios. La foto ayuda a resolver reclamos, pero no sustituye la doble confirmación.
               </p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cash-amount">Efectivo que cobraste</Label>
-              <Input
-                id="cash-amount"
-                type="number"
-                min={0}
-                value={cashAmount}
-                onChange={(event) => setCashAmount(event.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Viene con el total exacto. Si cobraste otra cosa, corregilo.
+            {sinpeDelivery ? (
+              <p className="rounded-xl border border-accent/30 bg-accent/[0.06] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                Este pedido se paga por SINPE directo al local (productos más
+                envío). No cobrés efectivo ni registres un monto.
               </p>
-            </div>
-            {deliveryDifference !== 0 && (
+            ) : (
               <>
-                <p className="rounded-xl border border-primary/30 bg-primary/[0.07] p-2.5 text-[11px] leading-relaxed text-primary">
-                  Diferencia: {money(deliveryDifference)}{" "}
-                  {deliveryDifference < 0 ? "menos" : "más"} del total. Queda
-                  asentado como problema de efectivo.
-                </p>
                 <div className="space-y-1.5">
-                  <Label htmlFor="cash-note">Qué pasó</Label>
-                  <Textarea
-                    id="cash-note"
-                    value={cashNote}
-                    onChange={(event) => setCashNote(event.target.value)}
-                    placeholder="Ej: el cliente solo tenía parte del total."
-                    className="min-h-16 resize-none"
+                  <Label htmlFor="cash-amount">Efectivo que cobraste</Label>
+                  <Input
+                    id="cash-amount"
+                    type="number"
+                    min={0}
+                    value={cashAmount}
+                    onChange={(event) => setCashAmount(event.target.value)}
                   />
+                  <p className="text-[10px] text-muted-foreground">
+                    Viene con el total exacto. Si cobraste otra cosa, corregilo.
+                  </p>
                 </div>
+                {deliveryDifference !== 0 && (
+                  <>
+                    <p className="rounded-xl border border-primary/30 bg-primary/[0.07] p-2.5 text-[11px] leading-relaxed text-primary">
+                      Diferencia: {money(deliveryDifference)}{" "}
+                      {deliveryDifference < 0 ? "menos" : "más"} del total. Queda
+                      asentado como problema de efectivo.
+                    </p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cash-note">Qué pasó</Label>
+                      <Textarea
+                        id="cash-note"
+                        value={cashNote}
+                        onChange={(event) => setCashNote(event.target.value)}
+                        placeholder="Ej: el cliente solo tenía parte del total."
+                        className="min-h-16 resize-none"
+                      />
+                    </div>
+                  </>
+                )}
               </>
             )}
             <Button
@@ -1373,8 +1419,12 @@ export default function CourierPage() {
                 }
                 const ok = await handleAdvance(order, "delivered", {
                   pin: deliveryPin,
-                  cashAmount: Math.round(Number(cashAmount) || 0),
-                  cashNote,
+                  ...(order.paymentMethod === "sinpe"
+                    ? {}
+                    : {
+                        cashAmount: Math.round(Number(cashAmount) || 0),
+                        cashNote,
+                      }),
                   proofStorageId,
                 });
                 if (ok) setDeliveryOrder(null);
@@ -1385,7 +1435,7 @@ export default function CourierPage() {
               ) : (
                 <CheckCircle2 className="size-4" />
               )}
-              Cerrar entrega y registrar efectivo
+              {sinpeDelivery ? "Cerrar entrega" : "Cerrar entrega y registrar efectivo"}
             </Button>
           </div>
         </DialogContent>
