@@ -84,6 +84,14 @@ class RootErrorBoundary extends React.Component<
   }
   componentDidCatch(err: Error) {
     console.error("[Preview] Root crash:", err);
+    // Si lo que falló fue un chunk viejo, la recarga resuelve el problema.
+    if (
+      /dynamically imported module|loading chunk|importing a module script failed/i.test(
+        err.message,
+      )
+    ) {
+      reloadForStaleChunk();
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -99,6 +107,12 @@ class RootErrorBoundary extends React.Component<
                 {this.state.stack}
               </pre>
             )}
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 rounded-lg bg-foreground px-4 py-2 text-xs font-semibold text-background"
+            >
+              Recargar la app
+            </button>
           </div>
         </div>
       );
@@ -108,6 +122,32 @@ class RootErrorBoundary extends React.Component<
 }
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+
+/**
+ * Cada despliegue cambia el hash de los chunks. Una pestaña abierta desde
+ * antes puede pedir un chunk que ya no existe: el servidor devuelve el
+ * index.html y el import dinámico falla. Recargamos una vez para entrar en la
+ * versión nueva en vez de dejar al comprador con un error al confirmar.
+ */
+const CHUNK_RELOAD_AT = "shop-to-go:chunk-reload-at";
+
+function reloadForStaleChunk() {
+  try {
+    const last = Number(sessionStorage.getItem(CHUNK_RELOAD_AT) ?? 0);
+    if (Number.isFinite(last) && Date.now() - last < 30_000) return;
+    sessionStorage.setItem(CHUNK_RELOAD_AT, String(Date.now()));
+  } catch {
+    // Sin almacenamiento no podemos evitar un bucle de recargas: mostramos el
+    // error con el botón para que la persona recargue a mano.
+    return;
+  }
+  window.location.reload();
+}
+
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  reloadForStaleChunk();
+});
 
 // El service worker es quien muestra la notificación con la app cerrada. Se
 // registra siempre, pero sólo recibe push quien active los avisos en su local.
