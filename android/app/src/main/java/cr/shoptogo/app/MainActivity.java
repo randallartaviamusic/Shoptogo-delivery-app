@@ -35,6 +35,9 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Plugin propio para guardar el correo y la contraseña cifrados en el
+        // Keystore de Android.
+        registerPlugin(CredentialStorePlugin.class);
         super.onCreate(savedInstanceState);
 
         // La splash es un video: permitimos que arranque con audio sin que el

@@ -1,7 +1,15 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useAuth, useAuthActions } from "@/hooks/use-auth";
+import {
+  forgetCredentials,
+  loadRememberedCredentials,
+  readRememberedEmail,
+  rememberCredentials,
+  usesNativeCredentialStore,
+} from "@/lib/credential-store";
 import { motion } from "framer-motion";
 import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -85,17 +93,19 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   // Cambio de rol desde el perfil: hay que cerrar la sesión anterior sin
   // perder el rol ni el modo "Iniciar sesión" elegidos.
   const switchAccount = searchParams.get("switch") === "1";
+  const nativeCredentialStore = usesNativeCredentialStore();
 
+  const [remember, setRemember] = useState(true);
   const [mode, setMode] = useState<Mode>(() =>
     searchParams.get("mode") === "signin" ? "signIn" : "signup",
   );
   const [role, setRole] = useState<Role>(roleFromUrl(redirectParam, roleParam));
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     name: "",
-    email: "",
+    email: readRememberedEmail(),
     password: "",
     passwordConfirm: "",
-  });
+  }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,6 +125,25 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     switchStarted.current = true;
     void signOut();
   }, [isAuthenticated, signOut, switchAccount]);
+
+  // En el APK, el correo y la contraseña guardados viajan cifrados desde el
+  // Keystore de Android. En la web el correo ya viene del localStorage.
+  useEffect(() => {
+    if (!nativeCredentialStore) return;
+    let cancelled = false;
+    void loadRememberedCredentials().then((saved) => {
+      if (cancelled || !saved) return;
+      setForm((current) => ({
+        ...current,
+        email: current.email || saved.email,
+        password: current.password || saved.password,
+      }));
+      setRemember(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [nativeCredentialStore]);
 
   if (authLoading) {
     return (
@@ -161,14 +190,27 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     // Si quedó una sesión vieja abierta, el cliente de Convex no vuelve a leer el
     // token por su cuenta: recargamos en el destino ya con la cuenta nueva.
     const hadSession = isAuthenticated;
+    const email = form.email.trim().toLowerCase();
     try {
       await signIn("password", {
-        email: form.email.trim().toLowerCase(),
+        email,
         password: form.password,
         role,
         name: form.name,
         flow: mode === "signup" ? "signUp" : "signIn",
       });
+
+      // Guardamos después de que Convex confirmó la cuenta. Si el guardado
+      // falla, no bloqueamos la entrada a la app.
+      try {
+        if (remember) {
+          await rememberCredentials(email, form.password, form.name);
+        } else {
+          await forgetCredentials();
+        }
+      } catch {
+        // El inicio de sesión ya funcionó.
+      }
 
       const destination = resolveRedirectAfterAuth(redirectParam, redirectAfterAuth);
       const target = destination === "/cart" ? "/cart?confirm=1" : destination;
@@ -295,6 +337,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <Field label="Tu nombre" htmlFor="name">
                   <Input
                     id="name"
+                    name="name"
+                    autoComplete="name"
                     value={form.name}
                     onChange={(event) => setForm({ ...form, name: event.target.value })}
                     placeholder="Camila Duarte"
@@ -308,8 +352,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <Field label="Tu correo" htmlFor="email">
                 <Input
                   id="email"
+                  name="email"
                   type="email"
-                  autoComplete="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={form.email}
                   onChange={(event) => setForm({ ...form, email: event.target.value })}
                   placeholder="vos@email.com"
@@ -322,6 +369,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <Field label="Tu contraseña" htmlFor="password">
                 <PasswordInput
                   id="password"
+                  name="password"
                   autoComplete={mode === "signup" ? "new-password" : "current-password"}
                   value={form.password}
                   onChange={(value) => setForm({ ...form, password: value })}
@@ -341,6 +389,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 <Field label="Repetí tu contraseña" htmlFor="passwordConfirm">
                   <PasswordInput
                     id="passwordConfirm"
+                    name="passwordConfirm"
                     autoComplete="new-password"
                     value={form.passwordConfirm}
                     onChange={(value) => setForm({ ...form, passwordConfirm: value })}
@@ -355,6 +404,33 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                 form.password !== form.passwordConfirm && (
                   <p className="text-[11px] text-primary">Las contraseñas no coinciden.</p>
                 )}
+
+              <label
+                htmlFor="remember-credentials"
+                className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-card/40 p-3"
+              >
+                <Checkbox
+                  id="remember-credentials"
+                  checked={remember}
+                  onCheckedChange={(checked) => {
+                    const next = checked === true;
+                    setRemember(next);
+                    if (!next) void forgetCredentials();
+                  }}
+                  disabled={saving}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-foreground">
+                    Guardar correo y contraseña
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                    {nativeCredentialStore
+                      ? "Se guardan cifrados en este teléfono para entrar más rápido la próxima vez."
+                      : "Guardamos tu correo y usamos el gestor de contraseñas de tu navegador."}
+                  </span>
+                </span>
+              </label>
 
               {error && (
                 <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">
@@ -394,6 +470,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
 function PasswordInput({
   id,
+  name,
   value,
   onChange,
   placeholder,
@@ -401,6 +478,7 @@ function PasswordInput({
   disabled,
 }: {
   id: string;
+  name: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
@@ -413,6 +491,7 @@ function PasswordInput({
     <div className="relative">
       <Input
         id={id}
+        name={name}
         type={visible ? "text" : "password"}
         autoComplete={autoComplete}
         value={value}
