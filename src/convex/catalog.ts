@@ -7,7 +7,10 @@ import { planTier } from "../lib/subscriptions";
 import { subscriptionAccess } from "./subscriptions";
 import { isAccountVerified } from "./verification";
 
-/** Stable per-user shuffle so the deck feels random but doesn't jump around. */
+/**
+ * Baraja con semilla: el cliente manda una nueva al entrar para que el mazo
+ * cambie en cada visita, pero se mantiene estable mientras se desliza.
+ */
 function hash(input: string) {
   let h = 2166136261;
   for (let i = 0; i < input.length; i += 1) {
@@ -23,10 +26,12 @@ export const deck = query({
   args: {
     department: v.optional(v.string()),
     filters: v.optional(v.record(v.string(), v.array(v.string()))),
+    seed: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     const department = args.department ?? DEFAULT_DEPARTMENT;
+    const seed = args.seed ?? "sin-semilla";
     const products = await ctx.db.query("products").collect();
     const businesses = await ctx.db.query("businesses").collect();
     const swipes = userId
@@ -145,18 +150,10 @@ export const deck = query({
           address: business.address,
         };
       })
-      .sort((a, b) => {
-        // Pro y Élite comparten prioridad sobre Básico; Élite se distingue
-        // por la card animada, no por una primera posición fija.
-        const priority = (businessId: string) =>
-          Math.min(2, accessByBusiness.get(businessId)?.tier ?? 1);
-        const tierDiff = priority(b.businessId) - priority(a.businessId);
-        if (tierDiff !== 0) return tierDiff;
-        return (
-          hash(`${userId ?? "guest"}:${a._id}`) -
-          hash(`${userId ?? "guest"}:${b._id}`)
-        );
-      })
+      .sort(
+        (a, b) =>
+          hash(`${seed}:${a._id}`) - hash(`${seed}:${b._id}`),
+      )
       .slice(0, 40);
 
     return {

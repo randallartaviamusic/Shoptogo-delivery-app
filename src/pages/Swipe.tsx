@@ -68,6 +68,10 @@ export default function SwipePage() {
   const [departmentSlug, setDepartmentSlug] = useState(DEFAULT_DEPARTMENT);
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Una semilla nueva por visita: el servidor baraja el mazo distinto cada vez.
+  const [deckSeed, setDeckSeed] = useState(() =>
+    Math.random().toString(36).slice(2),
+  );
   // Tarjetas deslizadas en esta sesión, en orden. Guardamos la tarjeta entera
   // porque el servidor deja de devolverla y así podemos traerla de vuelta.
   const [history, setHistory] = useState<Dish[]>([]);
@@ -79,6 +83,7 @@ export default function SwipePage() {
   const deck = useQuery(api.catalog.deck, {
     department: departmentSlug,
     filters,
+    seed: deckSeed,
   });
   const cart = useQuery(api.cart.myCart, {});
   const stats = useQuery(api.catalog.myStats);
@@ -144,6 +149,7 @@ export default function SwipePage() {
     setFilters({});
     setHistory([]);
     setReinserted([]);
+    setDeckSeed(Math.random().toString(36).slice(2));
   };
 
   // Mirar el mazo no pide cuenta; deslizar (o guardar, o recargar) sí.
@@ -208,6 +214,7 @@ export default function SwipePage() {
       const result = await resetDeck();
       setHistory([]);
       setReinserted([]);
+      setDeckSeed(Math.random().toString(36).slice(2));
       toast.success("Mazo recargado", {
         description:
           result.restored > 0
