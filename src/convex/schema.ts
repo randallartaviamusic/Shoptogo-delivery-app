@@ -827,6 +827,12 @@ const schema = defineSchema(
       key: v.string(),
       logoUrl: v.optional(v.string()),
       logoSize: v.optional(v.number()),
+      // Icono de la app y splash que se graban en el APK al compilarlo.
+      appIconUrl: v.optional(v.string()),
+      splashUrl: v.optional(v.string()),
+      splashKind: v.optional(
+        v.union(v.literal("image"), v.literal("video")),
+      ),
       brandTitle: v.optional(v.string()),
       brandTitleColor: v.optional(v.string()),
       brandTitleFont: v.optional(v.string()),

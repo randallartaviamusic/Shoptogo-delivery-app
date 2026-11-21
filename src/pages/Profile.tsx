@@ -1,4 +1,5 @@
 import defaultLogo from "@/assets/logo.svg";
+import { AppBrandingAdmin } from "@/components/AppBrandingAdmin";
 import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
 import { AdminMetrics } from "@/components/AdminMetrics";
@@ -691,6 +692,8 @@ export default function ProfilePage() {
           </p>
         </section>
       )}
+
+      {isAdmin && <AppBrandingAdmin />}
 
       {isAdmin && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">

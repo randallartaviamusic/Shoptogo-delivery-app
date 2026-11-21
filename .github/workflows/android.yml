@@ -12,6 +12,7 @@ on:
       - "capacitor.config.ts"
       - "package.json"
       - "bun.lock"
+      - "scripts/**"
       - "vite.config.ts"
       - "tsconfig*.json"
       - ".github/workflows/android.yml"
@@ -57,6 +58,13 @@ jobs:
 
       - name: Instalar dependencias
         run: bun install --frozen-lockfile
+
+      # Si el administrador subió icono o splash, los bajamos de Convex y los
+      # grabamos en el APK. Si no hay nada configurado, deja los originales.
+      - name: Aplicar icono y splash del panel admin
+        env:
+          VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || 'https://fastidious-oyster-804.convex.cloud' }}
+        run: bun run branding:android
 
       - name: Compilar la app web
         env:

@@ -13,6 +13,9 @@ export const DEFAULT_LOGO_SIZE = 40;
 export const MIN_LOGO_SIZE = 20;
 export const MAX_LOGO_SIZE = 88;
 
+const APP_ICON_MAX_BYTES = 8 * 1024 * 1024;
+const APP_SPLASH_MAX_BYTES = 30 * 1024 * 1024;
+
 export const DEFAULT_BRAND_TITLE = "Shop To Go";
 export const DEFAULT_BRAND_TITLE_COLOR = "#f7f5f0";
 export const DEFAULT_BRAND_TITLE_FONT = "sora";
@@ -38,7 +41,9 @@ async function requireAdmin(ctx: QueryCtx | MutationCtx) {
   if (!userId) throw new Error("Necesitás iniciar sesión");
   const user = await ctx.db.get(userId);
   if (!isAdminEmail(user?.email)) {
-    throw new Error("Sólo el perfil administrador puede cambiar el logo");
+    throw new Error(
+      "Sólo el perfil administrador puede cambiar la identidad de la app",
+    );
   }
   return user;
 }
@@ -52,6 +57,24 @@ export const brand = query({
     return {
       logoUrl: doc?.logoUrl ?? null,
       logoSize: Math.min(MAX_LOGO_SIZE, Math.max(MIN_LOGO_SIZE, size)),
+      updatedAt: doc?.updatedAt ?? null,
+    };
+  },
+});
+
+/**
+ * Icono y splash de la app. El icono cae al logo si todavía no se subió uno
+ * propio; la splash sólo existe cuando el administrador la cargó.
+ */
+export const appBranding = query({
+  args: {},
+  handler: async (ctx) => {
+    const doc = await brandDoc(ctx);
+    return {
+      iconUrl: doc?.appIconUrl ?? doc?.logoUrl ?? null,
+      customIconUrl: doc?.appIconUrl ?? null,
+      splashUrl: doc?.splashUrl ?? null,
+      splashKind: doc?.splashKind ?? null,
       updatedAt: doc?.updatedAt ?? null,
     };
   },
@@ -97,6 +120,115 @@ export const generateLogoUploadUrl = mutation({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const generateAppAssetUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const setAppIcon = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, { storageId }) => {
+    await requireAdmin(ctx);
+    const metadata = await ctx.storage.getMetadata(storageId);
+    if (!metadata) throw new Error("No pudimos leer el icono");
+    if (!metadata.contentType?.startsWith("image/")) {
+      throw new Error("El icono tiene que ser una imagen");
+    }
+    if (metadata.size > APP_ICON_MAX_BYTES) {
+      throw new Error("El icono no puede pesar más de 8 MB");
+    }
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("No pudimos guardar el icono");
+
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, { appIconUrl: url, updatedAt: Date.now() });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        appIconUrl: url,
+        updatedAt: Date.now(),
+      });
+    }
+    return url;
+  },
+});
+
+export const setSplash = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, { storageId }) => {
+    await requireAdmin(ctx);
+    const metadata = await ctx.storage.getMetadata(storageId);
+    if (!metadata) throw new Error("No pudimos leer la splash");
+
+    let kind: "image" | "video";
+    if (metadata.contentType?.startsWith("video/")) {
+      kind = "video";
+    } else if (metadata.contentType?.startsWith("image/")) {
+      kind = "image";
+    } else {
+      throw new Error("La splash tiene que ser una imagen o un video");
+    }
+    if (metadata.size > APP_SPLASH_MAX_BYTES) {
+      throw new Error("La splash no puede pesar más de 30 MB");
+    }
+
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("No pudimos guardar la splash");
+
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, {
+        splashUrl: url,
+        splashKind: kind,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        splashUrl: url,
+        splashKind: kind,
+        updatedAt: Date.now(),
+      });
+    }
+    return { url, kind };
+  },
+});
+
+export const resetAppIcon = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, {
+        appIconUrl: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+    return null;
+  },
+});
+
+export const resetSplash = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, {
+        splashUrl: undefined,
+        splashKind: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+    return null;
   },
 });
 
