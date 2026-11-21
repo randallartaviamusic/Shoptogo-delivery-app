@@ -7,6 +7,7 @@ import {
   enableOrderPush,
   type PushState,
 } from "@/lib/push";
+import { PLATFORM_WHATSAPP_DISPLAY } from "@/lib/notify";
 import { formatSinpeNumber } from "@/lib/sinpe";
 import { cn } from "@/lib/utils";
 import { useConvex, useQuery } from "convex/react";
@@ -136,7 +137,16 @@ export function OrderAlertsSettings({
 
   const phone = formatSinpeNumber(whatsappPhone);
   const subscribed = state === "subscribed";
+  const sender = channels?.senderDisplay ?? PLATFORM_WHATSAPP_DISPLAY;
   const whatsappPending = Boolean(channels && !channels.whatsappReady);
+  const templatePending = Boolean(
+    channels && channels.whatsappReady && !channels.whatsappTemplateReady,
+  );
+  const pendingNote = whatsappPending
+    ? " (el envío automático se activa cuando la plataforma conecte el servicio de mensajes)."
+    : templatePending
+      ? " (el servicio está conectado; falta aprobar la plantilla de mensajes)."
+      : ".";
 
   if (subscribed) {
     return (
@@ -251,16 +261,15 @@ export function OrderAlertsSettings({
         </p>
       )}
 
-      <p className="flex items-start gap-1.5 border-t border-border/60 pt-2.5 text-[10px] leading-relaxed text-muted-foreground">
+      <div className="flex items-start gap-1.5 border-t border-border/60 pt-2.5 text-[10px] leading-relaxed text-muted-foreground">
         <MessageCircle className="mt-0.5 size-3.5 shrink-0 text-accent" />
+        <div className="min-w-0">
         {audience === "business" ? (
           phone ? (
             <span>
               Cada pedido nuevo también se manda solo al WhatsApp{" "}
               <strong className="text-foreground">{phone}</strong>
-              {whatsappPending
-                ? " (el envío automático se activa cuando la plataforma conecte el servicio de mensajes)."
-                : "."}
+              {pendingNote}
             </span>
           ) : (
             <span>
@@ -273,10 +282,17 @@ export function OrderAlertsSettings({
             {copy.whatsapp}
             {whatsappPending
               ? " Se activa cuando la plataforma conecte el servicio de mensajes."
-              : ""}
+              : templatePending
+                ? " El servicio está conectado; falta aprobar la plantilla de mensajes."
+                : ""}
           </span>
         )}
-      </p>
+        <span className="mt-1 block text-[10px] leading-relaxed text-muted-foreground/80">
+          Número de la plataforma para los avisos automáticos:{" "}
+          <strong className="text-foreground">{sender}</strong>.
+        </span>
+        </div>
+      </div>
     </div>
   );
 }

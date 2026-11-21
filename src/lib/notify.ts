@@ -10,6 +10,17 @@ import { money } from "./format";
  */
 
 /**
+ * Número público de Shop To Go. Los mensajes automáticos salen desde la cuenta
+ * de WhatsApp conectada a este número; el número se muestra en la app y se usa
+ * para los enlaces de contacto.
+ */
+export const PLATFORM_WHATSAPP_NUMBER = "50684923074";
+export const PLATFORM_WHATSAPP_DISPLAY = "+506 8492-3074";
+
+/** App publicada, para los enlaces que se mandan por WhatsApp. */
+export const PLATFORM_APP_URL = "https://shoptogo.freebuff.app";
+
+/**
  * Costa Rica: el número se guarda como dígitos con código de país, que es el
  * formato que pide la API de WhatsApp (50688881234).
  *

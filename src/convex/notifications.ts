@@ -10,7 +10,13 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { NotifyDraft, NotifyInput } from "../lib/notify";
-import { buildNotifyDraft } from "../lib/notify";
+import {
+  PLATFORM_APP_URL,
+  PLATFORM_WHATSAPP_NUMBER,
+  buildNotifyDraft,
+  displayPhone,
+  normalizePhone,
+} from "../lib/notify";
 
 /**
  * Avisos fuera de la app.
@@ -27,14 +33,16 @@ import { buildNotifyDraft } from "../lib/notify";
  */
 
 /** URL pública de la app, necesaria para los enlaces de un toque. */
-const APP_URL_ENV = ["PUBLIC_APP_URL", "APP_URL", "SITE_URL"] as const;
+const APP_URL_ENV = ["PUBLIC_APP_URL", "APP_URL"] as const;
 
 export function appUrl() {
   for (const name of APP_URL_ENV) {
     const value = process.env[name]?.trim();
     if (value) return value.replace(/\/+$/, "");
   }
-  return null;
+  // SITE_URL es el endpoint de Convex (....convex.site), no la app: no sirve
+  // para los enlaces que abre una persona. Usamos el dominio publicado.
+  return PLATFORM_APP_URL;
 }
 
 const GRAPH_VERSION = "v21.0";
@@ -163,11 +171,21 @@ export const channelStatus = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Necesitás iniciar sesión");
+    const senderNumber =
+      normalizePhone(process.env.WHATSAPP_SENDER_NUMBER) ??
+      PLATFORM_WHATSAPP_NUMBER;
     return {
       whatsappReady: Boolean(
         process.env.WHATSAPP_TOKEN?.trim() &&
           process.env.WHATSAPP_PHONE_NUMBER_ID?.trim(),
       ),
+      // La plantilla no es obligatoria para probar dentro de la ventana de 24 h,
+      // pero sí para escribirle a alguien que nunca inició la conversación.
+      whatsappTemplateReady: Boolean(
+        process.env.WHATSAPP_TEMPLATE_NAME?.trim(),
+      ),
+      senderNumber,
+      senderDisplay: displayPhone(senderNumber),
       webhookReady: Boolean(process.env.NOTIFY_WEBHOOK_URL?.trim()),
     };
   },
@@ -278,6 +296,9 @@ export async function sendWhatsapp(input: {
   text: string;
   template?: string;
 }) {
+  // El remitente lo define WHATSAPP_PHONE_NUMBER_ID: debe ser el número
+  // 84923074 registrado en Meta. WHATSAPP_SENDER_NUMBER es sólo para mostrarlo
+  // en la app; la API no acepta un "from" por mensaje.
   // Meta exige plantilla aprobada para escribir fuera de la ventana de 24 h.
   // Con WHATSAPP_TEMPLATE_NAME configurada mandamos la plantilla con el texto
   // como único parámetro; sin ella, mensaje de texto (sólo válido dentro de la
@@ -293,7 +314,14 @@ export async function sendWhatsapp(input: {
           components: [
             {
               type: "body",
-              parameters: [{ type: "text", text: input.text }],
+              parameters: [
+                {
+                  type: "text",
+                  // Meta rechaza saltos de línea dentro de un parámetro de
+                  // plantilla: el texto va en una sola línea.
+                  text: input.text.replace(/\s*\n+\s*/g, " · ").slice(0, 1000),
+                },
+              ],
             },
           ],
         },
