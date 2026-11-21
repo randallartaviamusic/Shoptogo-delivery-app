@@ -1197,7 +1197,10 @@ export default function BusinessPage() {
             </div>
           )}
 
-          <OrderAlertsSettings whatsappPhone={business.whatsappPhone} />
+          <OrderAlertsSettings
+            audience="business"
+            whatsappPhone={business.whatsappPhone}
+          />
 
           {business.deliveryPromo && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">

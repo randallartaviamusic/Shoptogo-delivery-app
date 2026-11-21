@@ -13,19 +13,6 @@ export function BusinessAlerts({ enabled }: { enabled: boolean }) {
   const seen = useRef<Set<string>>(new Set());
   const primed = useRef(false);
 
-  // Si llega un push con la app abierta, la melodía suena igual que en el
-  // aviso en vivo. El antiduplicado evita dos campanitas por el mismo pedido.
-  useEffect(() => {
-    if (!enabled || !("serviceWorker" in navigator)) return;
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string } | null;
-      if (data?.type === "shop-to-go:order-push") playOrderChime();
-    };
-    navigator.serviceWorker.addEventListener("message", onMessage);
-    return () =>
-      navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [enabled]);
-
   useEffect(() => {
     if (!enabled || !board) return;
     const newOrders = board.newOrders ?? [];

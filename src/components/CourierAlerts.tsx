@@ -1,5 +1,6 @@
 import { api } from "@/convex/_generated/api";
 import { money } from "@/lib/format";
+import { playOrderChime } from "@/lib/orderChime";
 import { useQuery } from "convex/react";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
@@ -16,32 +17,6 @@ type AvailableOrder = {
   tripEarnings?: number;
   acceptAllowed?: boolean;
 };
-
-function playChime() {
-  try {
-    const Ctor =
-      window.AudioContext ??
-      (window as Window & { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!Ctor) return;
-    const audio = new Ctor();
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(880, audio.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(1320, audio.currentTime + 0.12);
-    gain.gain.setValueAtTime(0.0001, audio.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.16, audio.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.32);
-    osc.connect(gain);
-    gain.connect(audio.destination);
-    osc.start();
-    osc.stop(audio.currentTime + 0.34);
-    osc.onended = () => void audio.close();
-  } catch {
-    /* el navegador puede bloquear el sonido hasta que haya interacción */
-  }
-}
 
 /**
  * Aviso en vivo para repartidores: cuando un pedido queda listo para retirar
@@ -72,7 +47,7 @@ export function CourierAlerts({ enabled }: { enabled: boolean }) {
     if (!board?.canAccept || fresh.length === 0) return;
     const first = fresh.find((order) => order.acceptAllowed !== false);
     if (!first) return;
-    playChime();
+    playOrderChime();
     const multiple =
       first.sameCourier && (first.remainingDeliveries ?? 0) > 0
         ? ` · compra de ${(first.remainingDeliveries ?? 0) + 1} entregas para el mismo repartidor`

@@ -12,6 +12,7 @@ import {
   formatKm,
   groupRouteExtra,
   isValidPoint,
+  straightLineKm,
   travelKm,
   travelMinutes,
 } from "../lib/delivery";
@@ -35,7 +36,9 @@ import { scheduleNotReadyYet } from "../lib/scheduling";
 import { isAdminEmail } from "./branding";
 import { normalizePhone } from "../lib/notify";
 import { normalizeSinpeNumber } from "../lib/sinpe";
+import { money } from "../lib/format";
 import { queueNotice } from "./notifications";
+import { internal } from "./_generated/api";
 
 type OrderViewer = "buyer" | "business" | "courier";
 
@@ -1727,6 +1730,20 @@ async function offerTripToCouriers(
         expiresInMin: Math.round(OFFER_WINDOW_MS / 60_000),
       },
     });
+
+    // Aviso al teléfono del repartidor, aunque no esté mirando el panel. El
+    // enlace lleva el token de esta oferta, así acepta en un toque.
+    await ctx.scheduler.runAfter(0, internal.pushNode.sendOrderAlert, {
+      userId: candidate.userId,
+      title: "Pedido listo para entregar 🛵",
+      body: `${order.code}: ${
+        trip.length === 1 ? "1 retiro" : `${trip.length} retiros`
+      } · ${money(payout)} de ganancia. Tenés ${Math.round(
+        OFFER_WINDOW_MS / 60_000,
+      )} min para aceptar.`,
+      url: `/courier?offer=${token}`,
+      tag: `offer-${token}`,
+    });
     created += 1;
   }
   return created;
@@ -1823,7 +1840,7 @@ async function notifyAssignment(ctx: MutationCtx, trip: Doc<"orders">[]) {
       recipientId: leader.buyerId,
       recipientRole: "buyer",
       phone: normalizePhone(buyer.phone),
-      link: `/orders/${leader._id}`,
+      link: "/orders",
       draft: {
         kind: "courier_assigned",
         orderNumber: leader.code,
@@ -2267,6 +2284,55 @@ export const updateCourierLocation = mutation({
     }
     // Mantener fresca también la presencia general del repartidor.
     await saveCourierPresence(ctx, userId, { lat, lng });
+
+    // Aviso al comprador cuando el repartidor ya está a menos de 200 m del
+    // punto de entrega. Se manda una sola vez por viaje, no en cada GPS.
+    const leader = trip.reduce(
+      (best, member) =>
+        (member.tripPosition ?? 0) < (best.tripPosition ?? 0) ? member : best,
+      trip[0],
+    );
+    const destination = isValidPoint(leader.deliveryLocation)
+      ? leader.deliveryLocation
+      : isValidPoint(order.deliveryLocation)
+        ? order.deliveryLocation
+        : null;
+    const inTransit = trip.every((member) => member.status === "picked_up");
+    if (
+      destination &&
+      inTransit &&
+      !trip.some((member) => member.arrivalNotifiedAt) &&
+      straightLineKm({ lat, lng }, destination) <= 0.2
+    ) {
+      const now = Date.now();
+      for (const member of trip) {
+        await ctx.db.patch(member._id, { arrivalNotifiedAt: now });
+      }
+      await ctx.scheduler.runAfter(0, internal.pushNode.sendOrderAlert, {
+        userId: leader.buyerId,
+        title: "¡Tu pedido está en la puerta! 🛎️",
+        body: `${leader.code}: el repartidor llegó a tu dirección. Tené el PIN a mano.`,
+        url: "/orders",
+        tag: `arrival-${leader._id}`,
+      });
+      const buyer = await ctx.db.get(leader.buyerId);
+      if (buyer?.notifyWhatsapp && normalizePhone(buyer.phone)) {
+        await queueNotice(ctx, {
+          order: leader,
+          tripKey: tripKey(leader),
+          recipientId: leader.buyerId,
+          recipientRole: "buyer",
+          phone: normalizePhone(buyer.phone),
+          link: "/orders",
+          draft: {
+            kind: "order_update",
+            orderNumber: leader.code,
+            statusLabel:
+              "El repartidor está en la puerta. Tené el PIN a mano.",
+          },
+        });
+      }
+    }
     return { updated: true };
   },
 });

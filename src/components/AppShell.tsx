@@ -1,6 +1,7 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
 import { BusinessAlerts } from "@/components/BusinessAlerts";
 import { CourierAlerts } from "@/components/CourierAlerts";
+import { PushChime } from "@/components/PushChime";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
@@ -180,6 +181,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen lg:pl-[272px] print:pl-0">
+      <PushChime enabled={Boolean(user)} role={role} />
       <CourierAlerts enabled={isCourier} />
       <BusinessAlerts enabled={isBusiness} />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex print:hidden">

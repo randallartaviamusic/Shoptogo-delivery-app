@@ -6,6 +6,7 @@ import {
   CourierPresenceReporter,
   DeliveryTrackingMap,
 } from "@/components/DeliveryTracking";
+import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
 import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { VerificationBanner } from "@/components/VerificationBanner";
 import { DishImage } from "@/components/DishImage";
@@ -462,6 +463,7 @@ export default function CourierPage() {
 
       <SubscriptionReminder />
       <VerificationBanner />
+      <OrderAlertsSettings audience="courier" className="mb-5" />
 
       {busyOrder && (
         <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] px-4 py-3">

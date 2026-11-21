@@ -2,6 +2,7 @@ import { EmptyState, PageHeader } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { DishImage } from "@/components/DishImage";
+import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
 import { OrderReview } from "@/components/OrderReview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1027,6 +1028,8 @@ export default function OrdersPage() {
           </div>
         }
       />
+
+      <OrderAlertsSettings audience="buyer" className="mb-5" />
 
       {tab === "history" && recentDelivered && (
         <section className="surface-raised mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-accent/20 p-4">

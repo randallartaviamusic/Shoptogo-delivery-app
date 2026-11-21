@@ -449,6 +449,9 @@ const schema = defineSchema(
       courierAcceptedAt: v.optional(v.number()),
       courierLocation: v.optional(geoPointValidator),
       courierLocationAt: v.optional(v.number()),
+      // Última vez que se avisó al comprador que el repartidor llegó a la
+      // puerta. Se guarda por entrega para no repetir el aviso en cada GPS.
+      arrivalNotifiedAt: v.optional(v.number()),
       items: v.array(orderItemValidator),
       subtotal: v.number(),
       deliveryFee: v.number(),
