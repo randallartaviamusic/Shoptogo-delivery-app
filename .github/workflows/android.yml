@@ -72,6 +72,20 @@ jobs:
           fi
           bunx convex deploy
 
+      # La cuenta de servicio es la que permite al backend enviar el push.
+      # Si la guardás como secreto de GitHub, la dejamos configurada en el
+      # deployment de Convex automáticamente (no hace falta copiarla a mano).
+      - name: Configurar credenciales de Firebase en Convex
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ] || [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::warning::Falta CONVEX_DEPLOY_KEY o FIREBASE_SERVICE_ACCOUNT_JSON: el APK puede registrar el teléfono, pero el servidor no podrá enviar push."
+            exit 0
+          fi
+          bunx convex env set FIREBASE_SERVICE_ACCOUNT_JSON "$FIREBASE_SERVICE_ACCOUNT_JSON"
+
       # Firebase necesita google-services.json para que el APK reciba push
       # nativo. Se puede subir al repo o guardar el contenido en el secreto
       # GOOGLE_SERVICES_JSON; si falta, el APK abre igual pero sin push.
