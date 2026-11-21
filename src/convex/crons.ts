@@ -7,7 +7,7 @@ const crons = cronJobs();
 // mantiene alineados el interruptor, el directorio y los pedidos.
 crons.interval(
   "actualizar horarios de atencion",
-  { minutes: 1 },
+  { minutes: 5 },
   internal.businesses.syncOpenState,
   {},
 );
@@ -24,7 +24,7 @@ crons.interval(
 // llegue mientras el pedido todavía está caliente.
 crons.interval(
   "despachar avisos de WhatsApp",
-  { minutes: 1 },
+  { minutes: 5 },
   internal.notifications.dispatch,
   { limit: 20 },
 );
@@ -43,7 +43,7 @@ crons.interval(
 // tarea abre la entrega al resto de los repartidores disponibles.
 crons.interval(
   "liberar prioridad de favoritos",
-  { minutes: 1 },
+  { minutes: 5 },
   internal.orders.releaseFavoritePriorityOffers,
   {},
 );
@@ -52,7 +52,7 @@ crons.interval(
 // muestre entregas que ya no están disponibles.
 crons.interval(
   "cerrar ofertas vencidas",
-  { minutes: 2 },
+  { minutes: 5 },
   internal.orders.expireOffers,
   {},
 );
