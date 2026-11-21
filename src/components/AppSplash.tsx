@@ -1,6 +1,5 @@
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
-import { Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const IMAGE_SPLASH_MS = 2400;
@@ -17,7 +16,6 @@ export function AppSplash() {
   const splashUrl = branding?.splashUrl ?? null;
   const splashKind = branding?.splashKind ?? "image";
   const [visible, setVisible] = useState(false);
-  const [needsSoundTap, setNeedsSoundTap] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -43,7 +41,6 @@ export function AppSplash() {
     }
 
     setVisible(true);
-    setNeedsSoundTap(false);
 
     // El video se reproduce completo y cierra solo al terminar. La imagen sí
     // tiene un tiempo fijo.
@@ -69,10 +66,10 @@ export function AppSplash() {
         await video.play();
       } catch {
         if (cancelled) return;
-        // Algunos navegadores bloquean el audio sin un toque. Arrancamos en
-        // silencio para no frenar la entrada y ofrecemos activar el sonido.
+        // En un navegador sin interacción previa el sistema puede bloquear el
+        // audio. El APK de Android no lo bloquea; acá reintentamos en silencio
+        // para que el video igual se reproduzca y la app entre al terminar.
         video.muted = true;
-        setNeedsSoundTap(true);
         try {
           await video.play();
         } catch {
@@ -95,15 +92,6 @@ export function AppSplash() {
       document.body.style.overflow = previous;
     };
   }, [visible]);
-
-  function enableSound() {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = false;
-    video.volume = 1;
-    setNeedsSoundTap(false);
-    void video.play();
-  }
 
   if (!visible || !splashUrl) return null;
 
@@ -135,16 +123,6 @@ export function AppSplash() {
       )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/70 to-transparent" />
-      {needsSoundTap && (
-        <button
-          type="button"
-          onClick={enableSound}
-          className="absolute bottom-5 left-5 flex items-center gap-2 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[11px] font-semibold text-white backdrop-blur transition-colors hover:bg-black/75"
-        >
-          <Volume2 className="size-3.5" />
-          Activar sonido
-        </button>
-      )}
       <button
         type="button"
         onClick={() => setVisible(false)}
