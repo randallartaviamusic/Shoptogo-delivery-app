@@ -27,11 +27,11 @@ jobs:
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # La CLI de Capacitor 8 necesita Node 22.
       - name: Instalar Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
 
@@ -41,19 +41,18 @@ jobs:
           bun-version: latest
 
       - name: Instalar Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
+      # v4 ya no instala el paquete "tools", que Google eliminó. Le pedimos
+      # explícitamente la plataforma y las build-tools que usa la app.
       - name: Instalar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Aceptar licencias de Android
-        run: yes | sdkmanager --licenses > /dev/null 2>&1 || true
-
-      - name: Instalar plataforma Android 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+          accept-android-sdk-licenses: true
 
       - name: Instalar dependencias
         run: bun install --frozen-lockfile
@@ -90,9 +89,8 @@ jobs:
           retention-days: 30
 
       # Desde el celular es más fácil entrar a Releases y tocar el APK que
-      # descargar el ZIP del artifact. Cada ejecución manual deja una release.
+      # descargar el ZIP del artifact. Cada ejecución deja una release.
       - name: Publicar APK en Releases
-        if: github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-${{ github.run_number }}-${{ github.run_attempt }}
