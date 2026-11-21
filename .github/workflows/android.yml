@@ -17,7 +17,7 @@ on:
       - ".github/workflows/android.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -88,3 +88,15 @@ jobs:
           path: apk/shop-to-go.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Desde el celular es más fácil entrar a Releases y tocar el APK que
+      # descargar el ZIP del artifact. Cada ejecución manual deja una release.
+      - name: Publicar APK en Releases
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-${{ github.run_number }}-${{ github.run_attempt }}
+          name: Shop To Go Android #${{ github.run_number }}
+          body: APK de prueba generado automáticamente desde GitHub Actions.
+          files: apk/shop-to-go.apk
+          prerelease: true
