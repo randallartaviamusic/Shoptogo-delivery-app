@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { playOrderChime } from "@/lib/orderChime";
@@ -147,6 +148,28 @@ export function OrderAlertsSettings({
     : templatePending
       ? " (el servicio está conectado; falta aprobar la plantilla de mensajes)."
       : ".";
+
+  // En el APK la app corre en un WebView: Web Push no existe. No mostramos
+  // instrucciones de Chrome/Safari que no aplican; el push nativo requiere FCM.
+  if (Capacitor.isNativePlatform()) {
+    return (
+      <div
+        className={cn(
+          "rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] p-3.5",
+          className,
+        )}
+      >
+        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+          <BellOff className="size-3.5" /> Avisos push en la app Android
+        </p>
+        <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+          La app ya está instalada. Para que suene con la app cerrada falta
+          conectar Firebase Cloud Messaging (FCM). Los avisos por WhatsApp se
+          configuran en tu perfil.
+        </p>
+      </div>
+    );
+  }
 
   if (subscribed) {
     return (
