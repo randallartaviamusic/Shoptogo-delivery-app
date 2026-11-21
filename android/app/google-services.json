@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "404179764524",
+    "project_id": "shop-to-go-cba48",
+    "storage_bucket": "shop-to-go-cba48.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:404179764524:android:e40e5cf75183a8a456d889",
+        "android_client_info": {
+          "package_name": "cr.shoptogo.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDH9afMZ91mK0N_kPE1TZAcyV48fKpjpYI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
