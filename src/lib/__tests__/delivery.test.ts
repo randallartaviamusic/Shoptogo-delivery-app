@@ -25,28 +25,23 @@ describe("tarifa de envío por distancia", () => {
     expect(quote!.distanceKm).toBe(0);
   });
 
-  test("el primer km de recorrido está incluido en la base", () => {
-    // ~0,83 km de recorrido: todavía no se cobra km adicional.
-    const quote = deliveryQuote(TILARAN, north(0.006));
-    expect(quote!.distanceKm).toBe(0.8);
+  test("los primeros 2 km de recorrido están incluidos en la base", () => {
+    // ~1,95 km de recorrido: todavía no se cobra km adicional.
+    const quote = deliveryQuote(TILARAN, north(0.014));
+    expect(quote!.distanceKm).toBe(1.9);
     expect(quote!.fee).toBe(1000);
   });
 
   test("cobra ₡350 por cada km adicional o fracción", () => {
-    // ~1,95 km de recorrido: 0,95 km extra ya cuentan como un km completo.
-    const firstExtra = deliveryQuote(TILARAN, north(0.014));
-    expect(firstExtra!.distanceKm).toBe(1.9);
-    expect(firstExtra!.fee).toBe(1350);
-
-    // ~2,78 km de recorrido: 1,78 km extra cuentan como dos km completos.
-    const secondExtra = deliveryQuote(TILARAN, north(0.02));
-    expect(secondExtra!.distanceKm).toBe(2.8);
-    expect(secondExtra!.fee).toBe(1700);
+    // ~2,78 km de recorrido: 0,78 km extra ya cuentan como un km completo.
+    const quote = deliveryQuote(TILARAN, north(0.02));
+    expect(quote!.distanceKm).toBe(2.8);
+    expect(quote!.fee).toBe(1350);
   });
 
   test("el recargo se acumula km por km", () => {
     const quote = deliveryQuote(TILARAN, north(0.03));
-    expect(quote!.fee).toBe(DELIVERY_RULES.baseFee + 4 * DELIVERY_RULES.perKm);
+    expect(quote!.fee).toBe(DELIVERY_RULES.baseFee + 3 * DELIVERY_RULES.perKm);
   });
 
   test("fuera del radio de 12 km no hay envío", () => {
@@ -55,7 +50,7 @@ describe("tarifa de envío por distancia", () => {
     );
     expect(deliveryQuote(TILARAN, north(0.09))).toBeNull();
     // Justo dentro del radio sí cotiza.
-    expect(deliveryQuote(TILARAN, north(0.08))?.fee).toBe(4850);
+    expect(deliveryQuote(TILARAN, north(0.08))?.fee).toBe(4500);
   });
 
   test("sin punto de entrega no hay cotización", () => {
