@@ -758,6 +758,21 @@ const schema = defineSchema(
       .index("by_user", ["userId"])
       .index("by_endpoint", ["endpoint"]),
 
+    // Token nativo de Firebase Cloud Messaging para el APK. A diferencia del
+    // Web Push, Android entrega este aviso con la app en segundo plano o
+    // cerrada, y lo muestra en la barra de notificaciones.
+    pushDevices: defineTable({
+      userId: v.id("users"),
+      token: v.string(),
+      platform: v.literal("android"),
+      createdAt: v.number(),
+      lastSuccessAt: v.optional(v.number()),
+      failures: v.optional(v.number()),
+      lastError: v.optional(v.string()),
+    })
+      .index("by_user", ["userId"])
+      .index("by_token", ["token"]),
+
     // Oferta directa de una entrega lista a un repartidor concreto. El token va
     // en el aviso de WhatsApp: abrirlo permite aceptar con un toque.
     deliveryOffers: defineTable({

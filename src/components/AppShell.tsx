@@ -1,14 +1,16 @@
 import { BrandMark, Wordmark } from "@/components/Brand";
 import { BusinessAlerts } from "@/components/BusinessAlerts";
 import { CourierAlerts } from "@/components/CourierAlerts";
+import { NativePushRegistrar } from "@/components/NativePushRegistrar";
 import { PushChime } from "@/components/PushChime";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useHideOnScroll } from "@/hooks/use-hide-on-scroll";
 import { money, ROLE_HOME, ROLE_LABEL, initials } from "@/lib/format";
+import { removeNativePushToken } from "@/lib/native-push";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bike,
@@ -90,6 +92,7 @@ export function AppShell() {
     isCourier ? {} : "skip",
   );
   const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
+  const convex = useConvex();
   const ensureCatalog = useMutation(api.seed.ensure);
   const seeded = useRef(false);
   const headerHidden = useHideOnScroll();
@@ -175,6 +178,7 @@ export function AppShell() {
       : 0;
 
   const handleSignOut = async () => {
+    await removeNativePushToken(convex).catch(() => undefined);
     await signOut();
     navigate("/swipe");
   };
@@ -182,6 +186,7 @@ export function AppShell() {
   return (
     <div className="min-h-screen lg:pl-[272px] print:pl-0">
       <PushChime enabled={Boolean(user)} role={role} />
+      <NativePushRegistrar userId={user?._id} />
       <CourierAlerts enabled={isCourier} />
       <BusinessAlerts enabled={isBusiness} />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[272px] flex-col border-r border-border/70 bg-sidebar/80 px-5 py-6 backdrop-blur-xl lg:flex print:hidden">

@@ -59,6 +59,22 @@ jobs:
       - name: Instalar dependencias
         run: bun install --frozen-lockfile
 
+      # Firebase necesita google-services.json para que el APK reciba push
+      # nativo. Se puede subir al repo o guardar el contenido en el secreto
+      # GOOGLE_SERVICES_JSON; si falta, el APK compila pero no suena cerrado.
+      - name: Configurar Firebase para notificaciones
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "google-services.json configurado desde el secreto."
+          elif [ -f android/app/google-services.json ]; then
+            echo "Usando android/app/google-services.json del repositorio."
+          else
+            echo "::warning::Falta google-services.json: el APK compila pero no recibirá push nativo."
+          fi
+
       # Si el administrador subió icono o splash, los bajamos de Convex y los
       # grabamos en el APK. Si no hay nada configurado, deja los originales.
       # El APK tiene que usar el mismo backend que la web publicada: ahí están

@@ -1,11 +1,16 @@
 package cr.shoptogo.app;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
+import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -30,6 +35,8 @@ public class MainActivity extends BridgeActivity {
     private static final String PREFS_NAME = "shop_to_go_permissions";
     private static final String KEY_PERMISSIONS_PROMPTED = "permissions_prompted";
     private static final int REQUEST_CODE_PERMISSIONS = 7421;
+    // Tiene que coincidir con FCM_CHANNEL_ID en src/convex/pushNode.ts.
+    private static final String ORDERS_CHANNEL_ID = "shop_to_go_orders";
 
     private boolean permissionPromptChecked = false;
 
@@ -39,6 +46,10 @@ public class MainActivity extends BridgeActivity {
         // Keystore de Android.
         registerPlugin(CredentialStorePlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Canal de alta prioridad: con la app cerrada, FCM usa este canal para
+        // mostrar el pedido en la barra y reproducir el sonido del sistema.
+        createOrdersNotificationChannel();
 
         // La splash es un video: permitimos que arranque con audio sin que el
         // usuario tenga que tocar la pantalla.
@@ -65,6 +76,34 @@ public class MainActivity extends BridgeActivity {
 
         // Que los botones de volumen del teléfono controlen el audio del video.
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+    }
+
+    private void createOrdersNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        if (manager.getNotificationChannel(ORDERS_CHANNEL_ID) != null) return;
+
+        NotificationChannel channel = new NotificationChannel(
+            ORDERS_CHANNEL_ID,
+            "Pedidos de Shop To Go",
+            NotificationManager.IMPORTANCE_HIGH
+        );
+        channel.setDescription(
+            "Pedidos nuevos, entregas disponibles y avisos de llegada"
+        );
+        channel.enableVibration(true);
+        channel.setVibrationPattern(
+            new long[] { 0, 280, 120, 280, 120, 420 }
+        );
+        channel.setSound(
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+            new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .build()
+        );
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        manager.createNotificationChannel(channel);
     }
 
     @Override

@@ -13,7 +13,8 @@ export const updateProfile = mutation({
     phone: v.optional(v.string()),
     address: v.optional(v.string()),
     city: v.optional(v.string()),
-    // Opt-in explícito para recibir avisos del pedido por WhatsApp.
+    // Los avisos transaccionales del pedido se envían por defecto al teléfono
+    // del perfil; el usuario puede desactivarlos explícitamente.
     notifyWhatsapp: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -44,12 +45,8 @@ export const updateProfile = mutation({
     if (args.address !== undefined) patch.address = args.address.trim();
     if (args.city !== undefined) patch.city = args.city.trim();
     if (args.notifyWhatsapp !== undefined) {
-      // Sin teléfono no hay a dónde escribir: pedirlo antes de aceptar.
-      if (args.notifyWhatsapp && !(patch.phone ?? user.phone ?? "").trim()) {
-        throw new Error(
-          "Guardá primero tu número de WhatsApp para recibir los avisos",
-        );
-      }
+      // Si todavía no hay teléfono, la preferencia queda guardada; los avisos
+      // empiezan a salir cuando agregue el número.
       patch.notifyWhatsapp = args.notifyWhatsapp;
     }
 

@@ -1,4 +1,3 @@
-import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { playOrderChime } from "@/lib/orderChime";
@@ -8,6 +7,12 @@ import {
   enableOrderPush,
   type PushState,
 } from "@/lib/push";
+import {
+  currentNativePushState,
+  enableNativePush,
+  isNativePushPlatform,
+  type NativePushState,
+} from "@/lib/native-push";
 import { PLATFORM_WHATSAPP_DISPLAY } from "@/lib/notify";
 import { formatSinpeNumber } from "@/lib/sinpe";
 import { cn } from "@/lib/utils";
@@ -53,7 +58,7 @@ const COPY: Record<
       "Enterate cuando el repartidor está en la puerta, aunque Shop To Go esté cerrada.",
     success: "Este teléfono va a sonar cuando tu pedido llegue a la puerta.",
     whatsapp:
-      "Si activaste los avisos por WhatsApp en tu perfil, también te avisamos por ahí.",
+      "También te escribimos al WhatsApp de tu perfil cuando el repartidor llega; podés desactivarlo en Perfil.",
   },
 };
 
@@ -73,10 +78,15 @@ export function OrderAlertsSettings({
 }) {
   const convex = useConvex();
   const channels = useQuery(api.notifications.channelStatus, {});
+  const native = isNativePushPlatform();
   const [state, setState] = useState<PushState | "loading">("loading");
+  const [nativeState, setNativeState] = useState<NativePushState | "loading">(
+    "loading",
+  );
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (native) return;
     let alive = true;
     currentPushState()
       .then((next) => {
@@ -88,7 +98,22 @@ export function OrderAlertsSettings({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [native]);
+
+  useEffect(() => {
+    if (!native) return;
+    let alive = true;
+    currentNativePushState()
+      .then((next) => {
+        if (alive) setNativeState(next);
+      })
+      .catch(() => {
+        if (alive) setNativeState("idle");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [native]);
 
   const copy = COPY[audience];
 
@@ -113,6 +138,30 @@ export function OrderAlertsSettings({
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "No pudimos activar los avisos",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const activateNative = async () => {
+    setBusy(true);
+    try {
+      const next = await enableNativePush(convex);
+      setNativeState(next);
+      if (next === "subscribed") {
+        toast.success("Avisos activados", { description: copy.success });
+      } else if (next === "denied") {
+        toast.error("Las notificaciones están bloqueadas", {
+          description:
+            "Habilitá las notificaciones de Shop To Go desde los ajustes del teléfono.",
+        });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No pudimos activar los avisos",
       );
     } finally {
       setBusy(false);
@@ -149,24 +198,135 @@ export function OrderAlertsSettings({
       ? " (el servicio está conectado; falta aprobar la plantilla de mensajes)."
       : ".";
 
-  // En el APK la app corre en un WebView: Web Push no existe. No mostramos
-  // instrucciones de Chrome/Safari que no aplican; el push nativo requiere FCM.
-  if (Capacitor.isNativePlatform()) {
+  const whatsappFooter = (
+    <div className="flex items-start gap-1.5 border-t border-border/60 pt-2.5 text-[10px] leading-relaxed text-muted-foreground">
+      <MessageCircle className="mt-0.5 size-3.5 shrink-0 text-accent" />
+      <div className="min-w-0">
+        {audience === "business" ? (
+          phone ? (
+            <span>
+              Cada pedido nuevo también se manda solo al WhatsApp{" "}
+              <strong className="text-foreground">{phone}</strong>
+              {pendingNote}
+            </span>
+          ) : (
+            <span>
+              Agregá el WhatsApp para comprobantes para recibir el pedido
+              también como mensaje.
+            </span>
+          )
+        ) : (
+          <span>
+            {copy.whatsapp}
+            {whatsappPending
+              ? " Se activa cuando la plataforma conecte el servicio de mensajes."
+              : templatePending
+                ? " El servicio está conectado; falta aprobar la plantilla de mensajes."
+                : ""}
+          </span>
+        )}
+        <span className="mt-1 block text-[10px] leading-relaxed text-muted-foreground/80">
+          Número de la plataforma para los avisos automáticos:{" "}
+          <strong className="text-foreground">{sender}</strong>.
+        </span>
+      </div>
+    </div>
+  );
+
+  // En el APK la app corre en un WebView: Web Push no existe. FCM es el que
+  // despierta Android con la app cerrada; WhatsApp sigue saliendo en paralelo.
+  if (native) {
+    const nativeActive = nativeState === "subscribed";
+    const nativeLoading = nativeState === "loading";
+
     return (
       <div
         className={cn(
-          "rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] p-3.5",
+          "space-y-3 rounded-2xl border border-border/70 bg-black/20 p-3",
           className,
         )}
       >
-        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-300">
-          <BellOff className="size-3.5" /> Avisos push en la app Android
-        </p>
-        <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
-          La app ya está instalada. Para que suene con la app cerrada falta
-          conectar Firebase Cloud Messaging (FCM). Los avisos por WhatsApp se
-          configuran en tu perfil.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <span
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-xl",
+                nativeActive
+                  ? "bg-accent/15 text-accent"
+                  : "bg-primary/15 text-primary",
+              )}
+            >
+              {nativeActive ? (
+                <BellRing className="size-4" />
+              ) : (
+                <BellOff className="size-4" />
+              )}
+            </span>
+            <div>
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                <Smartphone className="size-3.5" /> {copy.title}
+              </p>
+              <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                {nativeActive ? copy.success : copy.description}
+              </p>
+            </div>
+          </div>
+          {nativeLoading ? (
+            <Loader2 className="mt-1 size-4 animate-spin text-muted-foreground" />
+          ) : (
+            <span
+              className={cn(
+                "rounded-full border px-2 py-1 text-[10px] font-semibold",
+                nativeActive
+                  ? "border-accent/30 bg-accent/10 text-accent"
+                  : "border-border/80 bg-secondary/50 text-muted-foreground",
+              )}
+            >
+              {nativeActive ? "Activos" : "Inactivos"}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {!nativeActive && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={activateNative}
+              disabled={busy || nativeLoading || nativeState === "denied"}
+            >
+              {busy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <BellRing className="size-3.5" />
+              )}
+              Activar avisos en este teléfono
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => playOrderChime({ force: true })}
+          >
+            <Play className="size-3.5" /> Probar sonido
+          </Button>
+        </div>
+
+        {nativeState === "denied" && (
+          <p className="text-[10px] leading-relaxed text-amber-300">
+            Las notificaciones están bloqueadas. Abrí Ajustes → Apps → Shop To
+            Go → Notificaciones y permitilas.
+          </p>
+        )}
+        {channels && !channels.nativePushReady && (
+          <p className="text-[10px] leading-relaxed text-amber-300">
+            El teléfono ya está listo; falta conectar Firebase en el servidor
+            para que el aviso salga.
+          </p>
+        )}
+
+        {whatsappFooter}
       </div>
     );
   }
@@ -284,38 +444,7 @@ export function OrderAlertsSettings({
         </p>
       )}
 
-      <div className="flex items-start gap-1.5 border-t border-border/60 pt-2.5 text-[10px] leading-relaxed text-muted-foreground">
-        <MessageCircle className="mt-0.5 size-3.5 shrink-0 text-accent" />
-        <div className="min-w-0">
-        {audience === "business" ? (
-          phone ? (
-            <span>
-              Cada pedido nuevo también se manda solo al WhatsApp{" "}
-              <strong className="text-foreground">{phone}</strong>
-              {pendingNote}
-            </span>
-          ) : (
-            <span>
-              Agregá el WhatsApp para comprobantes para recibir el pedido
-              también como mensaje.
-            </span>
-          )
-        ) : (
-          <span>
-            {copy.whatsapp}
-            {whatsappPending
-              ? " Se activa cuando la plataforma conecte el servicio de mensajes."
-              : templatePending
-                ? " El servicio está conectado; falta aprobar la plantilla de mensajes."
-                : ""}
-          </span>
-        )}
-        <span className="mt-1 block text-[10px] leading-relaxed text-muted-foreground/80">
-          Número de la plataforma para los avisos automáticos:{" "}
-          <strong className="text-foreground">{sender}</strong>.
-        </span>
-        </div>
-      </div>
+      {whatsappFooter}
     </div>
   );
 }

@@ -162,6 +162,16 @@ export const prune = internalMutation({
   },
 });
 
+/** Firebase Cloud Messaging está listo cuando existe una cuenta de servicio. */
+function nativePushReady() {
+  return Boolean(
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() ||
+      (process.env.FIREBASE_PROJECT_ID?.trim() &&
+        process.env.FIREBASE_CLIENT_EMAIL?.trim() &&
+        process.env.FIREBASE_PRIVATE_KEY?.trim()),
+  );
+}
+
 /**
  * Estado de los canales externos, sin exponer secretos: la UI del negocio
  * muestra si el WhatsApp automático ya está conectado.
@@ -187,6 +197,7 @@ export const channelStatus = query({
       senderNumber,
       senderDisplay: displayPhone(senderNumber),
       webhookReady: Boolean(process.env.NOTIFY_WEBHOOK_URL?.trim()),
+      nativePushReady: nativePushReady(),
     };
   },
 });

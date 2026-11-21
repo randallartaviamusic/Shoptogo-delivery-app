@@ -204,7 +204,7 @@ export default function ProfilePage() {
     address: "",
     city: "",
     // Avisos del pedido por WhatsApp. Se guarda con el resto del perfil.
-    notifyWhatsapp: false,
+    notifyWhatsapp: true,
   });
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
@@ -216,7 +216,7 @@ export default function ProfilePage() {
       phone: user.phone ?? "",
       address: user.address ?? "",
       city: user.city ?? "",
-      notifyWhatsapp: user.notifyWhatsapp ?? false,
+      notifyWhatsapp: user.notifyWhatsapp ?? true,
     });
   }, [user]);
 
@@ -1056,8 +1056,8 @@ export default function ProfilePage() {
               Avisos por WhatsApp
             </span>
             <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
-              Te escribimos al teléfono de arriba cuando tu pedido está listo y
-              cuando el repartidor ya va en camino. Sólo avisos del pedido, sin
+              Te escribimos al teléfono de arriba cuando el repartidor va en
+              camino y cuando llega a tu puerta. Sólo avisos del pedido, sin
               promociones. Se guarda con el botón de abajo.
             </span>
           </span>

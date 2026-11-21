@@ -85,6 +85,109 @@ export const subscriptionsForUser = internalQuery({
   },
 });
 
+/** Dispositivos Android registrados con Firebase para esta cuenta. */
+export const devicesForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("pushDevices")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+  },
+});
+
+/**
+ * Guarda el token FCM del APK. Si el mismo teléfono se usa con otra cuenta,
+ * el token se reasigna para que los avisos no se crucen.
+ */
+export const saveDeviceToken = mutation({
+  args: {
+    token: v.string(),
+    platform: v.literal("android"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+
+    const token = args.token.trim();
+    if (!token || token.length > 4096) {
+      throw new Error("Firebase devolvió un token inválido");
+    }
+
+    const existing = await ctx.db
+      .query("pushDevices")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        userId,
+        platform: args.platform,
+        failures: 0,
+        lastError: undefined,
+      });
+      return existing._id;
+    }
+
+    const mine = await ctx.db
+      .query("pushDevices")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    if (mine.length >= MAX_PER_USER) {
+      const oldest = mine.sort((a, b) => a.createdAt - b.createdAt)[0];
+      await ctx.db.delete(oldest._id);
+    }
+
+    return await ctx.db.insert("pushDevices", {
+      userId,
+      token,
+      platform: args.platform,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/** Quita el token de este teléfono al cerrar sesión o reinstalar. */
+export const removeDeviceToken = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return;
+    const existing = await ctx.db
+      .query("pushDevices")
+      .withIndex("by_token", (q) => q.eq("token", args.token.trim()))
+      .first();
+    if (existing && existing.userId === userId) {
+      await ctx.db.delete(existing._id);
+    }
+  },
+});
+
+export const markDeviceDelivery = internalMutation({
+  args: {
+    id: v.id("pushDevices"),
+    ok: v.boolean(),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.id);
+    if (!row) return;
+    await ctx.db.patch(args.id, {
+      lastSuccessAt: args.ok ? Date.now() : row.lastSuccessAt,
+      failures: args.ok ? 0 : (row.failures ?? 0) + 1,
+      lastError: args.ok ? undefined : args.error?.slice(0, 300),
+    });
+  },
+});
+
+/** Firebase avisó que el token ya no existe: se descarta. */
+export const dropDevice = internalMutation({
+  args: { id: v.id("pushDevices") },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.id);
+    if (row) await ctx.db.delete(args.id);
+  },
+});
+
 export const markDelivery = internalMutation({
   args: {
     id: v.id("pushSubscriptions"),

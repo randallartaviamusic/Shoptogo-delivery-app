@@ -1831,15 +1831,17 @@ async function notifyAssignment(ctx: MutationCtx, trip: Doc<"orders">[]) {
     });
   }
 
-  // El comprador sólo recibe nada si él mismo pidió los avisos en su perfil.
+  // El comprador recibe los avisos transaccionales del pedido al teléfono de
+  // su perfil. Puede desactivarlos explícitamente desde Perfil.
   const buyer = await ctx.db.get(leader.buyerId);
-  if (buyer?.notifyWhatsapp && normalizePhone(buyer.phone)) {
+  const buyerPhone = normalizePhone(buyer?.phone);
+  if (buyerPhone && buyer?.notifyWhatsapp !== false) {
     await queueNotice(ctx, {
       order: leader,
       tripKey: tripKey(leader),
       recipientId: leader.buyerId,
       recipientRole: "buyer",
-      phone: normalizePhone(buyer.phone),
+      phone: buyerPhone,
       link: "/orders",
       draft: {
         kind: "courier_assigned",
@@ -2316,19 +2318,20 @@ export const updateCourierLocation = mutation({
         tag: `arrival-${leader._id}`,
       });
       const buyer = await ctx.db.get(leader.buyerId);
-      if (buyer?.notifyWhatsapp && normalizePhone(buyer.phone)) {
+      const buyerPhone = normalizePhone(buyer?.phone);
+      if (buyerPhone && buyer?.notifyWhatsapp !== false) {
         await queueNotice(ctx, {
           order: leader,
           tripKey: tripKey(leader),
           recipientId: leader.buyerId,
           recipientRole: "buyer",
-          phone: normalizePhone(buyer.phone),
+          phone: buyerPhone,
           link: "/orders",
           draft: {
             kind: "order_update",
             orderNumber: leader.code,
             statusLabel:
-              "El repartidor está en la puerta. Tené el PIN a mano.",
+              "El repartidor llegó a tu dirección. Tené el PIN a mano.",
           },
         });
       }
