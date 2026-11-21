@@ -74,14 +74,14 @@ export function AppSplash() {
           playsInline
           onEnded={() => setVisible(false)}
           onError={() => setVisible(false)}
-          className="size-full object-contain"
+          className="size-full object-cover"
         />
       ) : (
         <img
           src={splashUrl}
           alt=""
           onError={() => setVisible(false)}
-          className="size-full object-contain"
+          className="size-full object-cover"
         />
       )}
 

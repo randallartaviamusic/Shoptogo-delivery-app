@@ -228,7 +228,7 @@ export function AppBrandingAdmin() {
 
         <div className="rounded-2xl border border-border/70 bg-black/25 p-4">
           <p className="text-sm font-semibold">Splash de la app</p>
-          <div className="mt-3 aspect-video overflow-hidden rounded-2xl border border-border/70 bg-[#0a0a0b]">
+          <div className="mx-auto mt-3 aspect-[886/1920] w-36 overflow-hidden rounded-2xl border border-border/70 bg-[#0a0a0b]">
             {effectiveSplash ? (
               effectiveSplash.kind === "video" ? (
                 <video
@@ -238,13 +238,13 @@ export function AppBrandingAdmin() {
                   muted
                   loop
                   playsInline
-                  className="size-full object-contain"
+                  className="size-full object-cover"
                 />
               ) : (
                 <img
                   src={effectiveSplash.url}
                   alt="Vista previa de la splash"
-                  className="size-full object-contain"
+                  className="size-full object-cover"
                 />
               )
             ) : (
@@ -289,9 +289,10 @@ export function AppBrandingAdmin() {
             )}
           </div>
           <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-            Imagen o video desde la galería, hasta 30 MB (MP4 recomendado). Para
-            el APK se usa una imagen nativa; el video se reproduce dentro de la
-            app.
+            Vertical 886 × 1920 px (9:19.5). Se recorta al centro para llenar
+            toda la pantalla. Imagen o video desde la galería, hasta 30 MB (MP4
+            recomendado). Para el APK se usa una imagen nativa; el video se
+            reproduce dentro de la app.
           </p>
         </div>
       </div>
