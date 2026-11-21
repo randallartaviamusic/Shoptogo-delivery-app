@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, readdir } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import sharp from "sharp";
@@ -12,26 +19,35 @@ const SPLASH_HEIGHT = 1920;
 const SPLASH_BACKGROUND = "#0a0a0b";
 const MAX_BYTES = 30 * 1024 * 1024;
 
+// Archivos que se meten dentro del APK para que la splash no dependa de
+// internet. El manifiesto lo lee AppSplash al arrancar.
+const LOCAL_SPLASH_VIDEO = "public/splash-video.mp4";
+const LOCAL_SPLASH_IMAGE = "public/splash-image.png";
+const LOCAL_SPLASH_POSTER = "public/splash-poster.png";
+const BUNDLED_SPLASH_MANIFEST = "src/generated/splash-assets.ts";
+
 async function download(url: string) {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`No pudimos descargar ${url}`);
   const buffer = Buffer.from(await response.arrayBuffer());
   if (buffer.byteLength > MAX_BYTES) {
-    throw new Error("La imagen supera el tamaño permitido");
+    throw new Error("El archivo supera el tamaño permitido");
   }
   return buffer;
 }
 
 /** Splash desde la imagen del administrador: recorte central sin deformar. */
 async function writeSplashFromImage(buffer: Buffer) {
-  await sharp(buffer)
+  const png = await sharp(buffer)
     .resize(SPLASH_WIDTH, SPLASH_HEIGHT, {
       fit: "cover",
       position: "center",
     })
     .flatten({ background: SPLASH_BACKGROUND })
     .png()
-    .toFile("resources/splash.png");
+    .toBuffer();
+  await writeFile("resources/splash.png", png);
+  return png;
 }
 
 /** Splash de respaldo: logo de la app centrado en el lienzo vertical. */
@@ -95,8 +111,71 @@ async function fitAndroidSplashes() {
   }
 }
 
+/** Mueve el índice del MP4 al inicio para que arranque sin esperar al final. */
+async function optimizeSplashVideo() {
+  const probe = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+  if (probe.error || probe.status !== 0) {
+    console.log("ffmpeg no disponible: el video se usa tal cual.");
+    return;
+  }
+
+  const temp = "public/splash-video.fast.mp4";
+  const result = spawnSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      LOCAL_SPLASH_VIDEO,
+      "-c",
+      "copy",
+      "-movflags",
+      "+faststart",
+      temp,
+    ],
+    { stdio: "inherit" },
+  );
+  if (result.error || result.status !== 0) {
+    await rm(temp, { force: true });
+    console.log("No pudimos optimizar el video: se usa el original.");
+    return;
+  }
+
+  await rm(LOCAL_SPLASH_VIDEO, { force: true });
+  await rename(temp, LOCAL_SPLASH_VIDEO);
+  console.log("Video de splash listo para arrancar sin buffering.");
+}
+
+/** Manifiesto que le dice a la app qué splash ya viene dentro del APK. */
+async function writeBundledSplashManifest(
+  kind: "image" | "video" | null,
+  src: string | null,
+  poster: string | null,
+) {
+  await mkdir(path.dirname(BUNDLED_SPLASH_MANIFEST), { recursive: true });
+  const content = `// Archivo generado por scripts/fetch-brand-assets.ts. No editar a mano.
+// En GitHub Actions se reemplaza con el video/imagen del perfil admin para
+// que la splash del APK se reproduzca sin internet.
+
+export type BundledSplashKind = "image" | "video";
+
+export type BundledSplash = {
+  kind: BundledSplashKind | null;
+  src: string | null;
+  poster: string | null;
+};
+
+export const bundledSplash: BundledSplash = {
+  kind: ${JSON.stringify(kind)},
+  src: ${JSON.stringify(src)},
+  poster: ${JSON.stringify(poster)},
+};
+`;
+  await writeFile(BUNDLED_SPLASH_MANIFEST, content);
+}
+
 async function main() {
   await mkdir("resources", { recursive: true });
+  await mkdir("public", { recursive: true });
 
   const convexUrl = process.env.VITE_CONVEX_URL?.trim();
   let iconBuffer: Buffer | null = null;
@@ -125,15 +204,42 @@ async function main() {
     console.log("Sin VITE_CONVEX_URL: usamos el branding guardado en el repo.");
   }
 
+  // Borramos cualquier splash local de una ejecución anterior.
+  await rm(LOCAL_SPLASH_VIDEO, { force: true });
+  await rm(LOCAL_SPLASH_IMAGE, { force: true });
+  await rm(LOCAL_SPLASH_POSTER, { force: true });
+
+  let bundledKind: "image" | "video" | null = null;
+  let bundledSrc: string | null = null;
+  let bundledPoster: string | null = null;
+
   if (splashKind === "image" && splashBuffer) {
-    await writeSplashFromImage(splashBuffer);
+    const splashPng = await writeSplashFromImage(splashBuffer);
+    await writeFile(LOCAL_SPLASH_IMAGE, splashPng);
+    bundledKind = "image";
+    bundledSrc = "/splash-image.png";
+    bundledPoster = "/splash-image.png";
     console.log("Splash vertical 886x1920 actualizada desde el perfil admin.");
+  } else if (splashKind === "video" && splashBuffer) {
+    // El video viaja dentro del APK: no se descarga al abrir la app.
+    await writeFile(LOCAL_SPLASH_VIDEO, splashBuffer);
+    await optimizeSplashVideo();
+    await writeSplashFromIcon(iconBuffer);
+    await copyFile("resources/splash.png", LOCAL_SPLASH_POSTER);
+    bundledKind = "video";
+    bundledSrc = "/splash-video.mp4";
+    bundledPoster = "/splash-poster.png";
+    console.log(
+      "Video de splash incluido en la app (se reproduce sin internet).",
+    );
   } else {
     // Un video no se puede mostrar en la splash nativa: usamos el icono
     // centrado como respaldo. El video se reproduce dentro de la app.
     await writeSplashFromIcon(iconBuffer);
     console.log("Splash vertical 886x1920 generada con el icono de la app.");
   }
+
+  await writeBundledSplashManifest(bundledKind, bundledSrc, bundledPoster);
 
   const command = process.platform === "win32" ? "bunx.cmd" : "bunx";
   const result = spawnSync(

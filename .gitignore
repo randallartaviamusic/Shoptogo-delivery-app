@@ -1,5 +1,12 @@
 .env.local
 node_modules
 dist
+
+# Splash descargada durante el build de GitHub. Se mete dentro del APK, no se
+# commitea (puede pesar varios MB y se regenera en cada compilación).
+public/splash-video.mp4
+public/splash-video.fast.mp4
+public/splash-image.png
+public/splash-poster.png
 # Los tipos generados de Convex se commitean para que GitHub Actions pueda
 # compilar la app sin credenciales del deployment.

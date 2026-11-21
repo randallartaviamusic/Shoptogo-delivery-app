@@ -1,4 +1,5 @@
 import { api } from "@/convex/_generated/api";
+import { bundledSplash } from "@/generated/splash-assets";
 import { Capacitor } from "@capacitor/core";
 import { useQuery } from "convex/react";
 import { Volume2 } from "lucide-react";
@@ -15,11 +16,24 @@ const SPLASH_SESSION_PREFIX = "shop-to-go:splash-shown:";
  */
 export function AppSplash() {
   const branding = useQuery(api.branding.appBranding);
-  const splashUrl = branding?.splashUrl ?? null;
-  const splashKind = branding?.splashKind ?? "image";
+  const isNative = Capacitor.isNativePlatform();
+  const [localSplashFailed, setLocalSplashFailed] = useState(false);
+
+  // En el APK la splash viaja dentro de la app: se muestra de inmediato, sin
+  // esperar a Convex y sin descargar el video al abrir.
+  const bundled =
+    isNative && bundledSplash.kind && bundledSplash.src && !localSplashFailed
+      ? bundledSplash
+      : null;
+  const remoteSplashUrl = branding?.splashUrl ?? null;
+  const splashUrl = bundled?.src ?? remoteSplashUrl;
+  const splashKind = bundled?.kind ?? branding?.splashKind ?? "image";
+  const posterUrl = bundled?.poster ?? branding?.iconUrl ?? undefined;
+
   const [visible, setVisible] = useState(false);
   const [needsSoundTap, setNeedsSoundTap] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const endTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!branding?.iconUrl) return;
@@ -43,6 +57,7 @@ export function AppSplash() {
       // Sin sessionStorage mostramos la splash igual.
     }
 
+    clearEndTimer();
     setVisible(true);
     setNeedsSoundTap(false);
 
@@ -79,7 +94,7 @@ export function AppSplash() {
           try {
             await video.play();
           } catch {
-            if (!cancelled) setVisible(false);
+            if (!cancelled) hideSplash();
           }
           return;
         }
@@ -91,7 +106,7 @@ export function AppSplash() {
         try {
           await video.play();
         } catch {
-          if (!cancelled) setVisible(false);
+          if (!cancelled) hideSplash();
         }
       }
     };
@@ -133,6 +148,37 @@ export function AppSplash() {
     };
   }, [visible]);
 
+  useEffect(() => {
+    return () => {
+      if (endTimerRef.current !== null) {
+        window.clearTimeout(endTimerRef.current);
+        endTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  function clearEndTimer() {
+    if (endTimerRef.current === null) return;
+    window.clearTimeout(endTimerRef.current);
+    endTimerRef.current = null;
+  }
+
+  // Si el WebView no dispara "ended" (por un stall del decodificador), la
+  // splash se cierra igual al terminar la duración del video.
+  function scheduleEndFallback(duration: number) {
+    clearEndTimer();
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    endTimerRef.current = window.setTimeout(
+      () => setVisible(false),
+      Math.ceil(duration * 1000) + 1500,
+    );
+  }
+
+  function hideSplash() {
+    clearEndTimer();
+    setVisible(false);
+  }
+
   function enableSound() {
     const video = videoRef.current;
     if (!video) return;
@@ -140,6 +186,17 @@ export function AppSplash() {
     video.volume = 1;
     setNeedsSoundTap(false);
     void video.play();
+  }
+
+  function handleSplashError() {
+    clearEndTimer();
+    // El archivo que viene dentro del APK no se pudo leer: usamos el de Convex
+    // como respaldo. Si tampoco hay respaldo, dejamos entrar a la app.
+    if (bundled && remoteSplashUrl) {
+      setLocalSplashFailed(true);
+      return;
+    }
+    hideSplash();
   }
 
   if (!visible || !splashUrl) return null;
@@ -155,13 +212,13 @@ export function AppSplash() {
           ref={videoRef}
           key={splashUrl}
           src={splashUrl}
-          poster={branding?.iconUrl ?? undefined}
+          poster={posterUrl}
           autoPlay
           playsInline
           preload="auto"
           onPlaying={(event) => {
             const video = event.currentTarget;
-            if (Capacitor.isNativePlatform()) {
+            if (isNative) {
               // Dentro del APK aseguramos audio y volumen completo al arrancar.
               video.volume = 1;
               video.muted = false;
@@ -169,21 +226,24 @@ export function AppSplash() {
             // Si el sistema lo dejó en silencio, ofrecemos activar el audio.
             if (video.muted) setNeedsSoundTap(true);
           }}
-          onEnded={() => setVisible(false)}
-          onError={() => setVisible(false)}
+          onLoadedMetadata={(event) =>
+            scheduleEndFallback(event.currentTarget.duration)
+          }
+          onEnded={hideSplash}
+          onError={handleSplashError}
           className="size-full object-cover"
         />
       ) : (
         <img
           src={splashUrl}
           alt=""
-          onError={() => setVisible(false)}
+          onError={handleSplashError}
           className="size-full object-cover"
         />
       )}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/70 to-transparent" />
-      {needsSoundTap && (
+      {splashKind === "video" && (isNative || needsSoundTap) && (
         <button
           type="button"
           onClick={enableSound}
@@ -195,7 +255,7 @@ export function AppSplash() {
       )}
       <button
         type="button"
-        onClick={() => setVisible(false)}
+        onClick={hideSplash}
         className="absolute bottom-5 right-5 rounded-full border border-white/25 bg-black/55 px-4 py-2 text-[11px] font-semibold text-white backdrop-blur transition-colors hover:bg-black/75"
       >
         Saltar
