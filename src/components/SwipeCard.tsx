@@ -117,7 +117,7 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
             </span>
           ))}
         </div>
-        <h2 className="font-display text-[26px] font-extrabold leading-tight text-white">
+        <h2 className="text-shadow-dark font-display text-[26px] font-extrabold leading-tight text-white">
           {dish.name}
         </h2>
         <p className="mt-1.5 line-clamp-2 text-[13px] leading-snug text-white/70">

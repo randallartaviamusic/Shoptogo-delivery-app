@@ -596,7 +596,7 @@ function BusinessCard({
             )}
             {business.category}
           </p>
-          <p className="truncate font-display text-sm font-extrabold text-white">
+          <p className="truncate text-shadow-dark font-display text-sm font-extrabold text-white">
             {business.name}
           </p>
         </div>
@@ -911,7 +911,9 @@ function Storefront({ slug }: { slug: string }) {
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col">
                       <p className="flex items-center gap-2 text-sm font-semibold">
-                        <span className="truncate">{product.name}</span>
+                        <span className="truncate text-shadow-dark">
+                          {product.name}
+                        </span>
                         {!product.isAvailable && (
                           <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
                             Agotado

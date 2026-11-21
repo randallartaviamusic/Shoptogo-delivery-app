@@ -266,6 +266,13 @@
     font-family: var(--font-display);
   }
 
+  /* Sombra oscura para títulos sobre fotos o fondos con brillo. */
+  .text-shadow-dark {
+    text-shadow:
+      0 1px 2px rgb(0 0 0 / 95%),
+      0 3px 12px rgb(0 0 0 / 80%);
+  }
+
   /* La barra no lleva fondo propio: deja ver el fondo de la página para que
      su borde inferior se funda con el resto de la plataforma sin corte de tono. */
   .header-atmosphere {
