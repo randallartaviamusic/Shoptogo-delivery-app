@@ -21,7 +21,6 @@ import { useEffect, useState } from "react";
 import {
   BellOff,
   BellRing,
-  Check,
   Loader2,
   MessageCircle,
   Play,

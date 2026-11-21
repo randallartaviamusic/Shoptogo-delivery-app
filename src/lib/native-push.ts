@@ -85,7 +85,6 @@ async function start(
     return "subscribed";
   }
 
-  started = true;
   await PushNotifications.removeAllListeners();
 
   await PushNotifications.addListener("registration", (token) => {
@@ -117,6 +116,7 @@ async function start(
   );
 
   await PushNotifications.register();
+  started = true;
   return "subscribed";
 }
 

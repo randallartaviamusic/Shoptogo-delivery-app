@@ -59,6 +59,19 @@ jobs:
       - name: Instalar dependencias
         run: bun install --frozen-lockfile
 
+      # El APK habla con el backend de producción, no con el deployment de
+      # desarrollo del agente. Con esta clave, GitHub publica ahí las
+      # funciones nuevas antes de compilar.
+      - name: Desplegar funciones de Convex
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo "::warning::Falta CONVEX_DEPLOY_KEY: el APK se compila, pero el backend real no recibe las funciones nuevas de push."
+            exit 0
+          fi
+          bunx convex deploy
+
       # Firebase necesita google-services.json para que el APK reciba push
       # nativo. Se puede subir al repo o guardar el contenido en el secreto
       # GOOGLE_SERVICES_JSON; si falta, el APK compila pero no suena cerrado.

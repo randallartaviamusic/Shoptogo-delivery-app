@@ -388,27 +388,29 @@ export const sendOrderAlert = internalAction({
       }),
     ]);
 
-    const web: DeliverySummary & { error?: string } = await sendWebAlert(
-      ctx,
-      args,
-      subscriptions,
-    ).catch((error) => ({
-      sent: 0,
-      dropped: 0,
-      failed: subscriptions.length,
-      error: error instanceof Error ? error.message : "Error de Web Push",
-    }));
-
-    const native: DeliverySummary & {
-      configured: boolean;
-      error?: string;
-    } = await sendNativeAlert(ctx, args, devices).catch((error) => ({
-      configured: fcmAccount() !== null,
-      sent: 0,
-      dropped: 0,
-      failed: devices.length,
-      error: error instanceof Error ? error.message : "Error de FCM",
-    }));
+    // Web y nativo en paralelo: un navegador lento no puede retrasar el
+    // aviso que tiene que sonar en el teléfono con la app cerrada.
+    const [web, native] = await Promise.all([
+      sendWebAlert(ctx, args, subscriptions).catch(
+        (error): DeliverySummary & { error?: string } => ({
+          sent: 0,
+          dropped: 0,
+          failed: subscriptions.length,
+          error: error instanceof Error ? error.message : "Error de Web Push",
+        }),
+      ),
+      sendNativeAlert(ctx, args, devices).catch(
+        (
+          error,
+        ): DeliverySummary & { configured: boolean; error?: string } => ({
+          configured: fcmAccount() !== null,
+          sent: 0,
+          dropped: 0,
+          failed: devices.length,
+          error: error instanceof Error ? error.message : "Error de FCM",
+        }),
+      ),
+    ]);
 
     return { ...web, native };
   },

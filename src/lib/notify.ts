@@ -89,10 +89,6 @@ export type NotifyInput =
       etaMin?: number | null;
     }
   | {
-      kind: "courier_arrived";
-      orderNumber: string;
-    }
-  | {
       kind: "order_update";
       orderNumber: string;
       statusLabel: string;
@@ -154,14 +150,6 @@ export function buildNotifyDraft(input: NotifyInput): NotifyDraft {
           .join("\n"),
       };
     }
-    case "courier_arrived":
-      return {
-        title: "Tu pedido llegó",
-        body: [
-          `Pedido ${input.orderNumber}: el repartidor está en la puerta.`,
-          "Tené el PIN de entrega a mano.",
-        ].join("\n"),
-      };
     case "order_update":
       return {
         title: "Actualización del pedido",

@@ -45,7 +45,9 @@ export function appUrl() {
   return PLATFORM_APP_URL;
 }
 
-const GRAPH_VERSION = "v21.0";
+// v25.0 sigue vigente hasta julio de 2028. Se puede cambiar sin tocar el
+// código con WHATSAPP_API_VERSION si Meta publica una versión nueva.
+const GRAPH_VERSION = process.env.WHATSAPP_API_VERSION?.trim() || "v25.0";
 
 type QueueInput = {
   kind: Doc<"notifications">["kind"];
