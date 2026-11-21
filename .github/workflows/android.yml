@@ -61,16 +61,16 @@ jobs:
 
       # Si el administrador subió icono o splash, los bajamos de Convex y los
       # grabamos en el APK. Si no hay nada configurado, deja los originales.
+      # El APK tiene que usar el mismo backend que la web publicada: ahí están
+      # la cuenta admin, el icono y el video de la splash.
       - name: Aplicar icono y splash del panel admin
         env:
-          VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || 'https://fastidious-oyster-804.convex.cloud' }}
+          VITE_CONVEX_URL: https://reminiscent-emu-400.convex.cloud
         run: bun run branding:android
 
       - name: Compilar la app web
         env:
-          # Si no cargaste el secret, usa el backend que ya usa la web.
-          # Podés sobreescribirlo en Settings → Secrets and variables → Actions.
-          VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || 'https://fastidious-oyster-804.convex.cloud' }}
+          VITE_CONVEX_URL: https://reminiscent-emu-400.convex.cloud
           VITE_VLY_APP_ID: ${{ secrets.VITE_VLY_APP_ID }}
           VITE_VLY_MONITORING_URL: ${{ secrets.VITE_VLY_MONITORING_URL }}
         run: bun run build

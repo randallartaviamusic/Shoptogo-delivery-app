@@ -1,4 +1,5 @@
 import { api } from "@/convex/_generated/api";
+import { Capacitor } from "@capacitor/core";
 import { useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 
@@ -58,17 +59,33 @@ export function AppSplash() {
     const video = videoRef.current;
     if (!video) return;
     let cancelled = false;
+    const native = Capacitor.isNativePlatform();
 
     const start = async () => {
       video.volume = 1;
       video.muted = false;
       try {
         await video.play();
-      } catch {
+      } catch (error) {
         if (cancelled) return;
-        // En un navegador sin interacción previa el sistema puede bloquear el
-        // audio. El APK de Android no lo bloquea; acá reintentamos en silencio
-        // para que el video igual se reproduzca y la app entre al terminar.
+
+        // Si no fue un bloqueo de autoplay (por ejemplo, la reproducción se
+        // interrumpió mientras cargaba), reintentamos con audio. En el APK
+        // nunca aceptamos silencio.
+        const blocked =
+          error instanceof DOMException && error.name === "NotAllowedError";
+        if (!blocked || native) {
+          try {
+            await video.play();
+          } catch {
+            if (!cancelled) setVisible(false);
+          }
+          return;
+        }
+
+        // Navegador sin interacción previa: el sistema bloquea el audio y no
+        // hay forma de forzarlo. Reproducimos en silencio para no trabar la
+        // entrada; el APK de Android no pasa por este caso.
         video.muted = true;
         try {
           await video.play();
@@ -83,6 +100,27 @@ export function AppSplash() {
       cancelled = true;
     };
   }, [visible, splashKind, splashUrl]);
+
+  // En un navegador que bloqueó el audio, el primer toque en cualquier parte
+  // de la pantalla lo activa. En el APK el audio ya arranca solo.
+  useEffect(() => {
+    if (!visible || splashKind !== "video") return;
+
+    const resumeWithSound = () => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.volume = 1;
+      video.muted = false;
+      if (video.paused) void video.play();
+    };
+
+    window.addEventListener("pointerdown", resumeWithSound, { once: true });
+    window.addEventListener("keydown", resumeWithSound, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", resumeWithSound);
+      window.removeEventListener("keydown", resumeWithSound);
+    };
+  }, [visible, splashKind]);
 
   useEffect(() => {
     if (!visible) return;
@@ -107,8 +145,16 @@ export function AppSplash() {
           key={splashUrl}
           src={splashUrl}
           poster={branding?.iconUrl ?? undefined}
+          autoPlay
           playsInline
           preload="auto"
+          onPlaying={(event) => {
+            if (!Capacitor.isNativePlatform()) return;
+            // Dentro del APK aseguramos audio y volumen completo al arrancar.
+            const video = event.currentTarget;
+            video.volume = 1;
+            video.muted = false;
+          }}
           onEnded={() => setVisible(false)}
           onError={() => setVisible(false)}
           className="size-full object-cover"
