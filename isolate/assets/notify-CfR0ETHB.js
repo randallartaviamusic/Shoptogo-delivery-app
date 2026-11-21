@@ -1,1 +1,0 @@
-function l(e){if(!e)return null;const n=e.replace(/\D/g,"");return n.length===8?`506${n}`:n.length===11&&n.startsWith("506")?n:null}function r(e){const n=l(e);if(!n)return null;const t=n.slice(3);return`+506 ${t.slice(0,4)}-${t.slice(4)}`}export{r as d,l as n};
