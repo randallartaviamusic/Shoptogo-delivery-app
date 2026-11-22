@@ -397,6 +397,7 @@ async function decorateOrder(
       ? { url: order.paymentReceipt.url, at: order.paymentReceipt.at }
       : null,
     paymentWhatsappSentAt: order.paymentWhatsappSentAt ?? null,
+    buyerConfirmedAt: order.buyerConfirmedAt ?? null,
     expectedTotal: tripTotal,
     expectedEarnings: tripEarnings,
     cashCollected: leader.cashCollected ?? null,
@@ -572,7 +573,13 @@ export const businessBoard = query({
       ),
     );
     const newOrderNotifications = [];
-    for (const order of newOrders) {
+    // Con SINPE el pedido aparece en la lista, pero la campana suena cuando
+    // el comprador confirma el pago: antes la tienda no debe prepararlo.
+    const audibleOrders = newOrders.filter(
+      (order) =>
+        (order.paymentMethod ?? "cash") === "cash" || order.buyerConfirmedAt,
+    );
+    for (const order of audibleOrders) {
       const buyer = await ctx.db.get(order.buyerId);
       newOrderNotifications.push({
         _id: order._id,
@@ -1371,6 +1378,17 @@ export const businessUpdateStatus = mutation({
     const order = await ctx.db.get(args.orderId);
     if (!order || order.businessId !== business._id) {
       throw new Error("Ese pedido no pertenece a tu negocio");
+    }
+    // Con SINPE el local no puede aceptar sin el pago confirmado: el
+    // comprador primero transfiere y manda el comprobante por WhatsApp.
+    if (
+      args.status === "accepted" &&
+      (order.paymentMethod ?? "cash") === "sinpe" &&
+      !order.buyerConfirmedAt
+    ) {
+      throw new Error(
+        "El comprador todavía no confirmó el pago por SINPE: primero tiene que transferir y mandar el comprobante al WhatsApp de la tienda",
+      );
     }
     if (args.status === "cancelled" && order.status === "preparing") {
       throw new Error(
@@ -2848,6 +2866,65 @@ export const markPaymentWhatsappSent = mutation({
     }
     await ctx.db.patch(args.orderId, { paymentWhatsappSentAt: Date.now() });
     return null;
+  },
+});
+
+/** El comprador confirma el pedido SINPE después de pagar y mandar el comprobante. Recién ahí se avisa a la tienda. */
+export const confirmSinpePayment = mutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const order = await buyerSinpeOrder(ctx, userId, args.orderId);
+    if (order.buyerConfirmedAt) return { confirmedAt: order.buyerConfirmedAt };
+    if (order.status !== "pending") {
+      throw new Error("Este pedido ya está en marcha");
+    }
+    if (!order.paymentReceipt) {
+      throw new Error("Primero subí la captura del pago por SINPE");
+    }
+    if (!order.paymentWhatsappSentAt) {
+      throw new Error("Primero enviá el comprobante al WhatsApp de la tienda");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.orderId, { buyerConfirmedAt: now });
+
+    const business = await ctx.db.get(order.businessId);
+    const ownerId = business?.ownerId;
+    if (business && ownerId) {
+      const owner = await ctx.db.get(ownerId);
+      const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+      const phone =
+        normalizePhone(order.paymentWhatsappPhone) ??
+        normalizePhone(business.whatsappPhone) ??
+        normalizePhone(owner?.phone);
+      await queueNotice(ctx, {
+        order: (await ctx.db.get(args.orderId))!,
+        tripKey: `${order.groupCode ?? order.code}#${order.batchIndex ?? 0}`,
+        recipientId: ownerId,
+        recipientRole: "business",
+        phone,
+        link: "/business?tab=orders",
+        draft: {
+          kind: "new_order",
+          tripNumber: order.code,
+          itemCount,
+          businessAmount: order.total,
+          paidBySinpe: true,
+          dropAddress: order.address,
+        },
+      });
+      await ctx.scheduler.runAfter(0, internal.pushNode.sendOrderAlert, {
+        userId: ownerId,
+        title: "¡Pedido nuevo! 🎉",
+        body: `${order.code}: ${itemCount} ${
+          itemCount === 1 ? "producto" : "productos"
+        } por ${money(order.total)}. Entrega en ${order.address}.`,
+        url: "/business?tab=orders",
+        tag: `order-${order._id}`,
+      });
+    }
+    return { confirmedAt: now };
   },
 });
 

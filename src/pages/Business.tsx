@@ -1690,7 +1690,8 @@ export default function BusinessPage() {
                     ) : (
                       <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
                         El comprador todavía no subió la captura del SINPE. Cuando
-                        lo haga vas a poder verla acá.
+                        lo haga vas a poder verla acá; el pedido se acepta cuando él
+                        lo confirme desde su cuenta.
                       </p>
                     )}
                   </div>
@@ -1845,6 +1846,13 @@ export default function BusinessPage() {
                         Se habilita cuando salga la entrega anterior
                       </span>
                     )}
+                    {order.status === "pending" &&
+                      order.paymentMethod === "sinpe" &&
+                      !order.buyerConfirmedAt && (
+                        <span className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-[11px] font-semibold text-primary">
+                          Esperando que el comprador pague por SINPE y confirme el pedido
+                        </span>
+                      )}
                     {(order.status === "pending" || order.status === "accepted") && (
                       <Button
                         variant="ghost"
@@ -1861,7 +1869,13 @@ export default function BusinessPage() {
                         key={action.status}
                         size="sm"
                         className="gap-1.5 bg-ember-gradient text-black"
-                        disabled={busyOrder === order._id || order.locked}
+                        disabled={
+                          busyOrder === order._id ||
+                          order.locked ||
+                          (action.status === "accepted" &&
+                            order.paymentMethod === "sinpe" &&
+                            !order.buyerConfirmedAt)
+                        }
                         onClick={() => handleStatus(order._id, action.status)}
                       >
                         {busyOrder === order._id ? (

@@ -121,6 +121,7 @@ export type OrderView = {
   paymentWhatsappPhone: string | null;
   paymentReceipt: { url: string; at: number } | null;
   paymentWhatsappSentAt: number | null;
+  buyerConfirmedAt: number | null;
   pickupCode: string | null;
   deliveryPin: string | null;
   stops: Array<{
@@ -306,9 +307,21 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
   );
   const attachReceipt = useMutation(api.orders.attachPaymentReceipt);
   const markSent = useMutation(api.orders.markPaymentWhatsappSent);
+  const confirmPayment = useMutation(api.orders.confirmSinpePayment);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  // Paso 1: el comprador marca que ya transfirió desde su banco. Se guarda
+  // por pedido para no perder el avance al recargar.
+  const paidKey = `stg:sinpe-paid:${order._id}`;
+  const [paidStep, setPaidStep] = useState(() => {
+    try {
+      return window.localStorage.getItem(paidKey) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [preview, setPreview] = useState<string | null>(null);
   // La imagen queda en memoria para poder compartirla adjunta desde el teléfono.
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -410,10 +423,84 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
     }
   };
 
+  const copySinpe = async () => {
+    if (!sinpe) {
+      toast.error("La tienda todavía no tiene un número de SINPE válido");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(sinpe);
+    } catch {
+      // Sin portapapeles igual se muestra el número para copiarlo a mano.
+    }
+    toast.success("Número SINPE listo", {
+      description: `Transferí ${money(order.total)} al ${formatSinpeNumber(sinpe)} desde tu banco y marcá el paso 1.`,
+    });
+  };
+
+  const togglePaidStep = () => {
+    const next = !paidStep;
+    setPaidStep(next);
+    try {
+      if (next) window.localStorage.setItem(paidKey, "1");
+      else window.localStorage.removeItem(paidKey);
+    } catch {
+      // Sin almacenamiento el avance se pierde al recargar, sin frenar nada.
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!order.paymentReceipt) {
+      toast.error("Subí primero la captura del pago por SINPE");
+      return;
+    }
+    if (!order.paymentWhatsappSentAt) {
+      toast.error("Primero enviá el comprobante al WhatsApp de la tienda");
+      return;
+    }
+    setConfirming(true);
+    try {
+      await confirmPayment({ orderId: order._id as Id<"orders"> });
+      toast.success("Pedido confirmado", {
+        description: `La tienda ${order.businessName} ya fue avisada y va a prepararlo.`,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos confirmar el pedido");
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  if (order.buyerConfirmedAt && order.status !== "cancelled") {
+    return (
+      <div className="rounded-xl border border-accent/35 bg-accent/[0.06] p-3">
+        <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+          <Check className="size-3.5" /> Pedido confirmado · pagado por SINPE
+        </p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+          Transferiste {money(order.total)} y la tienda ya fue avisada con tu comprobante.
+        </p>
+        {receiptUrl && (
+          <a
+            href={order.paymentReceipt?.url ?? receiptUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-accent hover:underline"
+          >
+            <ReceiptText className="size-3.5" /> Ver captura del comprobante
+          </a>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-accent/35 bg-accent/[0.06] p-3">
       <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
         <Smartphone className="size-3.5" /> Pago por SINPE Móvil
+      </p>
+      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+        Completá los 3 pasos en orden: sin el pago y el comprobante por WhatsApp no se puede confirmar.
       </p>
       <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
         <div className="min-w-0">
@@ -436,6 +523,42 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
           </p>
         </div>
       </div>
+
+      <Button
+        type="button"
+        className="mt-3 h-10 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
+        disabled={!sinpe}
+        onClick={() => void copySinpe()}
+      >
+        <Smartphone className="size-4" />
+        1 · Pagar por SINPE {money(order.total)}
+      </Button>
+      <button
+        type="button"
+        onClick={togglePaidStep}
+        aria-pressed={paidStep}
+        className={cn(
+          "mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-[11px] font-semibold transition-colors",
+          paidStep
+            ? "border-accent/50 bg-accent/10 text-accent"
+            : "border-border/70 text-muted-foreground hover:border-accent/30",
+        )}
+      >
+        <span
+          className={cn(
+            "flex size-4 items-center justify-center rounded-md border",
+            paidStep ? "border-accent bg-accent text-black" : "border-border/70",
+          )}
+        >
+          {paidStep && <Check className="size-3" />}
+        </span>
+        Ya hice la transferencia desde mi banco
+      </button>
+      {!paidStep && (
+        <p className="mt-1.5 text-center text-[10px] leading-relaxed text-muted-foreground">
+          Tocá “1 · Pagar por SINPE” para ver el número, transferí y marcá que ya lo hiciste para habilitar el paso 2.
+        </p>
+      )}
 
       {receiptUrl ? (
         <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-border/70 bg-black/20 p-2.5">
@@ -464,7 +587,7 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
             variant="outline"
             size="sm"
             className="h-7 shrink-0 gap-1 border-border/80 px-2 text-[10px]"
-            disabled={uploading}
+            disabled={uploading || !paidStep}
             onClick={() => fileRef.current?.click()}
           >
             {uploading ? (
@@ -478,7 +601,7 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
       ) : (
         <button
           type="button"
-          disabled={uploading}
+          disabled={uploading || !paidStep}
           onClick={() => fileRef.current?.click()}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-accent/40 bg-black/20 py-3 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:opacity-60"
         >
@@ -487,7 +610,7 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
           ) : (
             <ImagePlus className="size-4" />
           )}
-          {uploading ? "Subiendo captura..." : "Subir captura del pago por SINPE"}
+          {uploading ? "Subiendo captura..." : "2 · Subir captura del pago por SINPE"}
         </button>
       )}
       <input
@@ -510,7 +633,7 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
       <Button
         type="button"
         className="mt-2.5 h-10 w-full gap-2 bg-[#25d366] text-black hover:bg-[#1ebe5b]"
-        disabled={!receiptUrl || !whatsapp || sending}
+        disabled={!paidStep || !receiptUrl || !whatsapp || sending}
         onClick={() => void handleSend()}
       >
         {sending ? (
@@ -518,13 +641,14 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
         ) : (
           <MessageCircle className="size-4" />
         )}
-        Enviar comprobante por WhatsApp
+        2 · Enviar comprobante por WhatsApp
       </Button>
       {canShareImage && (
         <Button
           type="button"
           variant="outline"
           className="mt-2 h-9 w-full gap-2 border-border/80 text-[11px]"
+          disabled={!paidStep}
           onClick={() => void handleShareImage()}
         >
           <ImagePlus className="size-3.5" /> Compartir captura con la imagen adjunta
@@ -538,6 +662,27 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
           ? " La captura queda adjunta al pedido y su enlace va en el mensaje."
           : " Subí primero la captura para habilitar el envío."}
       </p>
+
+      <Button
+        type="button"
+        className="mt-2.5 h-11 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
+        disabled={
+          !paidStep || !receiptUrl || !order.paymentWhatsappSentAt || confirming
+        }
+        onClick={() => void handleConfirm()}
+      >
+        {confirming ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Check className="size-4" />
+        )}
+        3 · Confirmar pedido
+      </Button>
+      {!order.paymentWhatsappSentAt && (
+        <p className="mt-1.5 text-center text-[9px] leading-relaxed text-muted-foreground">
+          El botón se habilita cuando completés el paso 1, subás la captura y la envíes por WhatsApp a la tienda.
+        </p>
+      )}
     </div>
   );
 }
@@ -1126,15 +1271,19 @@ export default function OrdersPage() {
                           <span
                             className={cn(
                               "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold",
-                              order.paymentReceipt
+                              order.buyerConfirmedAt
                                 ? "border-accent/40 bg-accent/10 text-accent"
                                 : "border-primary/40 bg-primary/10 text-primary",
                             )}
                           >
                             <Smartphone className="size-2.5" />
-                            {order.paymentReceipt
-                              ? "SINPE · comprobante subido"
-                              : "SINPE · falta captura"}
+                            {order.buyerConfirmedAt
+                              ? "SINPE · confirmado"
+                              : order.paymentWhatsappSentAt
+                                ? "SINPE · listo para confirmar"
+                                : order.paymentReceipt
+                                  ? "SINPE · falta WhatsApp"
+                                  : "SINPE · falta captura"}
                           </span>
                         </>
                       )}

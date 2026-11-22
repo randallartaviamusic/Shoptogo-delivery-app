@@ -534,6 +534,9 @@ const schema = defineSchema(
       paymentWhatsappPhone: v.optional(v.string()),
       paymentReceipt: v.optional(paymentReceiptValidator),
       paymentWhatsappSentAt: v.optional(v.number()),
+      // El comprador confirmó el pedido SINPE después de transferir y mandar
+      // el comprobante al WhatsApp de la tienda. En efectivo se marca al crear.
+      buyerConfirmedAt: v.optional(v.number()),
       address: v.string(),
       // Punto de entrega y distancia del repartidor que definieron la tarifa.
       deliveryLocation: v.optional(geoPointValidator),

@@ -719,6 +719,10 @@ export const checkout = mutation({
           requestKey: requestKey ?? undefined,
           scheduledFor: scheduledFor ?? undefined,
           createdAt: now,
+          // En efectivo el pedido entra confirmado. Con SINPE el comprador
+          // primero transfiere y manda el comprobante, y recién entonces lo
+          // confirma desde Pedidos: ahí se avisa a la tienda.
+          buyerConfirmedAt: paymentMethod === "cash" ? now : undefined,
         });
 
         if (coupon && couponDiscount > 0) {
@@ -727,8 +731,9 @@ export const checkout = mutation({
 
         // Aviso fuera de la app: el local se entera aunque nadie tenga el panel
         // abierto. Sin opt-in ni teléfono queda encolado y el despacho lo marca
-        // como omitido, sin frenar la compra.
-        if (store.ownerId) {
+        // como omitido, sin frenar la compra. Con SINPE se difiere: la tienda
+        // se entera cuando el comprador confirma el pago en Pedidos.
+        if (store.ownerId && args.paymentMethod !== "sinpe") {
           const owner = await ctx.db.get(store.ownerId);
           const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
           // Con SINPE el local recibe el total de su pedido (productos más su

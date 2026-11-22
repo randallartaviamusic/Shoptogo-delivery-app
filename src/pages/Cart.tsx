@@ -224,7 +224,7 @@ export default function CartPage() {
           {
             description:
               paymentMethod === "sinpe"
-                ? `Total ${money(result.total)}. En Pedidos subí la captura de cada SINPE y enviála por WhatsApp a la tienda.`
+                ? `Total ${money(result.total)}. En Pedidos pagá cada SINPE, enviá el comprobante por WhatsApp y confirmá el pedido para avisar a la tienda.`
                 : `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`,
           },
         );
@@ -691,9 +691,7 @@ export default function CartPage() {
                   </ul>
                   <p className="mt-2 flex items-start gap-1.5 text-[10px] leading-relaxed text-muted-foreground">
                     <MessageCircle className="mt-0.5 size-3 shrink-0 text-accent" />
-                    Al confirmar, en Pedidos subís la captura de cada transferencia
-                    y tocás “Enviar comprobante”: se abre tu WhatsApp con el
-                    mensaje escrito para la tienda.
+                    Al confirmar, el pedido queda en espera y en Pedidos completás 3 pasos en orden: 1) pagar por SINPE, 2) enviar el comprobante por WhatsApp a la tienda y 3) confirmar el pedido. La tienda lo recibe cuando lo confirmás.
                   </p>
                 </div>
               )}
