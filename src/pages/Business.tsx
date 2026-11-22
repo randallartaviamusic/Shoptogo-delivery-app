@@ -65,6 +65,7 @@ import {
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
 import { ASSIGNMENT_RULES } from "@/lib/delivery";
 import { formatSinpeNumber, normalizeSinpeNumber } from "@/lib/sinpe";
+import { FlashCountdown } from "@/components/EliteBusiness";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
 import type { DeliveryPromo } from "@/lib/promo";
 import { cn } from "@/lib/utils";
@@ -97,6 +98,7 @@ import {
   Users,
   UtensilsCrossed,
   Wallet,
+  Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
@@ -169,6 +171,13 @@ export default function BusinessPage() {
   const removeProduct = useMutation(api.businesses.removeProduct);
   const coupons = useQuery(api.coupons.mine);
   const createCoupon = useMutation(api.coupons.create);
+  const setFlashSale = useMutation(api.businesses.setFlashSale);
+  const [flashForm, setFlashForm] = useState({
+    title: "",
+    detail: "",
+    duration: "4",
+  });
+  const [flashBusy, setFlashBusy] = useState(false);
   const setCouponActive = useMutation(api.coupons.setActive);
   const removeCoupon = useMutation(api.coupons.remove);
   const confirmCash = useMutation(api.orders.businessConfirmCash);
@@ -693,7 +702,53 @@ export default function BusinessPage() {
         : DEFAULT_BUSINESS_HOURS.map((entry) => ({ ...entry })),
     });
     setCoverStorageId(null);
+    setFlashForm({
+      title: business.flashTitle ?? "",
+      detail: business.flashDetail ?? "",
+      duration: "4",
+    });
     setSettingsDialog(true);
+  };
+
+  const flashActive =
+    Boolean(business.flashTitle?.trim()) &&
+    (business.flashEndsAt ?? 0) > now;
+
+  const handleFlashSave = async () => {
+    setFlashBusy(true);
+    try {
+      const result = await setFlashSale({
+        title: flashForm.title,
+        detail: flashForm.detail,
+        durationHours: Number(flashForm.duration) || 4,
+      });
+      toast.success("Oferta flash publicada", {
+        description:
+          result.endsAt !== null
+            ? `Se muestra con cuenta regresiva hasta ${clockTime(result.endsAt)}.`
+            : "Se muestra con cuenta regresiva en tu perfil.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos publicar la oferta",
+      );
+    } finally {
+      setFlashBusy(false);
+    }
+  };
+
+  const handleFlashClear = async () => {
+    setFlashBusy(true);
+    try {
+      await setFlashSale({ clear: true });
+      toast.success("Oferta flash terminada");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos terminar la oferta",
+      );
+    } finally {
+      setFlashBusy(false);
+    }
   };
 
   const handleCreateCoupon = async () => {
@@ -2791,6 +2846,123 @@ export default function BusinessPage() {
                   );
                 })}
               </div>
+            </div>
+
+            <div className="space-y-2 rounded-2xl border border-amber-300/30 bg-amber-300/[0.05] p-3">
+              <div>
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-200">
+                  <Zap className="size-3.5" /> Oferta flash
+                  <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-200">
+                    Élite
+                  </span>
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                  Anuncio corto con cuenta regresiva en el directorio, el mazo y
+                  tu perfil. Dura de 1 a 24 horas y sólo se muestra con Élite
+                  vigente.
+                </p>
+              </div>
+              {eliteVideoEnabled ? (
+                <>
+                  {flashActive && (
+                    <p className="rounded-xl border border-amber-300/30 bg-black/25 px-3 py-2 text-[11px] text-amber-100">
+                      Activa: {business.flashTitle} ·{" "}
+                      <FlashCountdown endsAt={business.flashEndsAt ?? 0} />
+                    </p>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="flash-title">Título de la oferta</Label>
+                    <Input
+                      id="flash-title"
+                      value={flashForm.title}
+                      onChange={(event) =>
+                        setFlashForm({ ...flashForm, title: event.target.value })
+                      }
+                      maxLength={60}
+                      placeholder="Ej.: 2x1 en hamburguesas hasta medianoche"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="flash-detail">Detalle (opcional)</Label>
+                    <Input
+                      id="flash-detail"
+                      value={flashForm.detail}
+                      onChange={(event) =>
+                        setFlashForm({ ...flashForm, detail: event.target.value })
+                      }
+                      maxLength={140}
+                      placeholder="Ej.: aplica en el local y para llevar"
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1 space-y-1.5">
+                      <Label htmlFor="flash-duration">Duración</Label>
+                      <Input
+                        id="flash-duration"
+                        type="number"
+                        min={1}
+                        max={24}
+                        value={flashForm.duration}
+                        onChange={(event) =>
+                          setFlashForm({
+                            ...flashForm,
+                            duration: event.target.value,
+                          })
+                        }
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                    <div className="flex flex-1 items-end gap-2 pb-0.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 flex-1 gap-1.5 bg-ember-gradient text-black"
+                        disabled={flashBusy}
+                        onClick={() => void handleFlashSave()}
+                      >
+                        {flashBusy ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Zap className="size-3.5" />
+                        )}
+                        Publicar
+                      </Button>
+                      {flashActive && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-9 border-border/80"
+                          disabled={flashBusy}
+                          onClick={() => void handleFlashClear()}
+                        >
+                          Terminar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Duración en horas, de 1 a 24.
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="min-w-0 flex-1 text-[10px] leading-relaxed text-muted-foreground">
+                    Exclusivo del plan Élite: se activa solo con tu suscripción
+                    vigente.
+                  </p>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-amber-300/40 text-amber-200"
+                  >
+                    <Link to="/suscripcion">Ver Élite</Link>
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3 rounded-2xl border border-border/70 bg-black/20 p-3">

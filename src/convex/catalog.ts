@@ -133,6 +133,10 @@ export const deck = query({
       })
       .map((product) => {
         const business = businessMap.get(product.businessId)!;
+        const tier = accessByBusiness.get(business._id)?.tier ?? 1;
+        const elite = tier === 3;
+        const flashTitle = business.flashTitle?.trim() ?? "";
+        const flashEndsAt = business.flashEndsAt ?? 0;
         return {
           _id: product._id,
           name: product.name,
@@ -151,7 +155,16 @@ export const deck = query({
           businessName: business.name,
           businessCategory: business.category,
           businessImage: business.image,
-          elite: accessByBusiness.get(business._id)?.tier === 3,
+          elite,
+          eliteVerified: elite && Boolean(business.verifiedAt),
+          flash:
+            elite && flashTitle && flashEndsAt > Date.now()
+              ? {
+                  title: flashTitle,
+                  detail: business.flashDetail?.trim() ?? "",
+                  endsAt: flashEndsAt,
+                }
+              : null,
           rating: business.rating,
           reviews: business.reviews,
           etaMinutes: business.etaMinutes,

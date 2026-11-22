@@ -149,6 +149,23 @@ async function requireEliteVideo(ctx: DbCtx, userId: Id<"users">) {
   }
 }
 
+/** Puerta común de beneficios sólo del plan Élite vigente. */
+async function requireElitePlan(ctx: DbCtx, userId: Id<"users">, message: string) {
+  const access = await subscriptionAccess(ctx, userId);
+  if (access.plan !== "elite" || !access.hasAccess) {
+    throw new ConvexError(message);
+  }
+}
+
+/** Oferta flash visible: título corto, detalle y vencimiento futuro. */
+function activeFlash(business: Doc<"businesses">, now = Date.now()) {
+  const title = business.flashTitle?.trim() ?? "";
+  const detail = business.flashDetail?.trim() ?? "";
+  const endsAt = business.flashEndsAt ?? 0;
+  if (!title || endsAt <= now) return null;
+  return { title, detail, endsAt };
+}
+
 async function requireUserId(ctx: DbCtx) {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error("Necesitás iniciar sesión");
@@ -292,6 +309,8 @@ export const directory = query({
       .filter((business) => accessByBusiness.get(business._id)?.allowed ?? true)
       .map((business) => {
         const entry = stats.get(business._id);
+        const verified = Boolean(business.verifiedAt);
+        const elite = accessByBusiness.get(business._id)?.tier === 3;
         return {
           _id: business._id,
           name: business.name,
@@ -302,10 +321,14 @@ export const directory = query({
           category: business.category,
           rating: business.rating,
           reviews: business.reviews,
-          verified: Boolean(business.verifiedAt),
+          verified,
           isFavorite: favorites.has(String(business._id)),
           isOpen: business.isOpen,
-          elite: accessByBusiness.get(business._id)?.tier === 3,
+          elite,
+          // Sello Élite verificado: plan Élite vigente + cuenta verificada.
+          eliteVerified: elite && verified,
+          // La oferta flash sólo existe si el local es Élite ahora mismo.
+          flash: elite ? activeFlash(business) : null,
           etaMinutes: business.etaMinutes,
           delivery: describeDelivery(business.location, viewer),
           promo: business.deliveryPromo ?? null,
@@ -429,10 +452,19 @@ export const storefront = query({
 
     const userId = await getAuthUserId(ctx);
     const viewerDoc = userId ? await ctx.db.get(userId) : null;
+    const verified = Boolean(business.verifiedAt);
+    const ownerAccess =
+      business.isDemo || !business.ownerId
+        ? { hasAccess: false, plan: "basico" as const }
+        : await subscriptionAccess(ctx, business.ownerId);
+    const elite = ownerAccess.plan === "elite" && ownerAccess.hasAccess;
     return {
       business: {
         ...business,
-        verified: Boolean(business.verifiedAt),
+        verified,
+        elite,
+        eliteVerified: elite && verified,
+        flash: elite ? activeFlash(business) : null,
         isFavorite: Boolean(
           viewerDoc?.favoriteBusinessIds?.includes(business._id),
         ),
@@ -491,6 +523,53 @@ export const generateProductVideoUploadUrl = mutation({
     }
     await requireEliteVideo(ctx, userId);
     return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Oferta flash Élite: anuncio corto con cuenta regresiva. Dura como máximo
+ * 24 horas y sólo se muestra mientras el plan Élite está vigente.
+ */
+export const setFlashSale = mutation({
+  args: {
+    title: v.optional(v.string()),
+    detail: v.optional(v.string()),
+    durationHours: v.optional(v.number()),
+    clear: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const business = await ownedBusiness(ctx, userId);
+    if (!business) throw new ConvexError("No tenés un negocio asociado");
+    await requireElitePlan(
+      ctx,
+      userId,
+      "Las ofertas flash están disponibles sólo con la suscripción Élite activa",
+    );
+    if (args.clear) {
+      await ctx.db.patch(business._id, {
+        flashTitle: undefined,
+        flashDetail: undefined,
+        flashEndsAt: undefined,
+      });
+      return { endsAt: null as number | null, cleared: true };
+    }
+    const title = (args.title ?? "").trim().slice(0, 60);
+    if (title.length < 3) {
+      throw new ConvexError("Poné un título corto para la oferta flash");
+    }
+    const detail = (args.detail ?? "").trim().slice(0, 140);
+    const duration = Math.round(args.durationHours ?? 4);
+    if (!Number.isFinite(duration) || duration < 1 || duration > 24) {
+      throw new ConvexError("La oferta flash puede durar de 1 a 24 horas");
+    }
+    const endsAt = Date.now() + duration * 60 * 60 * 1000;
+    await ctx.db.patch(business._id, {
+      flashTitle: title,
+      flashDetail: detail || undefined,
+      flashEndsAt: endsAt,
+    });
+    return { endsAt };
   },
 });
 

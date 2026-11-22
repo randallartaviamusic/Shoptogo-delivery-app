@@ -7,6 +7,12 @@ import { ProductOptionsDialog } from "@/components/ProductOptionsDialog";
 import { PromoBadge } from "@/components/PromoBadge";
 import { promoDiscount } from "@/lib/promo";
 import type { PromoKind } from "@/lib/promo";
+import {
+  EliteVerifiedSeal,
+  FlashCountdown,
+  FlashSaleBadge,
+  weeklySpotlight,
+} from "@/components/EliteBusiness";
 import { LoopRow } from "@/components/LoopRow";
 import { StoriesTray } from "@/components/BusinessStories";
 import { Button } from "@/components/ui/button";
@@ -31,8 +37,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Clock,
+  Crown,
   Loader2,
   MapPin,
+  Zap,
   Plus,
   Search,
   ShoppingBag,
@@ -198,6 +206,13 @@ function Directory() {
       .sort((a, b) => a.order - b.order);
   }, [filtered, departmentSlug, searching, categories]);
 
+  // Portada Élite: rota cada semana entre los locales Élite abiertos.
+  const spotlight = useMemo(() => {
+    if (searching || departmentSlug !== "todos") return null;
+    return weeklySpotlight(
+      rows.filter((business) => business.elite && business.isOpen),
+    );
+  }, [rows, searching, departmentSlug]);
   const totalOpen = rows.filter((business) => business.isOpen).length;
   const activeFilterCount =
     (openOnly ? 1 : 0) +
@@ -268,6 +283,44 @@ function Directory() {
 
       {showStories && storiesFeed && storiesFeed.length > 0 && (
         <StoriesTray groups={storiesFeed} />
+      )}
+
+      {spotlight && (
+        <Link
+          to={`/negocios/${spotlight.slug}`}
+          className="relative mb-4 block overflow-hidden rounded-3xl border border-amber-300/60"
+        >
+          <DishImage
+            src={spotlight.image}
+            alt={spotlight.name}
+            className="h-44 w-full sm:h-52"
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.15)_0%,rgba(6,6,7,0.92)_100%)]" />
+          <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-5">
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">
+                <Crown className="size-3.5" />
+                Local Élite de la semana
+                <EliteVerifiedSeal />
+              </p>
+              <p className="mt-1 truncate font-display text-xl font-extrabold text-white sm:text-2xl">
+                {spotlight.name}
+              </p>
+              <p className="mt-0.5 line-clamp-1 text-xs text-white/70">
+                {spotlight.tagline}
+              </p>
+              {spotlight.flash && (
+                <div className="mt-2">
+                  <FlashSaleBadge flash={spotlight.flash} />
+                </div>
+              )}
+            </div>
+            <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-300 px-3 py-1.5 text-[11px] font-extrabold text-black">
+              Ver local
+              <ArrowRight className="size-3.5" />
+            </span>
+          </div>
+        </Link>
       )}
 
       <div className="relative mb-4">
@@ -562,6 +615,8 @@ function BusinessCard({
     productCount: number;
     minPrice: number | null;
     isFavorite: boolean;
+    eliteVerified: boolean;
+    flash: { title: string; detail: string; endsAt: number } | null;
   };
   searchTerm: string;
   onToggleFavorite: (businessId: Id<"businesses">) => void;
@@ -607,6 +662,7 @@ function BusinessCard({
                 Élite
               </span>
             )}
+            {business.eliteVerified && <EliteVerifiedSeal />}
             {business.category}
           </p>
           <p className="truncate text-shadow-dark font-display text-sm font-extrabold text-white">
@@ -618,6 +674,11 @@ function BusinessCard({
         <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
           {business.tagline}
         </p>
+        {business.flash && (
+          <div className="mt-2">
+            <FlashSaleBadge flash={business.flash} className="max-w-full" />
+          </div>
+        )}
         {searchTerm && (() => {
           const matches = business.productSearch
             .filter((product) => normalize(product.name).includes(searchTerm) || normalize(product.category).includes(searchTerm))
@@ -777,10 +838,11 @@ function Storefront({ slug }: { slug: string }) {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
               {department.label} · {business.category}
             </p>
-            <div className="mt-1 flex items-center gap-2">
+            <div className="mt-1 flex flex-wrap items-center gap-2">
               <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
                 {business.name}
               </h1>
+              {business.eliteVerified && <EliteVerifiedSeal />}
               <button
                 type="button"
                 aria-label={business.isFavorite ? "Quitar local de favoritos" : "Guardar local en favoritos"}
@@ -860,6 +922,25 @@ function Storefront({ slug }: { slug: string }) {
           </div>
         </div>
       </div>
+
+      {business.flash && (
+        <section className="mt-4 rounded-2xl border border-amber-300/40 bg-amber-300/[0.07] p-4">
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">
+            <Zap className="size-3.5" /> Oferta flash
+          </p>
+          <p className="mt-1 font-display text-lg font-extrabold text-white">
+            {business.flash.title}
+          </p>
+          {business.flash.detail && (
+            <p className="mt-0.5 text-xs leading-relaxed text-white/70">
+              {business.flash.detail}
+            </p>
+          )}
+          <p className="mt-2 text-[11px] font-semibold text-amber-200">
+            <FlashCountdown endsAt={business.flash.endsAt} />
+          </p>
+        </section>
+      )}
 
       {!business.isOpen && (
         <p className="mt-4 rounded-2xl border border-primary/25 bg-primary/[0.06] px-4 py-3 text-xs text-primary">

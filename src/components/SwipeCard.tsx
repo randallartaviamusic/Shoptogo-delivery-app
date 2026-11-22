@@ -1,5 +1,6 @@
 import { DishImage } from "@/components/DishImage";
 import { EliteAura } from "@/components/EliteAura";
+import { EliteVerifiedSeal, FlashSaleBadge } from "@/components/EliteBusiness";
 import { ProductMedia } from "@/components/ProductMedia";
 import { PromoBadge } from "@/components/PromoBadge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,8 @@ export type Dish = {
   businessCategory: string;
   businessImage: string;
   elite?: boolean;
+  eliteVerified?: boolean;
+  flash?: { title: string; detail: string; endsAt: number } | null;
   rating: number;
   reviews: number;
   etaMinutes: number;
@@ -90,6 +93,7 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
                   Élite
                 </span>
               )}
+              {dish.eliteVerified && <EliteVerifiedSeal />}
             </p>
             <p className="mt-0.5 flex items-center gap-1 text-[10px] text-white/65">
               <Star className="size-2.5 fill-accent text-accent" />
@@ -105,6 +109,9 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
             promo={dish.promo}
             className="px-2.5 py-1 text-[11px] normal-case tracking-normal"
           />
+          {dish.flash && (
+            <FlashSaleBadge flash={dish.flash} className="max-w-[13rem]" />
+          )}
         </div>
       </div>
 

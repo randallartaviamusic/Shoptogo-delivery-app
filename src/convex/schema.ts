@@ -354,6 +354,11 @@ const schema = defineSchema(
       // Se aplica a la parte del envío de su tienda en cada entrega y queda
       // registrada como gasto promocional, nunca como comisión de la app.
       deliveryPromo: v.optional(promoKindValidator),
+      // Oferta flash Élite: anuncio con cuenta regresiva que el local crea
+      // desde sus ajustes. Sólo se muestra con suscripción Élite vigente.
+      flashTitle: v.optional(v.string()),
+      flashDetail: v.optional(v.string()),
+      flashEndsAt: v.optional(v.number()),
       etaMinutes: v.number(),
       rating: v.number(),
       reviews: v.number(),

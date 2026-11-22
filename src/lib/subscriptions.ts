@@ -82,6 +82,9 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlan> = 
     benefits: {
       business: [
         "Todo lo del plan Pro",
+        "Ofertas flash con cuenta regresiva",
+        "Portada Élite: local de la semana en el directorio",
+        "Sello Élite verificado",
         "Tarjetas animadas y borde dorado en el directorio y el mazo",
         "Videos de productos",
         "Soporte prioritario por WhatsApp",
