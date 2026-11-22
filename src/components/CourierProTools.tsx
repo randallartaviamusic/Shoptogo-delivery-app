@@ -113,21 +113,42 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
     offerSoundEnabled?: boolean;
     availabilityEnabled?: boolean;
     availabilityWindows?: Array<{ day: number; open: string; close: string }>;
-  }) => {
+  }): Promise<boolean> => {
     setSaving(true);
     try {
       await savePreferences(patch);
       toast.success("Preferencias guardadas");
+      return true;
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "No pudimos guardar",
       );
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  const saveWindows = () => {
+  const saveRadius = async () => {
+    if (
+      !Number.isFinite(radius) ||
+      radius < 1 ||
+      radius > ASSIGNMENT_RULES.maxPickupKm
+    ) {
+      setRadius(prefs.preferredRadiusKm);
+      toast.error(
+        `El radio tiene que estar entre 1 y ${ASSIGNMENT_RULES.maxPickupKm} km`,
+      );
+      return;
+    }
+    const value = Math.round(radius);
+    setRadius(value);
+    if (value === prefs.preferredRadiusKm) return;
+    const ok = await save({ preferredRadiusKm: value });
+    if (!ok) setRadius(prefs.preferredRadiusKm);
+  };
+
+  const saveWindows = async () => {
     const list = BUSINESS_DAY_ORDER.filter((day) => windows[day]?.active).map(
       (day) => ({
         day,
@@ -135,7 +156,24 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
         close: windows[day].close,
       }),
     );
-    void save({ availabilityEnabled: enabled, availabilityWindows: list });
+    const ok = await save({
+      availabilityEnabled: enabled,
+      availabilityWindows: list,
+    });
+    if (!ok) {
+      setEnabled(prefs.availabilityEnabled);
+      const next: Record<
+        number,
+        { open: string; close: string; active: boolean }
+      > = {};
+      for (const day of BUSINESS_DAY_ORDER) {
+        const found = prefs.availabilityWindows.find((entry) => entry.day === day);
+        next[day] = found
+          ? { open: found.open, close: found.close, active: true }
+          : { open: "09:00", close: "21:00", active: false };
+      }
+      setWindows(next);
+    }
   };
 
   const handleReassign = async (orderId: string) => {
@@ -175,7 +213,9 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = `caja-${result.month}.csv`;
+      document.body.appendChild(anchor);
       anchor.click();
+      anchor.remove();
       URL.revokeObjectURL(url);
       toast.success("Mes exportado", {
         description: `${result.rows} entregas en el archivo.`,
@@ -205,9 +245,10 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
           <Radar className="size-3.5" /> Radar de zona caliente
         </p>
-        <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-          Retiros y ganancias de las últimas 24 horas, agrupados por zona.
-        </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+            Movimiento reciente: pedidos listos ahora y entregas con ganancia de
+            las últimas 24 horas, agrupados por zona.
+          </p>
         {!hotspots || hotspots.length === 0 ? (
           <p className="mt-2 rounded-xl border border-dashed border-border/70 p-3 text-center text-[11px] text-muted-foreground">
             Todavía no hay suficiente movimiento para marcar zonas calientes.
@@ -253,14 +294,14 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
               setRadius(value);
             }}
             onBlur={() => {
-              if (radius !== prefs.preferredRadiusKm) void save({ preferredRadiusKm: radius });
+              void saveRadius();
             }}
             className="h-9 text-xs"
           />
-          <p className="text-[10px] text-muted-foreground">
-            Sólo te ofrecemos entregas dentro de este radio. El tablero sigue
-            ordenado por cercanía.
-          </p>
+                      <p className="text-[10px] text-muted-foreground">
+              Los avisos llegan sólo dentro de este radio. El tablero sigue
+              ordenando todo por cercanía.
+            </p>
         </div>
         <div className="mt-2 flex items-center justify-between gap-2">
           <p className="flex items-center gap-1.5 text-xs font-medium">
@@ -270,8 +311,12 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
             checked={sound}
             disabled={saving}
             onCheckedChange={(checked) => {
+              const previous = sound;
               setSound(checked);
-              void save({ offerSoundEnabled: checked });
+              void (async () => {
+                const ok = await save({ offerSoundEnabled: checked });
+                if (!ok) setSound(previous);
+              })();
             }}
             aria-label="Avisar con sonido cuando llegue una oferta"
           />
@@ -287,6 +332,7 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
             checked={enabled}
             disabled={saving}
             onCheckedChange={(checked) => {
+              const previous = enabled;
               setEnabled(checked);
               const list = BUSINESS_DAY_ORDER.filter(
                 (day) => windows[day]?.active,
@@ -295,7 +341,13 @@ export function CourierProTools({ activeOrders }: { activeOrders: ActiveOrder[] 
                 open: windows[day].open,
                 close: windows[day].close,
               }));
-              void save({ availabilityEnabled: checked, availabilityWindows: list });
+              void (async () => {
+                const ok = await save({
+                  availabilityEnabled: checked,
+                  availabilityWindows: list,
+                });
+                if (!ok) setEnabled(previous);
+              })();
             }}
             aria-label="Activar disponibilidad programada"
           />

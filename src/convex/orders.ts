@@ -2200,6 +2200,11 @@ export const myOffers = query({
       const order = await ctx.db.get(offer.orderId);
       if (!order || order.courierId || order.status !== "ready") continue;
       const business = await ctx.db.get(order.businessId);
+      const trip = await tripOrders(ctx, order);
+      const tripPayout = trip.reduce(
+        (acc, member) => acc + member.deliveryFee + (member.extraStopFee ?? 0),
+        0,
+      );
       open.push({
         token: offer.token,
         orderId: order._id,
@@ -2207,8 +2212,7 @@ export const myOffers = query({
         businessName: business?.name ?? "Local",
         items: order.items.reduce((acc, item) => acc + item.quantity, 0),
         payout: order.deliveryFee + (order.extraStopFee ?? 0),
-        eliteEarly:
-          order.deliveryFee + (order.extraStopFee ?? 0) >= ELITE_EARLY_PAYOUT,
+        eliteEarly: tripPayout >= ELITE_EARLY_PAYOUT || trip.length > 1,
         distanceKm: order.distanceKm ?? null,
         expiresAt: offer.expiresAt,
       });
