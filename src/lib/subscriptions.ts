@@ -65,6 +65,9 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlan> = 
       ],
       courier: [
         "Todo lo del plan Básico",
+        "Radar de zona caliente",
+        "Ofertas cercanas primero, con aviso de sonido",
+        "Turnos de disponibilidad programada",
         "Resumen de ganancias por período",
         "Historial completo de entregas",
         "Soporte por WhatsApp",
@@ -86,6 +89,10 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlan> = 
       ],
       courier: [
         "Todo lo del plan Pro",
+        "Sello Élite visible",
+        "Acceso anticipado a pedidos grandes y prioridad en empates",
+        "Reasignación rápida de entregas",
+        "Caja mensual automática exportable en CSV",
         "Soporte prioritario por WhatsApp",
         "Revisión prioritaria de reclamos de efectivo",
         "Acompañamiento en la conciliación de efectivo",

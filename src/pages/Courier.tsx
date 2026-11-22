@@ -6,6 +6,8 @@ import {
   CourierPresenceReporter,
   DeliveryTrackingMap,
 } from "@/components/DeliveryTracking";
+import { CourierProTools } from "@/components/CourierProTools";
+import { playOfferPing } from "@/lib/offerPing";
 import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
 import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { VerificationBanner } from "@/components/VerificationBanner";
@@ -140,6 +142,8 @@ export default function CourierPage() {
   const pingPresence = useMutation(api.orders.updateCourierPresence);
   const [now, setNow] = useState(Date.now());
   const [locating, setLocating] = useState(false);
+  const offerTokens = useRef<string[]>([]);
+  const offersPrimed = useRef(false);
 
   // Ofertas push: cada una tiene un token propio, el mismo del enlace que llega
   // por WhatsApp. Aceptar desde acá o desde el mensaje es el mismo camino.
@@ -198,6 +202,22 @@ export default function CourierPage() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Ping Pro cuando entra una oferta nueva que no estaba en la lista.
+  useEffect(() => {
+    if (!offers) return;
+    const tokens = offers.map((offer) => offer.token);
+    if (!offersPrimed.current) {
+      offersPrimed.current = true;
+      offerTokens.current = tokens;
+      return;
+    }
+    const fresh = tokens.filter((token) => !offerTokens.current.includes(token));
+    offerTokens.current = tokens;
+    if (fresh.length > 0 && board?.pro && board?.offerSoundEnabled) {
+      playOfferPing();
+    }
+  }, [offers, board?.pro, board?.offerSoundEnabled]);
 
   if (user && user.role !== "courier") {
     return (
@@ -464,6 +484,7 @@ export default function CourierPage() {
       <SubscriptionReminder />
       <VerificationBanner />
       <OrderAlertsSettings audience="courier" className="mb-5" />
+      <CourierProTools activeOrders={active} />
 
       {busyOrder && (
         <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] px-4 py-3">
@@ -522,6 +543,11 @@ export default function CourierPage() {
                     </p>
                     <p className="mt-1 text-sm font-semibold">
                       {offer.businessName} · {offer.code}
+                      {offer.eliteEarly && board?.elite && (
+                        <span className="ml-2 rounded-full border border-amber-300/50 bg-amber-300/10 px-2 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wider text-amber-200">
+                          Prioridad Élite
+                        </span>
+                      )}
                     </p>
                     <p className="text-[11px] leading-relaxed text-muted-foreground">
                       {offer.items}{" "}
@@ -730,6 +756,11 @@ export default function CourierPage() {
                       {order.recommended && (
                         <span className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 font-semibold text-accent">
                           <LocateFixed className="size-3" /> Cerca de vos
+                        </span>
+                      )}
+                      {order.eliteEarly && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/50 bg-amber-300/10 px-2 py-0.5 font-semibold text-amber-200">
+                          {board?.elite ? "Prioridad Élite" : "Pedido grande"}
                         </span>
                       )}
                       {order.pickupKm != null && (

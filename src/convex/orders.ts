@@ -32,6 +32,7 @@ import type { CashDayRow } from "../lib/orders";
 import { cashIssueKindValidator } from "./schema";
 import { requireSubscriptionAccess, subscriptionAccess } from "./subscriptions";
 import { cancellationStanding } from "../lib/trust";
+import { isBusinessOpenAt } from "../lib/hours";
 import { scheduleNotReadyYet } from "../lib/scheduling";
 import { isAdminEmail } from "./branding";
 import { normalizePhone } from "../lib/notify";
@@ -797,6 +798,9 @@ export const courierBoard = query({
         pickupKm,
         pickupMinutes,
         deliveryMinutes,
+        eliteEarly:
+          decorated.tripEarnings >= ELITE_EARLY_PAYOUT ||
+          (decorated.tripStops ?? 1) > 1,
         totalEtaMinutes,
         estimatedArrivalAt:
           totalEtaMinutes !== null
@@ -930,10 +934,21 @@ export const courierBoard = query({
         (a.readyAt ?? a.createdAt) - (b.readyAt ?? b.createdAt),
     );
     const standing = await courierStandingFor(ctx, userId);
+    const boardAccess = await subscriptionAccess(ctx, userId);
+    const boardPro =
+      boardAccess.hasAccess &&
+      (boardAccess.plan === "pro" || boardAccess.plan === "elite");
+    const boardElite = boardAccess.hasAccess && boardAccess.plan === "elite";
+    const boardWindows = user.availabilityWindows ?? [];
+    const scheduledOnline =
+      user.availabilityEnabled && boardWindows.length > 0
+        ? isBusinessOpenAt(boardWindows, now)
+        : null;
     const eligible =
       user.verificationStatus === "verified" &&
       !standing.restricted &&
-      (await requireSubscriptionAccessForBoard(ctx, userId));
+      boardAccess.hasAccess &&
+      scheduledOnline !== false;
     const nearest = evaluated
       .filter((order) => order.acceptAllowed && order.pickupKm !== null)
       .sort((a, b) => (a.pickupKm ?? 0) - (b.pickupKm ?? 0))[0];
@@ -946,7 +961,9 @@ export const courierBoard = query({
             ? "Verificá tu cuenta en Perfil para tomar entregas."
             : standing.restricted
               ? standing.hint
-              : "Activá o renová tu suscripción para tomar entregas."
+              : scheduledOnline === false
+                ? "Estás fuera de tu turno programado."
+                : "Activá o renová tu suscripción para tomar entregas."
           : order.acceptReason,
       recommended: eligible && nearest?._id === order._id,
     }));
@@ -969,6 +986,16 @@ export const courierBoard = query({
       courierLocation,
       courierLocationAt: presence?.updatedAt ?? null,
       locationFresh: !!courierLocation,
+      plan: boardAccess.plan,
+      hasAccess: boardAccess.hasAccess,
+      pro: boardPro,
+      elite: boardElite,
+      preferredRadiusKm:
+        user.preferredRadiusKm ?? ASSIGNMENT_RULES.maxPickupKm,
+      offerSoundEnabled: user.offerSoundEnabled ?? true,
+      availabilityEnabled: user.availabilityEnabled ?? false,
+      availabilityWindows: boardWindows,
+      scheduledOnline,
       stats: {
         available: availableWithSuggestion.length,
         active: active.length,
@@ -1548,6 +1575,8 @@ export const resolveCashIssue = mutation({
 
 /** Minutos que una oferta queda abierta antes de pasar al siguiente. */
 const OFFER_WINDOW_MS = 10 * 60_000;
+/** Pedidos grandes con acceso anticipado Élite: varias tiendas o buena ganancia. */
+const ELITE_EARLY_PAYOUT = 2500;
 /** Tope de avisos por entrega: escribirle a 30 personas es spam, no oferta. */
 const MAX_OFFERS_PER_TRIP = 6;
 
@@ -1641,7 +1670,11 @@ async function offerTripToCouriers(
   }
 
   const presences = await ctx.db.query("courierPresence").collect();
-  const candidates: Array<{ userId: Id<"users">; pickupKm: number }> = [];
+  const candidates: Array<{
+    userId: Id<"users">;
+    pickupKm: number;
+    tier: number;
+  }> = [];
   for (const presence of presences) {
     if (now - presence.updatedAt > LOCATION_FRESH_MS) continue;
     if (invited.has(String(presence.ownerId))) continue;
@@ -1650,9 +1683,19 @@ async function offerTripToCouriers(
     if (courier.verificationStatus !== "verified") continue;
     // No se ofrece una entrega que la cuenta no va a poder aceptar.
     if ((await courierStandingFor(ctx, presence.ownerId)).restricted) continue;
-    if (!(await requireSubscriptionAccessForBoard(ctx, presence.ownerId))) {
-      continue;
-    }
+    const offerAccess = await subscriptionAccess(ctx, presence.ownerId);
+    if (!offerAccess.hasAccess) continue;
+    const tier =
+      offerAccess.plan === "elite" ? 3 : offerAccess.plan === "pro" ? 2 : 1;
+    const preferredRadius =
+      tier >= 2 &&
+      Number.isFinite(courier?.preferredRadiusKm) &&
+      (courier?.preferredRadiusKm ?? 0) >= 1
+        ? Math.min(
+            ASSIGNMENT_RULES.maxPickupKm,
+            Math.max(1, Math.round(courier?.preferredRadiusKm ?? 0)),
+          )
+        : ASSIGNMENT_RULES.maxPickupKm;
     // Con "mismo repartidor", la entrega sólo se le ofrece a quien ya hizo la
     // anterior: los demás quedarían invitados a algo que no pueden tomar.
     if (
@@ -1668,7 +1711,8 @@ async function offerTripToCouriers(
     for (const point of pickupPoints) {
       farthest = Math.max(farthest, travelKm(presence.location, point));
     }
-    if (pickupPoints.length > 0 && farthest > ASSIGNMENT_RULES.maxPickupKm) {
+    // Pro y Élite pueden pedir ofertas sólo dentro de su radio cercano.
+    if (pickupPoints.length > 0 && farthest > preferredRadius) {
       continue;
     }
     const mine = await ctx.db
@@ -1678,10 +1722,18 @@ async function offerTripToCouriers(
     if (activeTripLeaders(mine).length >= ASSIGNMENT_RULES.maxActiveTrips) {
       continue;
     }
-    candidates.push({ userId: presence.ownerId, pickupKm: farthest });
+    candidates.push({ userId: presence.ownerId, pickupKm: farthest, tier });
   }
 
-  candidates.sort((a, b) => a.pickupKm - b.pickupKm);
+  // Pedidos grandes o con varias tiendas: Élite entra primero; el resto sigue
+  // por cercanía y, en empates, también gana el plan más alto.
+  const eliteEarly = payout >= ELITE_EARLY_PAYOUT || trip.length > 1;
+  candidates.sort(
+    (a, b) =>
+      (eliteEarly ? b.tier - a.tier : 0) ||
+      a.pickupKm - b.pickupKm ||
+      b.tier - a.tier,
+  );
   const availableFavorites = candidates.filter((candidate) =>
     favoriteIds.has(String(candidate.userId)),
   );
@@ -1699,8 +1751,16 @@ async function offerTripToCouriers(
     }
   }
   // Con favoritos disponibles, la primera ronda es sólo para ellos. Si no hay
-  // ninguno, la entrega sale de una vez a todos los que pueden tomarla.
-  const recipients = priorityUntil ? availableFavorites : candidates;
+  // ninguno, la entrega sale de una vez a todos los que pueden tomarla; en
+  // pedidos grandes, primero a Élite.
+  const eliteCandidates = candidates.filter(
+    (candidate) => candidate.tier === 3,
+  );
+  const recipients = priorityUntil
+    ? availableFavorites
+    : eliteEarly && eliteCandidates.length > 0
+      ? eliteCandidates
+      : candidates;
   let created = 0;
   for (const candidate of recipients.slice(0, MAX_OFFERS_PER_TRIP)) {
     const token = newOfferToken();
@@ -1919,6 +1979,15 @@ async function acceptTripForCourier(
       userId,
       "Tu suscripción de repartidor está vencida o sin activar. Activala en Suscripción para tomar entregas",
     );
+    if (
+      courier.availabilityEnabled &&
+      (courier.availabilityWindows ?? []).length > 0 &&
+      !isBusinessOpenAt(courier.availabilityWindows ?? [])
+    ) {
+      throw new Error(
+        "Estás fuera de tu turno programado. Ajustalo en tu panel para tomar entregas.",
+      );
+    }
     const presence = await presenceFor(ctx, userId);
     // Con una oferta reciente la distancia ya se validó al ofrecerla. Si el GPS
     // se enfrió mientras leía el WhatsApp, usamos la última posición conocida
@@ -2122,6 +2191,7 @@ export const myOffers = query({
       businessName: string;
       items: number;
       payout: number;
+      eliteEarly: boolean;
       distanceKm: number | null;
       expiresAt: number;
     }> = [];
@@ -2137,6 +2207,8 @@ export const myOffers = query({
         businessName: business?.name ?? "Local",
         items: order.items.reduce((acc, item) => acc + item.quantity, 0),
         payout: order.deliveryFee + (order.extraStopFee ?? 0),
+        eliteEarly:
+          order.deliveryFee + (order.extraStopFee ?? 0) >= ELITE_EARLY_PAYOUT,
         distanceKm: order.distanceKm ?? null,
         expiresAt: offer.expiresAt,
       });
@@ -2375,6 +2447,169 @@ export const courierRenounceRemaining = mutation({
       });
     }
     return { released };
+  },
+});
+
+/**
+ * Reasignación rápida Élite: suelta la entrega asignada (sólo si todavía no
+ * se retiró) y la vuelve a ofrecer de inmediato. Si ya la retiró, abre un
+ * caso de ayuda para que la administración la reasigne a mano.
+ */
+export const courierRequestReassign = mutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const courier = await ctx.db.get(userId);
+    if (courier?.role !== "courier") {
+      throw new Error("Sólo las cuentas de repartidor pueden reasignar");
+    }
+    const access = await subscriptionAccess(ctx, userId);
+    if (!access.hasAccess || access.plan !== "elite") {
+      throw new Error("La reasignación rápida es del plan Élite activo");
+    }
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new Error("Ese pedido no existe");
+    const trip = (await tripOrders(ctx, order)).filter(
+      (member) => member.status !== "cancelled",
+    );
+    if (trip.some((member) => member.courierId !== userId)) {
+      throw new Error("Esa entrega ya no está asignada a vos");
+    }
+    if (trip.some((member) => member.status === "picked_up")) {
+      const now = Date.now();
+      await ctx.db.insert("supportTickets", {
+        userId,
+        role: "courier",
+        orderId: order._id,
+        category: "delivery",
+        message: `Reasignación rápida Élite: ya retiré ${order.code} y necesito que me lo reasignen.`,
+        status: "open",
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { reassigned: false, ticket: true };
+    }
+    if (trip.some((member) => member.status !== "ready")) {
+      throw new Error("Sólo se puede reasignar una entrega lista no retirada");
+    }
+    for (const member of trip) {
+      await ctx.db.patch(member._id, {
+        courierId: undefined,
+        reservedCourierId: undefined,
+      });
+    }
+    for (const sibling of await groupSiblings(ctx, order)) {
+      if (
+        sibling.status === "delivered" ||
+        sibling.status === "cancelled" ||
+        sibling.reservedCourierId !== userId
+      ) {
+        continue;
+      }
+      await ctx.db.patch(sibling._id, { reservedCourierId: undefined });
+    }
+    const recent = (courier?.courierRenouncements ?? []).filter(
+      (at) => Date.now() - at <= 30 * 86_400_000,
+    );
+    await ctx.db.patch(userId, {
+      courierRenouncements: [...recent, Date.now()].slice(-30),
+    });
+    const updated = await ctx.db.get(args.orderId);
+    const offers = updated ? await offerTripToCouriers(ctx, updated, { general: true }) : 0;
+    return { reassigned: true, offers };
+  },
+});
+
+/**
+ * Exportación mensual de caja para Élite: CSV con cada entrega y el estado de
+ * conciliación, listo para llevar las cuentas fuera de la app.
+ */
+export const courierCashExport = query({
+  args: { month: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const user = await ctx.db.get(userId);
+    if (user?.role !== "courier") {
+      throw new Error("Sólo las cuentas de repartidor exportan su caja");
+    }
+    const access = await subscriptionAccess(ctx, userId);
+    if (!access.hasAccess || access.plan !== "elite") {
+      throw new Error("La exportación mensual es del plan Élite activo");
+    }
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(args.month)) {
+      throw new Error("Ese mes no es válido (AAAA-MM)");
+    }
+    const [year, month] = args.month.split("-").map(Number);
+    const start = Date.UTC(year, month - 1, 1, 6, 0, 0, 0);
+    const end = Date.UTC(year, month, 1, 6, 0, 0, 0);
+    const mine = await ctx.db
+      .query("orders")
+      .withIndex("by_courier", (q) => q.eq("courierId", userId))
+      .collect();
+    const delivered = mine.filter(
+      (order) =>
+        order.status === "delivered" &&
+        settledAt(order) >= start &&
+        settledAt(order) < end,
+    );
+    const escape = (value: string | number) => {
+      const text = String(value);
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const header = [
+      "dia",
+      "viaje",
+      "codigo",
+      "local",
+      "productos",
+      "total",
+      "envio",
+      "extra",
+      "cobrado",
+      "entregado_local",
+      "metodo",
+      "estado",
+    ];
+    const lines = [header.join(",")];
+    let earnings = 0;
+    for (const order of delivered.sort((a, b) => settledAt(a) - settledAt(b))) {
+      const business = await ctx.db.get(order.businessId);
+      const due = businessDue(order);
+      const handed = order.cashHanded ?? 0;
+      const state =
+        order.paymentMethod === "sinpe"
+          ? "SINPE directo"
+          : due - handed > 0
+            ? `falta ${due - handed}`
+            : due - handed < 0
+              ? `de más ${handed - due}`
+              : "al día";
+      earnings += order.deliveryFee + (order.extraStopFee ?? 0);
+      lines.push(
+        [
+          costaRicaDayKey(settledAt(order)),
+          tripKey(order),
+          order.code,
+          business?.name ?? "Local",
+          order.items.reduce((acc, item) => acc + item.quantity, 0),
+          order.total,
+          order.deliveryFee,
+          order.extraStopFee ?? 0,
+          order.paymentMethod === "sinpe" ? 0 : (order.cashCollected ?? 0),
+          order.paymentMethod === "sinpe" ? 0 : handed,
+          order.paymentMethod === "sinpe" ? "SINPE" : "efectivo",
+          state,
+        ]
+          .map(escape)
+          .join(","),
+      );
+    }
+    lines.push("");
+    lines.push(`entregas,${delivered.length}`);
+    lines.push(`ganancia_envios,${earnings}`);
+    return { month: args.month, rows: delivered.length, csv: lines.join("\n") };
   },
 });
 

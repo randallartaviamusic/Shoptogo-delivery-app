@@ -317,6 +317,12 @@ const schema = defineSchema(
       // Calificación que recibe un repartidor (promedio y cantidad).
       rating: v.optional(v.number()),
       reviews: v.optional(v.number()),
+      // Preferencias Pro del repartidor: radio de ofertas cercanas, aviso con
+      // sonido y turnos semanales para mostrarse disponible automáticamente.
+      preferredRadiusKm: v.optional(v.number()),
+      offerSoundEnabled: v.optional(v.boolean()),
+      availabilityEnabled: v.optional(v.boolean()),
+      availabilityWindows: v.optional(v.array(businessHourValidator)),
     })
       .index("email", ["email"]) // index for the email. do not remove or modify
       .index("by_role", ["role"]),

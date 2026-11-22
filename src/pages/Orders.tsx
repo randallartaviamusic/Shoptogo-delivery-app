@@ -153,6 +153,7 @@ export type OrderView = {
   groupable?: boolean;
   groupExtraMinutes?: number | null;
   recommended?: boolean;
+  eliteEarly?: boolean;
   // Estimación de llegada y demoras.
   promisedArrivalAt: number | null;
   estimatedArrivalAt: number | null;
