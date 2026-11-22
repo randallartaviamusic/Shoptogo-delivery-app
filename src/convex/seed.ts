@@ -284,7 +284,7 @@ const catalog: SeedBusiness[] = [
   {
     name: "El Fuego Taquería",
     slug: "el-fuego-taqueria",
-    category: "Mexicana",
+    category: "Comida mexicana",
     tagline: "Tortillas hechas a mano y salsa que pica en serio",
     image: img("photo-1551504734-5ee1c4a1479b"),
     address: "Bulnes 1180, Almagro",
@@ -595,7 +595,7 @@ const catalog: SeedBusiness[] = [
   {
     name: "La Pasta Madre",
     slug: "la-pasta-madre",
-    category: "Pasta",
+    category: "Pastas",
     tagline: "Pastas frescas como las de la abuela",
     image: img("photo-1621996346565-e3dbc646d9a9"),
     address: "Paraguay 2200, Recoleta",

@@ -12,10 +12,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
+import { optionSummary } from "@/lib/productOptions";
 import { formatSinpeNumber } from "@/lib/sinpe";
 import { costaRicaLocalToTimestamp, SCHEDULE_RULES } from "@/lib/scheduling";
 import { cn } from "@/lib/utils";
@@ -337,15 +337,18 @@ export default function CartPage() {
                           <button
                             aria-label={`Quitar ${item.name}`}
                             onClick={() =>
-                              removeItem({
-                                productId: item.productId as Id<"products">,
-                              })
+                              removeItem({ cartItemId: item.cartItemId })
                             }
                             className="text-muted-foreground transition-colors hover:text-primary"
                           >
                             <Trash2 className="size-4" />
                           </button>
                         </div>
+                        {item.options.length > 0 && (
+                          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                            {optionSummary(item.options)}
+                          </p>
+                        )}
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {money(item.price)} c/u
                         </p>
@@ -358,7 +361,7 @@ export default function CartPage() {
                               className="size-7 rounded-full text-muted-foreground"
                               onClick={() =>
                                 setQuantity({
-                                  productId: item.productId as Id<"products">,
+                                  cartItemId: item.cartItemId,
                                   quantity: item.quantity - 1,
                                 })
                               }
@@ -375,7 +378,7 @@ export default function CartPage() {
                               className="size-7 rounded-full text-muted-foreground"
                               onClick={() =>
                                 setQuantity({
-                                  productId: item.productId as Id<"products">,
+                                  cartItemId: item.cartItemId,
                                   quantity: item.quantity + 1,
                                 })
                               }

@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/AppShell";
+import { ProductOptionsDialog } from "@/components/ProductOptionsDialog";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import {
   DeckActions,
@@ -24,6 +25,7 @@ import {
   getDepartment,
 } from "@/lib/departments";
 import { money } from "@/lib/format";
+import type { ProductOptionChoice } from "@/lib/productOptions";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -78,6 +80,8 @@ export default function SwipePage() {
   // Tarjetas que volvieron con la flecha de anterior, al frente del mazo.
   const [reinserted, setReinserted] = useState<Dish[]>([]);
   const topCard = useRef<SwipeCardHandle>(null);
+  const [pendingLike, setPendingLike] = useState<Dish | null>(null);
+  const [optionBusy, setOptionBusy] = useState(false);
 
   const department = getDepartment(departmentSlug);
   const deck = useQuery(api.catalog.deck, {
@@ -161,6 +165,8 @@ export default function SwipePage() {
   };
 
   const handleDecide = (id: string, direction: SwipeDirection) => {
+    // Mientras se eligen las opciones, el mazo queda en pausa.
+    if (pendingLike) return;
     if (!user) {
       askForAccount();
       return;
@@ -168,6 +174,19 @@ export default function SwipePage() {
     const dish = cards.find((card) => card._id === id);
     if (dish) setHistory((prev) => [...prev, dish]);
     setReinserted((prev) => prev.filter((item) => item._id !== id));
+
+    // Si el producto tiene sabor, acompañamientos o ingredientes, la tarjeta
+    // sale del mazo y primero se elige la variante. El swipe se registra al
+    // confirmar el diálogo.
+    if (
+      direction === "like" &&
+      dish &&
+      (dish.optionGroups ?? []).some((group) => group.options.length > 0)
+    ) {
+      setPendingLike(dish);
+      return;
+    }
+
     swipe({ productId: id as Id<"products">, direction })
       .then(() => {
         if (direction === "like") {
@@ -185,6 +204,49 @@ export default function SwipePage() {
         setHistory((prev) => prev.filter((item) => item._id !== id));
         toast.error(error.message || "No pudimos registrar tu swipe");
       });
+  };
+
+  const cancelPendingLike = () => {
+    const dish = pendingLike;
+    if (!dish) return;
+    setHistory((prev) => prev.filter((item) => item._id !== dish._id));
+    setReinserted((prev) => [
+      dish,
+      ...prev.filter((item) => item._id !== dish._id),
+    ]);
+    setPendingLike(null);
+  };
+
+  const confirmPendingLike = async (choices: ProductOptionChoice[]) => {
+    const dish = pendingLike;
+    if (!dish) return;
+    setOptionBusy(true);
+    try {
+      await swipe({
+        productId: dish._id as Id<"products">,
+        direction: "like",
+        options: choices,
+      });
+      toast.success("¡Es un antojo!", {
+        description: `${dish.name} ya está en tu carrito.`,
+      });
+      setPendingLike(null);
+    } catch (error) {
+      // Si falla, devolvemos la tarjeta al frente para no perder el producto.
+      setHistory((prev) => prev.filter((item) => item._id !== dish._id));
+      setReinserted((prev) => [
+        dish,
+        ...prev.filter((item) => item._id !== dish._id),
+      ]);
+      setPendingLike(null);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No pudimos registrar tu swipe",
+      );
+    } finally {
+      setOptionBusy(false);
+    }
   };
 
   // Volver atrás es solo visual: la tarjeta anterior reaparece en el mazo con
@@ -230,6 +292,8 @@ export default function SwipePage() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // El diálogo de opciones tiene el foco: no deslizamos la tarjeta de atrás.
+      if (pendingLike) return;
       if (
         event.target instanceof HTMLInputElement ||
         event.target instanceof HTMLTextAreaElement
@@ -255,7 +319,7 @@ export default function SwipePage() {
     return () => window.removeEventListener("keydown", onKey);
     // Se reengancha cuando cambia la persona o el historial: volver atrás
     // necesita saber cuál fue la última tarjeta.
-  }, [user, history]);
+  }, [user, history, pendingLike]);
 
   const visible = cards.slice(0, 3);
   const isLoading = deck === undefined;
@@ -696,6 +760,16 @@ export default function SwipePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ProductOptionsDialog
+        open={Boolean(pendingLike)}
+        onOpenChange={(open) => {
+          if (!open) cancelPendingLike();
+        }}
+        product={pendingLike}
+        busy={optionBusy}
+        onConfirm={(choices) => void confirmPendingLike(choices)}
+      />
     </div>
   );
 }

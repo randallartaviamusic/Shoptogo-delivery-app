@@ -7,6 +7,7 @@ import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
 import { promoDiscount } from "@/lib/promo";
 import type { PromoKind } from "@/lib/promo";
+import type { ProductOptionGroup } from "@/lib/productOptions";
 import { cn } from "@/lib/utils";
 import {
   animate,
@@ -15,7 +16,7 @@ import {
   useMotionValue,
   useTransform,
 } from "framer-motion";
-import { Clock, MapPin, Star } from "lucide-react";
+import { Clock, MapPin, SlidersHorizontal, Star } from "lucide-react";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 
 export type Dish = {
@@ -28,6 +29,7 @@ export type Dish = {
   category: string;
   department?: string;
   attributes?: { key: string; value: string }[];
+  optionGroups?: ProductOptionGroup[];
   tags: string[];
   promo?: PromoKind | null;
   businessId: string;
@@ -116,6 +118,12 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
               {tag}
             </span>
           ))}
+          {(dish.optionGroups?.length ?? 0) > 0 && (
+            <span className="flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/90">
+              <SlidersHorizontal className="size-2.5" />
+              Personalizable
+            </span>
+          )}
         </div>
         <h2 className="text-shadow-dark font-display text-[26px] font-extrabold leading-tight text-white">
           {dish.name}

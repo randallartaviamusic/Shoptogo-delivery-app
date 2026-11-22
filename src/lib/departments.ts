@@ -25,6 +25,23 @@ export type Department = {
 
 export const DEFAULT_DEPARTMENT = "comida";
 
+/**
+ * Nombres que cambiaron con la nueva taxonomía. Se aplican al mostrar y al
+ * editar para que los productos viejos no queden en una categoría huérfana.
+ */
+const LEGACY_SUBCATEGORIES: Record<string, string> = {
+  Hamburguesas: "Comida rápida",
+  Mexicana: "Comida mexicana",
+  Pasta: "Pastas",
+  "Pollo frito": "Pollo",
+  Asiática: "Comida asiática",
+  Saludable: "Comida saludable",
+};
+
+export function normalizeSubcategory(name: string) {
+  return LEGACY_SUBCATEGORIES[name] ?? name;
+}
+
 export const DEPARTMENTS: Department[] = [
   {
     slug: "comida",
@@ -53,6 +70,22 @@ export const DEPARTMENTS: Department[] = [
       "Comida italiana",
       "Comida asiática",
       "Comida fusión",
+      "Comida española",
+      "Comida francesa",
+      "Comida griega",
+      "Comida alemana",
+      "Comida argentina",
+      "Comida brasileña",
+      "Comida colombiana",
+      "Comida cubana",
+      "Comida dominicana",
+      "Comida guatemalteca",
+      "Comida hondureña",
+      "Comida nicaragüense",
+      "Comida panameña",
+      "Comida salvadoreña",
+      "Comida venezolana",
+      "Comida puertorriqueña",
       "Comida criolla",
       "Comida saludable",
       "Comida vegetariana",

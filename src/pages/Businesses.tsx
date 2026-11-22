@@ -3,6 +3,7 @@ import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { EliteAura } from "@/components/EliteAura";
 import { ProductMedia } from "@/components/ProductMedia";
+import { ProductOptionsDialog } from "@/components/ProductOptionsDialog";
 import { PromoBadge } from "@/components/PromoBadge";
 import { promoDiscount } from "@/lib/promo";
 import type { PromoKind } from "@/lib/promo";
@@ -22,6 +23,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { DEPARTMENTS, getDepartment } from "@/lib/departments";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
+import type { ProductOptionChoice } from "@/lib/productOptions";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -669,6 +671,9 @@ function Storefront({ slug }: { slug: string }) {
   const cart = useQuery(api.cart.myCart, {});
   const addToCart = useMutation(api.cart.add);
   const [busy, setBusy] = useState<string | null>(null);
+  const [optionProduct, setOptionProduct] = useState<
+    NonNullable<typeof data>["products"][number] | null
+  >(null);
 
   const groups = useMemo(() => {
     const map = new Map<string, Array<NonNullable<typeof data>["products"][number]>>();
@@ -687,15 +692,20 @@ function Storefront({ slug }: { slug: string }) {
     navigate(`/auth?role=buyer&returnTo=${encodeURIComponent(`/negocios/${slug}`)}`);
   };
 
-  const handleAdd = async (productId: Id<"products">, name: string) => {
+  const handleAdd = async (
+    productId: Id<"products">,
+    name: string,
+    options?: ProductOptionChoice[],
+  ) => {
     if (!user) {
       requireAccount();
       return;
     }
     setBusy(productId);
     try {
-      await addToCart({ productId });
+      await addToCart({ productId, options });
       toast.success("Sumado al carrito", { description: name });
+      setOptionProduct(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos agregarlo");
     } finally {
@@ -931,14 +941,28 @@ function Storefront({ slug }: { slug: string }) {
                           size="sm"
                           className="h-8 gap-1 bg-ember-gradient px-2.5 text-[11px] text-black"
                           disabled={!business.isOpen || !product.isAvailable || busy === product._id}
-                          onClick={() => handleAdd(product._id, product.name)}
+                          onClick={() => {
+                            if ((product.optionGroups?.length ?? 0) > 0) {
+                              if (!user) {
+                                requireAccount();
+                                return;
+                              }
+                              setOptionProduct(product);
+                            } else {
+                              void handleAdd(product._id, product.name);
+                            }
+                          }}
                         >
                           {busy === product._id ? (
                             <Loader2 className="size-3.5 animate-spin" />
                           ) : (
                             <Plus className="size-3.5" />
                           )}
-                          {product.isAvailable ? "Agregar" : "Agotado"}
+                          {!product.isAvailable
+                            ? "Agotado"
+                            : (product.optionGroups?.length ?? 0) > 0
+                              ? "Elegir"
+                              : "Agregar"}
                         </Button>
                       </div>
                     </div>
@@ -949,6 +973,20 @@ function Storefront({ slug }: { slug: string }) {
           ))}
         </div>
       )}
+
+      <ProductOptionsDialog
+        open={Boolean(optionProduct)}
+        onOpenChange={(open) => {
+          if (!open) setOptionProduct(null);
+        }}
+        product={optionProduct}
+        busy={Boolean(optionProduct && busy === optionProduct._id)}
+        onConfirm={(choices) => {
+          if (optionProduct) {
+            void handleAdd(optionProduct._id, optionProduct.name, choices);
+          }
+        }}
+      />
 
       {cartCount > 0 && (
         <div className="sticky bottom-20 z-20 mt-8 lg:bottom-4">

@@ -1,15 +1,18 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
 import { DishImage } from "@/components/DishImage";
 import { ProductMedia } from "@/components/ProductMedia";
+import { ProductOptionsDialog } from "@/components/ProductOptionsDialog";
 import { PromoBadge } from "@/components/PromoBadge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { money } from "@/lib/format";
+import type { ProductOptionChoice } from "@/lib/productOptions";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
 import { Bookmark, Clock, Loader2, MapPin, Plus, Star, Store, X } from "lucide-react";
 import { Link } from "react-router";
+import { useState } from "react";
 import { toast } from "sonner";
 
 export default function FavoritesPage() {
@@ -18,6 +21,30 @@ export default function FavoritesPage() {
   const toggleBusinessFavorite = useMutation(api.businesses.toggleFavorite);
   const addToCart = useMutation(api.cart.add);
   const swipe = useMutation(api.catalog.swipe);
+  const [optionProduct, setOptionProduct] = useState<
+    NonNullable<typeof saved>[number] | null
+  >(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const addSaved = async (
+    item: NonNullable<typeof saved>[number],
+    options?: ProductOptionChoice[],
+  ) => {
+    setBusy(item._id);
+    try {
+      await addToCart({ productId: item._id as Id<"products">, options });
+      toast.success("Sumado al carrito", {
+        description: `${item.name} · ${money(item.price)}`,
+      });
+      setOptionProduct(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos agregarlo",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
 
   if (saved === undefined || favoriteBusinesses === undefined) {
     return (
@@ -164,22 +191,25 @@ export default function FavoritesPage() {
                 <Button
                   size="sm"
                   className="w-full gap-1.5 bg-secondary text-foreground hover:bg-accent hover:text-accent-foreground"
-                  disabled={!item.isOpen}
-                  onClick={async () => {
-                    try {
-                      await addToCart({ productId: item._id as Id<"products"> });
-                      toast.success("Sumado al carrito", {
-                        description: `${item.name} · ${money(item.price)}`,
-                      });
-                    } catch (error) {
-                      toast.error(
-                        error instanceof Error ? error.message : "No pudimos agregarlo",
-                      );
+                  disabled={!item.isOpen || busy === item._id}
+                  onClick={() => {
+                    if ((item.optionGroups?.length ?? 0) > 0) {
+                      setOptionProduct(item);
+                    } else {
+                      void addSaved(item);
                     }
                   }}
                 >
-                  <Plus className="size-3.5" />
-                  {item.isOpen ? "Agregar" : "Cerrado"}
+                  {busy === item._id ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="size-3.5" />
+                  )}
+                  {!item.isOpen
+                    ? "Cerrado"
+                    : (item.optionGroups?.length ?? 0) > 0
+                      ? "Elegir"
+                      : "Agregar"}
                 </Button>
               </div>
             </motion.article>
@@ -187,6 +217,18 @@ export default function FavoritesPage() {
         </div>
         </>
       )}
+
+      <ProductOptionsDialog
+        open={Boolean(optionProduct)}
+        onOpenChange={(open) => {
+          if (!open) setOptionProduct(null);
+        }}
+        product={optionProduct}
+        busy={Boolean(optionProduct && busy === optionProduct._id)}
+        onConfirm={(choices) => {
+          if (optionProduct) void addSaved(optionProduct, choices);
+        }}
+      />
     </div>
   );
 }

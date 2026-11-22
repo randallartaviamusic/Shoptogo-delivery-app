@@ -8,6 +8,7 @@ import { VerificationBanner } from "@/components/VerificationBanner";
 import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
 import { ProductImageUpload } from "@/components/ProductImageUpload";
+import { ProductOptionsEditor } from "@/components/ProductOptionsEditor";
 import { ProductMedia } from "@/components/ProductMedia";
 import { ProductVideoUpload } from "@/components/ProductVideoUpload";
 import { PromoBadge } from "@/components/PromoBadge";
@@ -44,10 +45,14 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
+import {
+  optionSummary,
+  type ProductOptionGroup,
+} from "@/lib/productOptions";
 import type { CashIssueKind, OrderStatus } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { CASH_ISSUE_LABELS } from "@/lib/cash";
-import { getDepartment } from "@/lib/departments";
+import { getDepartment, normalizeSubcategory } from "@/lib/departments";
 import {
   BUSINESS_DAY_LABELS,
   BUSINESS_DAY_ORDER,
@@ -241,6 +246,7 @@ export default function BusinessPage() {
     image: "",
     video: "",
     attributes: {} as Record<string, string>,
+    optionGroups: [] as ProductOptionGroup[],
   });
   const [productVideoStorageId, setProductVideoStorageId] =
     useState<Id<"_storage"> | null>(null);
@@ -334,6 +340,12 @@ export default function BusinessPage() {
     : business.isOpen;
   const departmentInfo = getDepartment(business.department);
   const productCategories = departmentInfo.subcategories;
+  // Los productos viejos pueden tener una categoría que ya no está en la
+  // lista (por ejemplo, "Hamburguesas"): la mostramos para no perderla al editar.
+  const categoryOptions =
+    productForm.category && !productCategories.includes(productForm.category)
+      ? [productForm.category, ...productCategories]
+      : productCategories;
   const stats = board?.stats;
   const orders = (board?.orders ?? []) as unknown as OrderView[];
   // La subida de video se habilita sola cuando el plan Élite está vigente.
@@ -455,6 +467,7 @@ export default function BusinessPage() {
       image: "",
       video: "",
       attributes: {},
+      optionGroups: [],
     });
     setProductVideoStorageId(null);
     setRemoveProductVideo(false);
@@ -469,7 +482,7 @@ export default function BusinessPage() {
       name: product.name,
       description: product.description,
       price: String(product.price),
-      category: product.category,
+      category: normalizeSubcategory(product.category),
       image: product.image,
       video: product.video ?? "",
       attributes: Object.fromEntries(
@@ -478,6 +491,10 @@ export default function BusinessPage() {
           attribute.value,
         ]),
       ),
+      optionGroups: (product.optionGroups ?? []).map((group) => ({
+        ...group,
+        options: group.options.map((option) => ({ ...option })),
+      })),
     });
     setProductVideoStorageId(null);
     setRemoveProductVideo(false);
@@ -591,6 +608,24 @@ export default function BusinessPage() {
 
   const handleProductSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const incompleteGroup = productForm.optionGroups.find(
+      (group) =>
+        !group.name.trim() ||
+        group.options.some((option) => !option.name.trim()),
+    );
+    if (incompleteGroup) {
+      toast.error(
+        "Completá el nombre del grupo y de cada opción, o quitá las opciones vacías",
+      );
+      return;
+    }
+    const groupNames = productForm.optionGroups.map((group) =>
+      group.name.trim().toLowerCase(),
+    );
+    if (new Set(groupNames).size !== groupNames.length) {
+      toast.error("Cada grupo de opciones necesita un nombre distinto");
+      return;
+    }
     setSavingProduct(true);
     const payload = {
       name: productForm.name,
@@ -601,6 +636,7 @@ export default function BusinessPage() {
       attributes: Object.entries(productForm.attributes)
         .filter(([, value]) => value.length > 0)
         .map(([key, value]) => ({ key, value })),
+      optionGroups: productForm.optionGroups,
     };
     const videoPayload = productVideoStorageId
       ? { videoStorageId: productVideoStorageId }
@@ -1500,15 +1536,22 @@ export default function BusinessPage() {
                 )}
 
                 <ul className="mt-3 space-y-1.5">
-                  {order.items.map((item) => (
+                  {order.items.map((item, index) => (
                     <li
-                      key={item.productId}
-                      className="flex items-center justify-between text-sm"
+                      key={`${item.productId}-${index}`}
+                      className="flex items-start justify-between gap-3 text-sm"
                     >
-                      <span className="text-muted-foreground">
-                        {item.quantity}× {item.name}
+                      <span className="min-w-0 text-muted-foreground">
+                        <span className="block">
+                          {item.quantity}× {item.name}
+                        </span>
+                        {(item.options?.length ?? 0) > 0 && (
+                          <span className="mt-0.5 block text-[10px] leading-relaxed text-muted-foreground/80">
+                            {optionSummary(item.options)}
+                          </span>
+                        )}
                       </span>
-                      <span className="font-medium">
+                      <span className="shrink-0 font-medium">
                         {money(item.price * item.quantity)}
                       </span>
                     </li>
@@ -1927,7 +1970,7 @@ export default function BusinessPage() {
                       {product.description || "Sin descripción"}
                     </p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {product.category} · {money(product.price)}
+                      {normalizeSubcategory(product.category)} · {money(product.price)}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:justify-end max-sm:border-t max-sm:border-border/40 max-sm:pt-2">
@@ -2113,7 +2156,7 @@ export default function BusinessPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {productCategories.map((category) => (
+                    {categoryOptions.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
                       </SelectItem>
@@ -2170,6 +2213,12 @@ export default function BusinessPage() {
                 </div>
               </div>
             )}
+            <ProductOptionsEditor
+              groups={productForm.optionGroups}
+              onChange={(optionGroups) =>
+                setProductForm((prev) => ({ ...prev, optionGroups }))
+              }
+            />
             <ProductImageUpload
               preview={productImagePreview || undefined}
               onChange={(storageId, preview) => {

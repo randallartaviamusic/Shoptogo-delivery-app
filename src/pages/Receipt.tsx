@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { money, ORDER_STATUS } from "@/lib/format";
+import { optionSummary } from "@/lib/productOptions";
 import { cn } from "@/lib/utils";
 import { useQuery } from "convex/react";
 import {
@@ -197,7 +198,14 @@ export default function ReceiptPage() {
                   key={`${item.productId}-${index}`}
                   className="border-b border-[#e5dac8]"
                 >
-                  <td className="py-2.5 pr-2 font-medium">{item.name}</td>
+                  <td className="py-2.5 pr-2 font-medium">
+                    {item.name}
+                    {(item.options?.length ?? 0) > 0 && (
+                      <span className="mt-0.5 block text-[10px] font-normal leading-relaxed text-[#8a765c]">
+                        {optionSummary(item.options)}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2.5 text-center">{item.quantity}</td>
                   <td className="py-2.5 text-right">{money(item.price)}</td>
                   <td className="py-2.5 text-right font-semibold">

@@ -10,6 +10,7 @@ import {
   promoKindValidator,
 } from "./schema";
 import { normalizeOptionGroups } from "../lib/productOptions";
+import { normalizeSubcategory } from "../lib/departments";
 import { planTier } from "../lib/subscriptions";
 import { normalizeSinpeNumber } from "../lib/sinpe";
 import {
@@ -448,7 +449,8 @@ export const storefront = query({
           price: product.price,
           image: product.image,
           video: product.video ?? null,
-          category: product.category,
+          category: normalizeSubcategory(product.category),
+          optionGroups: product.optionGroups ?? [],
           tags: product.tags,
           isAvailable: product.isAvailable,
           promo: business.deliveryPromo ?? null,
@@ -823,6 +825,7 @@ export const addProduct = mutation({
     const video = args.videoStorageId
       ? await productVideoUrl(ctx, args.videoStorageId)
       : undefined;
+    const optionGroups = normalizeOptionGroups(args.optionGroups);
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
@@ -838,9 +841,7 @@ export const addProduct = mutation({
       ...(video ? { video } : {}),
       category: args.category.trim() || "General",
       attributes: args.attributes ?? [],
-      ...(normalizeOptionGroups(args.optionGroups).length > 0
-        ? { optionGroups: normalizeOptionGroups(args.optionGroups) }
-        : {}),
+      ...(optionGroups.length > 0 ? { optionGroups } : {}),
       tags: args.tags ?? [],
       isAvailable: true,
       sortOrder: Date.now(),

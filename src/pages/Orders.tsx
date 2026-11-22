@@ -21,6 +21,10 @@ import type { GeoPoint } from "@/lib/delivery";
 import { ASSIGNMENT_RULES, formatKm } from "@/lib/delivery";
 import { ACTIVE_STATUSES, clockTime, money, ORDER_STATUS, relativeTime } from "@/lib/format";
 import {
+  optionSummary,
+  type SelectedProductOption,
+} from "@/lib/productOptions";
+import {
   formatSinpeNumber,
   normalizeSinpeNumber,
   sinpePaymentMessage,
@@ -57,6 +61,7 @@ type OrderItem = {
   price: number;
   quantity: number;
   image: string;
+  options?: SelectedProductOption[];
 };
 
 export type OrderView = {
@@ -694,8 +699,8 @@ function OrderDetailDialog({
           )}
 
           <ul className="space-y-2">
-            {order.items.map((item) => (
-              <li key={item.productId} className="flex items-center gap-3">
+            {order.items.map((item, index) => (
+              <li key={`${item.productId}-${index}`} className="flex items-center gap-3">
                 <DishImage
                   src={item.image}
                   alt={item.name}
@@ -703,6 +708,11 @@ function OrderDetailDialog({
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{item.name}</p>
+                  {(item.options?.length ?? 0) > 0 && (
+                    <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">
+                      {optionSummary(item.options)}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {item.quantity} × {money(item.price)}
                   </p>
@@ -1133,9 +1143,9 @@ export default function OrdersPage() {
                 </div>
 
                 <div className="mt-3 flex items-center gap-1.5">
-                  {order.items.slice(0, 4).map((item) => (
+                  {order.items.slice(0, 4).map((item, index) => (
                     <DishImage
-                      key={item.productId}
+                      key={`${item.productId}-${index}`}
                       src={item.image}
                       alt={item.name}
                       className="size-10 rounded-lg"

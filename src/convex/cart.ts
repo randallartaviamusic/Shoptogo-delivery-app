@@ -3,7 +3,10 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { geoPointValidator } from "./schema";
+import {
+  geoPointValidator,
+  productOptionChoiceValidator,
+} from "./schema";
 import { requireSubscriptionAccess } from "./subscriptions";
 import { requireVerifiedAccount } from "./verification";
 import {
@@ -24,15 +27,24 @@ import { discountFor, findCoupon } from "./coupons";
 import { queueNotice } from "./notifications";
 import { internal } from "./_generated/api";
 import type { PromoKind } from "../lib/promo";
+import {
+  choiceKey,
+  defaultChoices,
+  validateChoices,
+  type ProductOptionChoice,
+  type SelectedProductOption,
+} from "../lib/productOptions";
 
 type DbCtx = QueryCtx | MutationCtx;
 
 type CheckoutLine = {
+  cartItemId: Id<"cartItems">;
   productId: Id<"products">;
   name: string;
   price: number;
   quantity: number;
   image: string;
+  options: SelectedProductOption[];
 };
 
 async function requireUserId(ctx: DbCtx) {
@@ -73,6 +85,7 @@ export type CartGroup = {
     price: number;
     quantity: number;
     image: string;
+    options: SelectedProductOption[];
     isAvailable: boolean;
   }>;
   subtotal: number;
@@ -142,16 +155,18 @@ async function buildCart(
       const coupon = await findCoupon(ctx, item.businessId, couponCode);
       couponByBusiness.set(item.businessId, coupon);
     }
+    const unitPrice = product.price + (item.optionPrice ?? 0);
     group.items.push({
       cartItemId: item._id,
       productId: item.productId,
       name: product.name,
-      price: product.price,
+      price: unitPrice,
       quantity: item.quantity,
       image: product.image,
+      options: item.options ?? [],
       isAvailable: product.isAvailable,
     });
-    group.subtotal += product.price * item.quantity;
+    group.subtotal += unitPrice * item.quantity;
   }
 
   // Las entregas se arman con el carrito en orden. El envío se cobra una sola
@@ -281,7 +296,11 @@ export const myCart = query({
 });
 
 export const add = mutation({
-  args: { productId: v.id("products"), quantity: v.optional(v.number()) },
+  args: {
+    productId: v.id("products"),
+    quantity: v.optional(v.number()),
+    options: v.optional(v.array(productOptionChoiceValidator)),
+  },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
     const quantity = Math.min(20, Math.max(1, Math.round(args.quantity ?? 1)));
@@ -306,10 +325,19 @@ export const add = mutation({
       );
     }
 
+    const groups = product.optionGroups ?? [];
+    const choices = args.options ?? defaultChoices(groups);
+    const selection = validateChoices(groups, choices);
+    if (!selection.ok) throw new Error(selection.error);
+    const selectionKey = choiceKey(selection.choices);
+
     const existing = await ctx.db
       .query("cartItems")
-      .withIndex("by_user_product", (q) =>
-        q.eq("userId", userId).eq("productId", args.productId),
+      .withIndex("by_user_selection", (q) =>
+        q
+          .eq("userId", userId)
+          .eq("productId", args.productId)
+          .eq("selectionKey", selectionKey),
       )
       .unique();
     if (existing) {
@@ -322,24 +350,22 @@ export const add = mutation({
         productId: args.productId,
         businessId: product.businessId,
         quantity,
+        options: selection.selected,
+        optionPrice: selection.extra,
+        selectionKey,
         addedAt: Date.now(),
       });
     }
-    return { added: product.name };
+    return { added: product.name, options: selection.selected };
   },
 });
 
 export const setQuantity = mutation({
-  args: { productId: v.id("products"), quantity: v.number() },
+  args: { cartItemId: v.id("cartItems"), quantity: v.number() },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
-    const existing = await ctx.db
-      .query("cartItems")
-      .withIndex("by_user_product", (q) =>
-        q.eq("userId", userId).eq("productId", args.productId),
-      )
-      .unique();
-    if (!existing) return null;
+    const existing = await ctx.db.get(args.cartItemId);
+    if (!existing || existing.userId !== userId) return null;
     if (args.quantity <= 0) {
       await ctx.db.delete(existing._id);
       return null;
@@ -352,16 +378,13 @@ export const setQuantity = mutation({
 });
 
 export const remove = mutation({
-  args: { productId: v.id("products") },
+  args: { cartItemId: v.id("cartItems") },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
-    const existing = await ctx.db
-      .query("cartItems")
-      .withIndex("by_user_product", (q) =>
-        q.eq("userId", userId).eq("productId", args.productId),
-      )
-      .unique();
-    if (existing) await ctx.db.delete(existing._id);
+    const existing = await ctx.db.get(args.cartItemId);
+    if (existing && existing.userId === userId) {
+      await ctx.db.delete(existing._id);
+    }
     return null;
   },
 });
@@ -482,11 +505,13 @@ export const checkout = mutation({
         businessIds.push(item.businessId);
       }
       byBusiness.get(item.businessId)!.push({
+        cartItemId: item._id,
         productId: product._id,
         name: product.name,
-        price: product.price,
+        price: product.price + (item.optionPrice ?? 0),
         quantity: item.quantity,
         image: product.image,
+        options: item.options ?? [],
       });
     }
 
@@ -544,7 +569,7 @@ export const checkout = mutation({
     const lines = cartItems.map((item) => {
       const product = byBusiness
         .get(item.businessId)!
-        .find((line) => line.productId === item.productId)!;
+        .find((line) => line.cartItemId === item._id)!;
       return {
         businessId: item.businessId as string,
         productId: item.productId,
@@ -552,6 +577,7 @@ export const checkout = mutation({
         price: product.price,
         image: product.image,
         quantity: item.quantity,
+        options: product.options,
       };
     });
     const chunks = splitIntoDeliveries(lines);
@@ -628,6 +654,7 @@ export const checkout = mutation({
           price: line.price,
           quantity: line.quantity,
           image: line.image,
+          options: line.options,
         }));
         const subtotal = items.reduce(
           (acc, item) => acc + item.price * item.quantity,
@@ -780,18 +807,30 @@ export const repeatOrder = mutation({
       : [order];
     const requested = new Map<
       string,
-      { productId: Id<"products">; businessId: Id<"businesses">; name: string; quantity: number }
+      {
+        productId: Id<"products">;
+        businessId: Id<"businesses">;
+        name: string;
+        quantity: number;
+        options: SelectedProductOption[];
+      }
     >();
     for (const sibling of siblings) {
       if (sibling.buyerId !== userId || sibling.status === "cancelled") continue;
       for (const item of sibling.items) {
-        const key = String(item.productId);
+        const options = item.options ?? [];
+        const choices: ProductOptionChoice[] = options.map((option) => ({
+          groupId: option.groupId,
+          optionId: option.optionId,
+        }));
+        const key = `${item.productId}:${choiceKey(choices)}`;
         const previous = requested.get(key);
         requested.set(key, {
           productId: item.productId,
           businessId: sibling.businessId,
           name: item.name,
           quantity: (previous?.quantity ?? 0) + item.quantity,
+          options,
         });
       }
     }
@@ -819,10 +858,28 @@ export const repeatOrder = mutation({
           continue;
         }
       }
+      const choices: ProductOptionChoice[] = item.options.map((option) => ({
+        groupId: option.groupId,
+        optionId: option.optionId,
+      }));
+      const selection = validateChoices(
+        product.optionGroups ?? [],
+        choices.length > 0
+          ? choices
+          : defaultChoices(product.optionGroups ?? []),
+      );
+      if (!selection.ok) {
+        skipped.push(item.name);
+        continue;
+      }
+      const selectionKey = choiceKey(selection.choices);
       const existing = await ctx.db
         .query("cartItems")
-        .withIndex("by_user_product", (q) =>
-          q.eq("userId", userId).eq("productId", product._id),
+        .withIndex("by_user_selection", (q) =>
+          q
+            .eq("userId", userId)
+            .eq("productId", product._id)
+            .eq("selectionKey", selectionKey),
         )
         .unique();
       if (existing) {
@@ -835,6 +892,9 @@ export const repeatOrder = mutation({
           productId: product._id,
           businessId: business._id,
           quantity: Math.min(20, item.quantity),
+          options: selection.selected,
+          optionPrice: selection.extra,
+          selectionKey,
           addedAt: Date.now(),
         });
       }

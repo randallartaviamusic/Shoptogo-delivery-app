@@ -1,11 +1,19 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { DELIVERY_RULES, deliveryQuote, isValidPoint } from "../lib/delivery";
 import type { GeoPoint } from "../lib/delivery";
 import { planTier } from "../lib/subscriptions";
+import { normalizeSubcategory } from "../lib/departments";
 import { subscriptionAccess } from "./subscriptions";
 import { isAccountVerified } from "./verification";
+import { productOptionChoiceValidator } from "./schema";
+import {
+  choiceKey,
+  defaultChoices,
+  validateChoices,
+} from "../lib/productOptions";
 
 /**
  * Baraja con semilla: el cliente manda una nueva al entrar para que el mazo
@@ -132,9 +140,10 @@ export const deck = query({
           price: product.price,
           image: product.image,
           video: product.video ?? null,
-          category: product.category,
+          category: normalizeSubcategory(product.category),
           department: departmentOf(product),
           attributes: product.attributes ?? [],
+          optionGroups: product.optionGroups ?? [],
           tags: product.tags,
           // La promo es de la tienda completa, no de un producto suelto.
           promo: business.deliveryPromo ?? null,
@@ -177,6 +186,8 @@ export const swipe = mutation({
   args: {
     productId: v.id("products"),
     direction: v.union(v.literal("like"), v.literal("pass"), v.literal("save")),
+    // Para productos con sabor, acompañamientos o ingredientes.
+    options: v.optional(v.array(productOptionChoiceValidator)),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -201,12 +212,28 @@ export const swipe = mutation({
       }
     }
 
+    let selectedOptions: NonNullable<Doc<"cartItems">["options"]> = [];
+    let optionPrice = 0;
+    let selectionKey = "base";
+    if (args.direction === "like") {
+      const choices =
+        args.options ?? defaultChoices(product.optionGroups ?? []);
+      const selection = validateChoices(product.optionGroups ?? [], choices);
+      if (!selection.ok) throw new Error(selection.error);
+      selectedOptions = selection.selected;
+      optionPrice = selection.extra;
+      selectionKey = choiceKey(selection.choices);
+    }
+
     const cartItem =
       args.direction === "like"
         ? await ctx.db
             .query("cartItems")
-            .withIndex("by_user_product", (q) =>
-              q.eq("userId", userId).eq("productId", args.productId),
+            .withIndex("by_user_selection", (q) =>
+              q
+                .eq("userId", userId)
+                .eq("productId", args.productId)
+                .eq("selectionKey", selectionKey),
             )
             .unique()
         : null;
@@ -232,7 +259,7 @@ export const swipe = mutation({
     if (args.direction === "like") {
       if (cartItem) {
         await ctx.db.patch(cartItem._id, {
-          quantity: cartItem.quantity + 1,
+          quantity: Math.min(20, cartItem.quantity + 1),
         });
       } else {
         await ctx.db.insert("cartItems", {
@@ -240,19 +267,22 @@ export const swipe = mutation({
           productId: args.productId,
           businessId: product.businessId,
           quantity: 1,
+          options: selectedOptions,
+          optionPrice,
+          selectionKey,
           addedAt: Date.now(),
         });
       }
     }
 
     if (args.direction === "pass" || args.direction === "save") {
-      const item = await ctx.db
+      const items = await ctx.db
         .query("cartItems")
         .withIndex("by_user_product", (q) =>
           q.eq("userId", userId).eq("productId", args.productId),
         )
-        .unique();
-      if (item) await ctx.db.delete(item._id);
+        .collect();
+      for (const item of items) await ctx.db.delete(item._id);
     }
 
     return {
@@ -280,12 +310,14 @@ export const undo = mutation({
     await ctx.db.delete(last._id);
 
     if (last.direction === "like") {
-      const item = await ctx.db
+      const items = await ctx.db
         .query("cartItems")
         .withIndex("by_user_product", (q) =>
           q.eq("userId", userId).eq("productId", last.productId),
         )
-        .unique();
+        .collect();
+      // Con variantes puede haber varias líneas: deshacemos la última suma.
+      const item = items.sort((a, b) => b.addedAt - a.addedAt)[0];
       if (item) {
         if (item.quantity > 1) {
           await ctx.db.patch(item._id, { quantity: item.quantity - 1 });
@@ -323,7 +355,7 @@ export const resetDeck = mutation({
           .withIndex("by_user_product", (q) =>
             q.eq("userId", userId).eq("productId", swipeDoc.productId),
           )
-          .unique();
+          .first();
         if (inCart) continue;
       }
       await ctx.db.delete(swipeDoc._id);
@@ -372,6 +404,7 @@ export const saved = query({
         image: product.image,
         video: product.video ?? null,
         category: product.category,
+        optionGroups: product.optionGroups ?? [],
         tags: product.tags,
         promo: business.deliveryPromo ?? null,
         businessId: business._id,
