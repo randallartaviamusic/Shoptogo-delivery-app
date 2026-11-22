@@ -1,12 +1,15 @@
-import { playOrderChime } from "@/lib/orderChime";
+import { api } from "@/convex/_generated/api";
+import { playOrderChime, setOrderChimeUrl } from "@/lib/orderChime";
+import { useQuery } from "convex/react";
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 
 /**
- * Suena la melodía de 5 segundos cuando llega un push con la app abierta. En
- * la web el service worker manda el mensaje a las pestañas vivas; en el APK lo
- * manda FCM. Con la app cerrada el sonido y la bandeja los pone Android.
+ * Suena la campanita de avisos (o el audio que subió el administrador) cuando
+ * llega un push con la app abierta. En la web el service worker manda el
+ * mensaje a las pestañas vivas; en el APK lo manda FCM. Con la app cerrada el
+ * sonido y la bandeja los pone Android.
  */
 export function PushChime({
   enabled,
@@ -16,6 +19,13 @@ export function PushChime({
   role: "buyer" | "business" | "courier";
 }) {
   const navigate = useNavigate();
+  const notificationSound = useQuery(api.branding.notificationSound);
+
+  // El audio que subió el administrador se usa en todos los avisos que suenan
+  // con la app abierta. Si no hay uno, queda la campanita de siempre.
+  useEffect(() => {
+    setOrderChimeUrl(notificationSound?.url ?? null);
+  }, [notificationSound?.url]);
 
   useEffect(() => {
     if (!enabled) return;

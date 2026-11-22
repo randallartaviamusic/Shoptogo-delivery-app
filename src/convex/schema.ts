@@ -852,6 +852,10 @@ const schema = defineSchema(
       brandTitleColor: v.optional(v.string()),
       brandTitleFont: v.optional(v.string()),
       brandTitleSize: v.optional(v.number()),
+      // Audio propio para la campanita de avisos (lo sube el administrador).
+      notificationSoundUrl: v.optional(v.string()),
+      notificationSoundName: v.optional(v.string()),
+      notificationSoundStorageId: v.optional(v.id("_storage")),
       // Configuración de cobro de suscripciones (la edita el administrador).
       sinpePhone: v.optional(v.string()),
       iban: v.optional(v.string()),

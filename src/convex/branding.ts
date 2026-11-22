@@ -15,6 +15,7 @@ export const MAX_LOGO_SIZE = 88;
 
 const APP_ICON_MAX_BYTES = 8 * 1024 * 1024;
 const APP_SPLASH_MAX_BYTES = 30 * 1024 * 1024;
+const NOTIFICATION_SOUND_MAX_BYTES = 2 * 1024 * 1024;
 
 export const DEFAULT_BRAND_TITLE = "Shop To Go";
 export const DEFAULT_BRAND_TITLE_COLOR = "#f7f5f0";
@@ -58,6 +59,21 @@ export const brand = query({
       logoUrl: doc?.logoUrl ?? null,
       logoSize: Math.min(MAX_LOGO_SIZE, Math.max(MIN_LOGO_SIZE, size)),
       updatedAt: doc?.updatedAt ?? null,
+    };
+  },
+});
+
+/**
+ * Audio propio de la campanita de avisos. Es público porque lo reproduce la
+ * app de cada persona; sólo el administrador puede cambiarlo.
+ */
+export const notificationSound = query({
+  args: {},
+  handler: async (ctx) => {
+    const doc = await brandDoc(ctx);
+    return {
+      url: doc?.notificationSoundUrl ?? null,
+      name: doc?.notificationSoundName ?? null,
     };
   },
 });
@@ -128,6 +144,92 @@ export const generateAppAssetUploadUrl = mutation({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const generateNotificationSoundUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Guarda el audio elegido y borra el anterior para no acumular archivos. */
+export const setNotificationSound = mutation({
+  args: {
+    storageId: v.id("_storage"),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, { storageId, name }) => {
+    await requireAdmin(ctx);
+
+    const metadata = await ctx.storage.getMetadata(storageId);
+    if (!metadata) throw new Error("No pudimos leer el audio");
+    if (!metadata.contentType?.startsWith("audio/")) {
+      throw new Error("Elegí un archivo de audio (MP3, WAV, OGG o M4A)");
+    }
+    if (metadata.size > NOTIFICATION_SOUND_MAX_BYTES) {
+      throw new Error("El audio no puede pesar más de 2 MB");
+    }
+
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("No pudimos guardar el audio");
+    const cleanName = (name ?? "Audio de avisos").trim().slice(0, 80) || "Audio de avisos";
+    const doc = await brandDoc(ctx);
+
+    if (doc) {
+      const previous = doc.notificationSoundStorageId;
+      await ctx.db.patch(doc._id, {
+        notificationSoundUrl: url,
+        notificationSoundName: cleanName,
+        notificationSoundStorageId: storageId,
+        updatedAt: Date.now(),
+      });
+      if (previous && previous !== storageId) {
+        try {
+          await ctx.storage.delete(previous);
+        } catch {
+          // El archivo anterior ya no estaba: no impide guardar el nuevo.
+        }
+      }
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        notificationSoundUrl: url,
+        notificationSoundName: cleanName,
+        notificationSoundStorageId: storageId,
+        updatedAt: Date.now(),
+      });
+    }
+
+    return { url, name: cleanName };
+  },
+});
+
+/** Vuelve a la campanita original y borra el audio subido. */
+export const resetNotificationSound = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (!doc) return null;
+
+    const previous = doc.notificationSoundStorageId;
+    await ctx.db.patch(doc._id, {
+      notificationSoundUrl: undefined,
+      notificationSoundName: undefined,
+      notificationSoundStorageId: undefined,
+      updatedAt: Date.now(),
+    });
+    if (previous) {
+      try {
+        await ctx.storage.delete(previous);
+      } catch {
+        // Si ya no estaba, igual queda limpio el ajuste.
+      }
+    }
+    return null;
   },
 });
 

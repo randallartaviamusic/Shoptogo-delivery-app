@@ -42,6 +42,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { initials, ROLE_HOME, ROLE_LABEL } from "@/lib/format";
+import { playOrderChime, setOrderChimeUrl } from "@/lib/orderChime";
 import {
   SUBSCRIPTION_STATUS_META,
   formatExpiry,
@@ -58,6 +59,8 @@ import {
   ImageUp,
   Loader2,
   LogOut,
+  Music,
+  Play,
   RotateCcw,
   Save,
   Search,
@@ -67,6 +70,7 @@ import {
   Star,
   Store,
   Trash2,
+  Upload,
   UserRound,
   Wallet,
 } from "lucide-react";
@@ -145,6 +149,14 @@ export default function ProfilePage() {
   const headline = useQuery(api.branding.brandHeadline);
   const setBrandHeadline = useMutation(api.branding.setBrandHeadline);
   const resetBrandHeadline = useMutation(api.branding.resetBrandHeadline);
+  const notificationSound = useQuery(api.branding.notificationSound);
+  const generateNotificationSoundUploadUrl = useMutation(
+    api.branding.generateNotificationSoundUploadUrl,
+  );
+  const setNotificationSound = useMutation(api.branding.setNotificationSound);
+  const resetNotificationSound = useMutation(
+    api.branding.resetNotificationSound,
+  );
 
   // Gestión de cuentas (sólo para el perfil administrador).
   const [userSearch, setUserSearch] = useState("");
@@ -189,6 +201,8 @@ export default function ProfilePage() {
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const soundInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingSound, setUploadingSound] = useState(false);
   const [savingLogoSize, setSavingLogoSize] = useState(false);
   const [logoSizeDraft, setLogoSizeDraft] = useState(40);
 
@@ -318,6 +332,77 @@ export default function ProfilePage() {
       );
     } finally {
       setUploadingLogo(false);
+    }
+  };
+
+  const handleSoundUpload = async (file?: File | null) => {
+    if (!file) return;
+
+    // Algunos gestores de archivos de Android mandan el tipo vacío o
+    // "application/octet-stream": lo deducimos por la extensión.
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const contentType = file.type.startsWith("audio/")
+      ? file.type
+      : ({
+          mp3: "audio/mpeg",
+          wav: "audio/wav",
+          ogg: "audio/ogg",
+          m4a: "audio/mp4",
+          aac: "audio/aac",
+          opus: "audio/ogg",
+        } as Record<string, string>)[extension];
+
+    if (!contentType) {
+      toast.error("Elegí un audio (MP3, WAV, OGG o M4A)");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("El audio no puede pesar más de 2 MB");
+      return;
+    }
+
+    setUploadingSound(true);
+    try {
+      const uploadUrl = await generateNotificationSoundUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": contentType },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir el audio");
+      const { storageId } = (await response.json()) as { storageId: string };
+      const saved = await setNotificationSound({
+        storageId: storageId as Id<"_storage">,
+        name: file.name,
+      });
+      setOrderChimeUrl(saved.url);
+      toast.success("Sonido actualizado", {
+        description:
+          "Se usa en los avisos mientras la app está abierta. Con la app cerrada, Android usa el sonido del sistema.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir el audio",
+      );
+    } finally {
+      setUploadingSound(false);
+    }
+  };
+
+  const handleSoundReset = async () => {
+    setUploadingSound(true);
+    try {
+      await resetNotificationSound();
+      setOrderChimeUrl(null);
+      toast.success("Volvimos a la campanita original");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No pudimos quitar el audio",
+      );
+    } finally {
+      setUploadingSound(false);
     }
   };
 
@@ -694,6 +779,97 @@ export default function ProfilePage() {
       )}
 
       {isAdmin && <AppBrandingAdmin />}
+
+      {isAdmin && (
+        <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+          <div>
+            <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+              <ShieldCheck className="size-3.5" />
+              Perfil administrador
+            </p>
+            <h2 className="font-display text-lg font-bold">
+              Sonido de los avisos
+            </h2>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Subí el audio que suena cuando llega un pedido o una entrega con
+              la app abierta. Si no subís nada, queda la campanita original.
+            </p>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+                <Music className="size-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">
+                  {notificationSound?.name ?? "Campanita original de Shop To Go"}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {notificationSound ? "Audio personalizado" : "Sonido de fábrica"}
+                </p>
+              </div>
+            </div>
+
+            <input
+              ref={soundInputRef}
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                void handleSoundUpload(file);
+              }}
+            />
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2 border-border/80"
+                onClick={() => playOrderChime({ force: true })}
+              >
+                <Play className="size-4" /> Probar sonido
+              </Button>
+              <Button
+                type="button"
+                className="gap-2 bg-ember-gradient text-black"
+                disabled={uploadingSound}
+                onClick={() => soundInputRef.current?.click()}
+              >
+                {uploadingSound ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Upload className="size-4" />
+                )}
+                {uploadingSound
+                  ? "Subiendo"
+                  : notificationSound
+                    ? "Cambiar audio"
+                    : "Subir audio"}
+              </Button>
+              {notificationSound && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="gap-2 text-muted-foreground"
+                  disabled={uploadingSound}
+                  onClick={() => void handleSoundReset()}
+                >
+                  <Trash2 className="size-4" /> Quitar
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            MP3, WAV, OGG o M4A hasta 2 MB. El audio suena cuando la app está
+            abierta. Con la app cerrada o en segundo plano, Android usa el
+            sonido del sistema: el audio subido no puede reemplazarlo.
+          </p>
+        </section>
+      )}
 
       {isAdmin && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">

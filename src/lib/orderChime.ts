@@ -1,10 +1,11 @@
 /**
- * Campanita de pedido nuevo: una melodía juguetona de unos 5 segundos,
- * sintetizada en el navegador para no depender de un archivo de audio.
+ * Campanita de pedido nuevo. Si el administrador subió un audio propio, se
+ * reproduce ese archivo; si no, suena la melodía sintetizada de siempre.
  *
  * Suena sólo con la app abierta: cuando llega un push con la app cerrada, el
  * sistema operativo reproduce el sonido de notificación que eligió la persona
- * (los navegadores no permiten imponer un audio propio en segundo plano).
+ * (los navegadores y Android no permiten imponer un audio bajado del servidor
+ * en segundo plano).
  */
 
 type Note = {
@@ -37,6 +38,9 @@ const MELODY: Note[] = [
 
 let shared: AudioContext | null = null;
 let lastPlayedAt = 0;
+let customUrl: string | null = null;
+let customPlayer: HTMLAudioElement | null = null;
+let customPlayerUrl: string | null = null;
 
 function context(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -50,17 +54,65 @@ function context(): AudioContext | null {
 }
 
 /**
- * `force` ignora el antiduplicado: lo usa el botón "Probar sonido".
- * El antiduplicado evita que el aviso en vivo y el push suenen dos veces.
+ * La app llama a esto cuando cambia el audio del perfil administrador. Con
+ * `null` vuelve a la campanita sintetizada.
  */
-export function playOrderChime({ force = false }: { force?: boolean } = {}) {
+export function setOrderChimeUrl(url: string | null) {
+  const next = typeof url === "string" ? url.trim() || null : null;
+  if (next === customUrl) return;
+
+  customUrl = next;
+  if (customPlayer) {
+    customPlayer.pause();
+    customPlayer = null;
+    customPlayerUrl = null;
+  }
+
+  if (
+    !next ||
+    typeof window === "undefined" ||
+    typeof Audio === "undefined"
+  ) {
+    return;
+  }
+
+  // Dejamos el archivo cargado para que el primer aviso no llegue tarde.
   try {
-    if (!force && Date.now() - lastPlayedAt < 5000) return;
+    const player = new Audio(next);
+    player.preload = "auto";
+    player.load();
+    customPlayer = player;
+    customPlayerUrl = next;
+  } catch {
+    /* Si el navegador no puede con el archivo, queda la campanita. */
+  }
+}
+
+function customPlayerForUrl(): HTMLAudioElement | null {
+  if (
+    !customUrl ||
+    typeof window === "undefined" ||
+    typeof Audio === "undefined"
+  ) {
+    return null;
+  }
+  if (customPlayer && customPlayerUrl === customUrl) return customPlayer;
+  try {
+    customPlayer = new Audio(customUrl);
+    customPlayer.preload = "auto";
+    customPlayerUrl = customUrl;
+    return customPlayer;
+  } catch {
+    return null;
+  }
+}
+
+function playSynthChime() {
+  try {
     const audio = context();
     if (!audio) return;
-    lastPlayedAt = Date.now();
-
     if (audio.state === "suspended") void audio.resume();
+    lastPlayedAt = Date.now();
 
     const master = audio.createGain();
     master.gain.value = 0.55;
@@ -102,4 +154,31 @@ export function playOrderChime({ force = false }: { force?: boolean } = {}) {
   } catch {
     /* si el navegador bloquea el audio, el aviso visual sigue funcionando */
   }
+}
+
+/**
+ * `force` ignora el antiduplicado: lo usa el botón "Probar sonido".
+ * El antiduplicado evita que el aviso en vivo y el push suenen dos veces.
+ */
+export function playOrderChime({ force = false }: { force?: boolean } = {}) {
+  if (!force && Date.now() - lastPlayedAt < 5000) return;
+
+  const player = customPlayerForUrl();
+  if (player) {
+    try {
+      lastPlayedAt = Date.now();
+      player.pause();
+      player.currentTime = 0;
+      const attempt = player.play();
+      if (attempt) {
+        // Si el navegador bloquea el archivo, al menos intentamos la melodía.
+        void attempt.catch(() => playSynthChime());
+      }
+      return;
+    } catch {
+      /* seguimos con la campanita sintetizada */
+    }
+  }
+
+  playSynthChime();
 }
