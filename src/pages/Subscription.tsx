@@ -366,6 +366,11 @@ export default function SubscriptionPage() {
                     </span>
                   </p>
                   <p className="text-[11px] text-muted-foreground">{option.tagline}</p>
+                  {option.note && (
+                    <p className="mt-2.5 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[10.5px] leading-relaxed text-muted-foreground">
+                      {option.note}
+                    </p>
+                  )}
                   <ul className="mt-3 space-y-1.5">
                     {option.benefits[data.role].map((benefit) => (
                       <li key={benefit} className="flex gap-1.5 text-[11px] leading-relaxed">

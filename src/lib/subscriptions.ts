@@ -25,6 +25,8 @@ export type SubscriptionPlan = {
   name: string;
   price: number;
   tagline: string;
+  /** Mensaje destacado del plan, por ejemplo el aporte simbólico del Básico. */
+  note?: string;
   benefits: Record<SubscriptionAudience, string[]>;
 };
 
@@ -34,7 +36,8 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlan> = 
     id: "basico",
     name: "Básico",
     price: 5000,
-    tagline: "Lo esencial para operar",
+    tagline: "Casi gratis: lo esencial para operar",
+    note: "Los ₡5.000 al mes no son un cobro por usar la app: son un aporte simbólico para mantener la plataforma en funcionamiento. Cubren la administración, el mantenimiento, el marketing que te trae clientes y el salario de los colaboradores que te atienden cada día. Por menos de ₡170 al día, tenés tu negocio vendiendo las 24 horas.",
     benefits: {
       business: [
         "Catálogo visible en el mazo",
