@@ -6,8 +6,10 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   businessHourValidator,
   geoPointValidator,
+  productOptionGroupValidator,
   promoKindValidator,
 } from "./schema";
+import { normalizeOptionGroups } from "../lib/productOptions";
 import { planTier } from "../lib/subscriptions";
 import { normalizeSinpeNumber } from "../lib/sinpe";
 import {
@@ -804,6 +806,7 @@ export const addProduct = mutation({
     attributes: v.optional(
       v.array(v.object({ key: v.string(), value: v.string() })),
     ),
+    optionGroups: v.optional(v.array(productOptionGroupValidator)),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -835,6 +838,9 @@ export const addProduct = mutation({
       ...(video ? { video } : {}),
       category: args.category.trim() || "General",
       attributes: args.attributes ?? [],
+      ...(normalizeOptionGroups(args.optionGroups).length > 0
+        ? { optionGroups: normalizeOptionGroups(args.optionGroups) }
+        : {}),
       tags: args.tags ?? [],
       isAvailable: true,
       sortOrder: Date.now(),
@@ -858,6 +864,7 @@ export const updateProduct = mutation({
     attributes: v.optional(
       v.array(v.object({ key: v.string(), value: v.string() })),
     ),
+    optionGroups: v.optional(v.array(productOptionGroupValidator)),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -886,6 +893,10 @@ export const updateProduct = mutation({
     }
     if (args.isAvailable !== undefined) patch.isAvailable = args.isAvailable;
     if (args.attributes !== undefined) patch.attributes = args.attributes;
+    if (args.optionGroups !== undefined) {
+      const groups = normalizeOptionGroups(args.optionGroups);
+      patch.optionGroups = groups.length > 0 ? groups : undefined;
+    }
 
     await ctx.db.patch(args.productId, patch);
     return null;
@@ -922,6 +933,9 @@ export const duplicateProduct = mutation({
       ...(video ? { video } : {}),
       category: product.category,
       attributes: product.attributes,
+      ...(product.optionGroups?.length
+        ? { optionGroups: product.optionGroups }
+        : {}),
       tags: product.tags,
       isAvailable: product.isAvailable,
       sortOrder: Date.now(),

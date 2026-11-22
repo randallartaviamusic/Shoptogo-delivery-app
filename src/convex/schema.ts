@@ -163,6 +163,36 @@ export const couponKindValidator = v.union(
 );
 export type CouponKind = Infer<typeof couponKindValidator>;
 
+/** Opciones que el negocio agrega al producto (sabor, acompañamientos...). */
+export const productOptionValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  // Colones extra; 0 significa sin costo adicional.
+  price: v.number(),
+  defaultSelected: v.optional(v.boolean()),
+});
+
+export const productOptionGroupValidator = v.object({
+  id: v.string(),
+  name: v.string(),
+  kind: v.union(v.literal("single"), v.literal("multi")),
+  required: v.boolean(),
+  options: v.array(productOptionValidator),
+});
+
+export const productOptionChoiceValidator = v.object({
+  groupId: v.string(),
+  optionId: v.string(),
+});
+
+export const selectedProductOptionValidator = v.object({
+  groupId: v.string(),
+  groupName: v.string(),
+  optionId: v.string(),
+  optionName: v.string(),
+  price: v.number(),
+});
+
 export const deliveryProofValidator = v.object({
   storageId: v.id("_storage"),
   url: v.string(),
@@ -216,6 +246,8 @@ export const orderItemValidator = v.object({
   price: v.number(),
   quantity: v.number(),
   image: v.string(),
+  // Foto de las opciones elegidas al comprar (sabor, acompañamientos...).
+  options: v.optional(v.array(selectedProductOptionValidator)),
 });
 
 const schema = defineSchema(
@@ -346,6 +378,8 @@ const schema = defineSchema(
       video: v.optional(v.string()),
       category: v.string(),
       attributes: v.array(v.object({ key: v.string(), value: v.string() })),
+      // Grupos de opciones que el comprador elige al agregar el producto.
+      optionGroups: v.optional(v.array(productOptionGroupValidator)),
       tags: v.array(v.string()),
       isAvailable: v.boolean(),
       // Posición manual en el catálogo del local (menor primero). Los
@@ -370,10 +404,16 @@ const schema = defineSchema(
       productId: v.id("products"),
       businessId: v.id("businesses"),
       quantity: v.number(),
+      // Variante elegida: dos hamburguesas con acompañamientos distintos son
+      // dos líneas separadas del carrito.
+      options: v.optional(v.array(selectedProductOptionValidator)),
+      optionPrice: v.optional(v.number()),
+      selectionKey: v.optional(v.string()),
       addedAt: v.number(),
     })
       .index("by_user", ["userId"])
-      .index("by_user_product", ["userId", "productId"]),
+      .index("by_user_product", ["userId", "productId"])
+      .index("by_user_selection", ["userId", "productId", "selectionKey"]),
 
     orders: defineTable({
       code: v.string(),

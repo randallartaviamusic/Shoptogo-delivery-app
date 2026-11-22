@@ -39,7 +39,7 @@ export default function OnboardingPage() {
   const [form, setForm] = useState({
     name: "",
     department: "comida",
-    category: "Hamburguesas",
+    category: "Comida rápida",
     tagline: "",
     address: user?.address ?? "",
     location: null as { lat: number; lng: number } | null,

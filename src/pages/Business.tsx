@@ -237,7 +237,7 @@ export default function BusinessPage() {
     name: "",
     description: "",
     price: "",
-    category: "Hamburguesas",
+    category: "Comida rápida",
     image: "",
     video: "",
     attributes: {} as Record<string, string>,

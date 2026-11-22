@@ -51,16 +51,23 @@ function foodTipo(category: string) {
  * comida rápida, por ejemplo).
  */
 const CUISINE_BY_CATEGORY: Record<string, string> = {
-  Hamburguesas: "Comida rápida",
-  "Pollo frito": "Comida rápida",
+  "Comida rápida": "Comida rápida",
+  Pollo: "Comida rápida",
   Pizza: "Comida italiana",
-  Pasta: "Comida italiana",
+  Pastas: "Comida italiana",
   Sushi: "Comida japonesa",
-  Asiática: "Comida japonesa",
-  Mexicana: "Comida mexicana",
+  "Comida japonesa": "Comida japonesa",
+  "Comida asiática": "Comida japonesa",
+  "Comida mexicana": "Comida mexicana",
+  "Comida peruana": "Comida peruana",
+  "Comida caribeña": "Comida caribeña",
+  "Comida típica": "Comida típica",
+  "Comida tradicional": "Comida casera o tradicional",
+  "Comida casera": "Comida casera o tradicional",
+  "Comida gourmet": "Comida gourmet",
+  "Comida saludable": "Comida casera o tradicional",
   Postres: "Otra",
   Café: "Otra",
-  Saludable: "Comida casera o tradicional",
 };
 
 function cuisineFor(category: string) {
@@ -120,7 +127,7 @@ const catalog: SeedBusiness[] = [
   {
     name: "Brasa Negra",
     slug: "brasa-negra",
-    category: "Hamburguesas",
+    category: "Comida rápida",
     tagline: "Carne al carbón, pan brioche y cero culpa",
     image: img("photo-1568901346375-23c9450c58cd"),
     address: "Av. Corrientes 1520, CABA",
@@ -135,7 +142,7 @@ const catalog: SeedBusiness[] = [
           "Dos medallones de 120g al carbón, cheddar añejo, cebolla caramelizada y mayo de carbón.",
         price: 12500,
         image: img("photo-1568901346375-23c9450c58cd"),
-        category: "Hamburguesas",
+        category: "Comida rápida",
         tags: ["Más pedido", "Doble carne"],
       },
       {
@@ -144,7 +151,7 @@ const catalog: SeedBusiness[] = [
           "Pollo crujiente bañado en salsa picante de la casa, lechuga iceberg y pepinillos.",
         price: 10900,
         image: img("photo-1562967914-608f82629710"),
-        category: "Hamburguesas",
+        category: "Comida rápida",
         tags: ["Picante", "Crujiente"],
       },
       {
@@ -335,7 +342,7 @@ const catalog: SeedBusiness[] = [
   {
     name: "Umami Ramen",
     slug: "umami-ramen",
-    category: "Asiática",
+    category: "Comida asiática",
     tagline: "Caldos que se cocinan mientras dormís",
     image: img("photo-1569718212165-3a8278d5f624"),
     address: "Junín 940, Recoleta",
@@ -442,7 +449,7 @@ const catalog: SeedBusiness[] = [
   {
     name: "Verde Vivo",
     slug: "verde-vivo",
-    category: "Saludable",
+    category: "Comida saludable",
     tagline: "Bowls que te dejan liviano y con energía",
     image: img("photo-1512621776951-a57141f2eefd"),
     address: "Billinghurst 1345, Palermo",
@@ -540,7 +547,7 @@ const catalog: SeedBusiness[] = [
   {
     name: "Pollo Bravo",
     slug: "pollo-bravo",
-    category: "Pollo frito",
+    category: "Pollo",
     tagline: "Crochet que se escucha cuando repartimos",
     image: img("photo-1562967914-608f82629710"),
     address: "Rivadavia 4820, Caballito",
