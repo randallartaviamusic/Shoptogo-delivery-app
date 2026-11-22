@@ -11,6 +11,7 @@ import { ProductImageUpload } from "@/components/ProductImageUpload";
 import { ProductOptionsEditor } from "@/components/ProductOptionsEditor";
 import { ProductMedia } from "@/components/ProductMedia";
 import { ProductVideoUpload } from "@/components/ProductVideoUpload";
+import { StoryUpload } from "@/components/StoryUpload";
 import { PromoBadge } from "@/components/PromoBadge";
 import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
 import { StatusPill, type OrderView } from "@/pages/Orders";
@@ -106,6 +107,7 @@ const TABS = [
   { key: "orders", label: "Pedidos", to: "/business?tab=orders" },
   { key: "couriers", label: "Repartidores", to: "/business?tab=couriers" },
   { key: "menu", label: "Productos", to: "/business?tab=menu" },
+  { key: "stories", label: "Historias", to: "/business?tab=stories" },
 ];
 
 function StatCard({
@@ -351,6 +353,9 @@ export default function BusinessPage() {
   // La subida de video se habilita sola cuando el plan Élite está vigente.
   const eliteVideoEnabled =
     subscription?.plan === "elite" && subscription?.hasAccess === true;
+  const proStoriesEnabled =
+    subscription?.hasAccess === true &&
+    (subscription?.plan === "pro" || subscription?.plan === "elite");
 
   const handleStatus = async (
     orderId: string,
@@ -1878,6 +1883,21 @@ export default function BusinessPage() {
               );
             })
           )}
+        </motion.div>
+      )}
+
+      {tab === "stories" && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">
+              Fotos y videos de 24 horas, igual que en Instagram.
+            </p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Aparecen arriba de “Todos los negocios” para las cuentas de
+              comprador.
+            </p>
+          </div>
+          <StoryUpload enabled={proStoriesEnabled} />
         </motion.div>
       )}
 

@@ -32,6 +32,7 @@ import type * as pushNode from "../pushNode.js";
 import type * as reviews from "../reviews.js";
 import type * as seed from "../seed.js";
 import type * as seedVerticals from "../seedVerticals.js";
+import type * as stories from "../stories.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as support from "../support.js";
 import type * as trust from "../trust.js";
@@ -69,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   reviews: typeof reviews;
   seed: typeof seed;
   seedVerticals: typeof seedVerticals;
+  stories: typeof stories;
   subscriptions: typeof subscriptions;
   support: typeof support;
   trust: typeof trust;

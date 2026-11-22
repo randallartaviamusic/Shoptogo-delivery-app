@@ -59,6 +59,7 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlan> = 
       business: [
         "Todo lo del plan Básico",
         "Local destacado en el directorio y el mazo",
+        "Publicación de historias tipo Instagram",
         "Estadísticas de ventas y gasto promocional",
         "Soporte por WhatsApp",
       ],
@@ -79,6 +80,7 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlan> = 
       business: [
         "Todo lo del plan Pro",
         "Tarjetas animadas y borde dorado en el directorio y el mazo",
+        "Videos de productos",
         "Soporte prioritario por WhatsApp",
         "Revisión prioritaria de reclamos de efectivo",
       ],

@@ -390,6 +390,20 @@ const schema = defineSchema(
       .index("by_business", ["businessId"])
       .index("by_department", ["department"]),
 
+    // Historias de 24 horas de cada local (foto o video). Sólo las publican
+    // los negocios con plan Pro o Élite vigente.
+    businessStories: defineTable({
+      businessId: v.id("businesses"),
+      kind: v.union(v.literal("image"), v.literal("video")),
+      url: v.string(),
+      storageId: v.optional(v.id("_storage")),
+      caption: v.optional(v.string()),
+      createdAt: v.number(),
+      expiresAt: v.number(),
+    })
+      .index("by_business", ["businessId"])
+      .index("by_expiry", ["expiresAt"]),
+
     swipes: defineTable({
       userId: v.id("users"),
       productId: v.id("products"),

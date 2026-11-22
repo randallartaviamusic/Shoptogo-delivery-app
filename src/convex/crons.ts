@@ -66,6 +66,14 @@ crons.interval(
   {},
 );
 
+// Las historias duran 24 horas: se podan a diario con sus archivos.
+crons.daily(
+  "podar historias vencidas",
+  { hourUTC: 9, minuteUTC: 5 },
+  internal.stories.pruneExpired,
+  {},
+);
+
 // La bandeja de avisos se poda a los 30 días: sirve para revisar un reclamo,
 // no para guardar mensajes para siempre.
 crons.daily(

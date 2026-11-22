@@ -8,6 +8,7 @@ import { PromoBadge } from "@/components/PromoBadge";
 import { promoDiscount } from "@/lib/promo";
 import type { PromoKind } from "@/lib/promo";
 import { LoopRow } from "@/components/LoopRow";
+import { StoriesTray } from "@/components/BusinessStories";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -84,6 +85,12 @@ function Directory() {
   const [maxMinutes, setMaxMinutes] = useState("");
   const [openOnly, setOpenOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const showStories =
+    user?.role === "buyer" && user?.isAnonymous !== true;
+  const storiesFeed = useQuery(
+    api.stories.feed,
+    showStories ? {} : "skip",
+  );
 
   const rows = directory ?? [];
   const term = normalize(search.trim());
@@ -258,6 +265,10 @@ function Directory() {
           </div>
         }
       />
+
+      {showStories && storiesFeed && storiesFeed.length > 0 && (
+        <StoriesTray groups={storiesFeed} />
+      )}
 
       <div className="relative mb-4">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
