@@ -29,6 +29,15 @@ crons.interval(
   { limit: 20 },
 );
 
+// Difusión para compradores: el ciclo 3-5-2-4-1 horas alterna anuncios
+// creativos con un producto destacado al azar. Revisa cada hora si toca.
+crons.interval(
+  "avisos creativos para compradores",
+  { hours: 1 },
+  internal.marketing.tickMarketing,
+  {},
+);
+
 // Recordatorio de pago: una semana antes del vencimiento se escribe al
 // WhatsApp del negocio o repartidor. El cron revisa cada hora para no perder
 // la ventana y no repetir el aviso del mismo período.

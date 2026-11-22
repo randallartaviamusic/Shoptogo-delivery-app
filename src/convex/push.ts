@@ -74,6 +74,32 @@ export const writeVapid = internalMutation({
   },
 });
 
+/** Teléfonos de compradores con avisos activados para la difusión de la plataforma. */
+export const buyerPushTargets = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const buyers = await ctx.db
+      .query("users")
+      .withIndex("by_role", (q) => q.eq("role", "buyer"))
+      .collect();
+    const buyerIds = new Set(
+      buyers
+        .filter((user) => user.isAnonymous !== true)
+        .map((user) => user._id),
+    );
+    const [subscriptions, devices] = await Promise.all([
+      ctx.db.query("pushSubscriptions").collect(),
+      ctx.db.query("pushDevices").collect(),
+    ]);
+    return {
+      subscriptions: subscriptions.filter((subscription) =>
+        buyerIds.has(subscription.userId),
+      ),
+      devices: devices.filter((device) => buyerIds.has(device.userId)),
+    };
+  },
+});
+
 /** Dispositivos que deben recibir el aviso de esta cuenta. */
 export const subscriptionsForUser = internalQuery({
   args: { userId: v.id("users") },

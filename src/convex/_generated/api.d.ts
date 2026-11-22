@@ -21,6 +21,8 @@ import type * as couriers from "../couriers.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as maps from "../maps.js";
+import type * as marketing from "../marketing.js";
+import type * as marketingState from "../marketingState.js";
 import type * as notifications from "../notifications.js";
 import type * as orders from "../orders.js";
 import type * as paymentWebhook from "../paymentWebhook.js";
@@ -56,6 +58,8 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   http: typeof http;
   maps: typeof maps;
+  marketing: typeof marketing;
+  marketingState: typeof marketingState;
   notifications: typeof notifications;
   orders: typeof orders;
   paymentWebhook: typeof paymentWebhook;

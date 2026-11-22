@@ -1,5 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -845,6 +846,9 @@ export const addProduct = mutation({
       tags: args.tags ?? [],
       isAvailable: true,
       sortOrder: Date.now(),
+    });
+    await ctx.scheduler.runAfter(0, internal.marketing.announceNewProduct, {
+      productId,
     });
     return { productId };
   },

@@ -41,6 +41,18 @@ type AlertArgs = {
   url?: string;
   tag?: string;
 };
+
+type BroadcastArgs = {
+  title: string;
+  body: string;
+  url?: string;
+  tag?: string;
+};
+
+type BuyerBroadcastResult = DeliverySummary & {
+  configured: boolean;
+  recipients: { subscriptions: number; devices: number };
+};
 type DeliverySummary = { sent: number; dropped: number; failed: number };
 type AlertResult = DeliverySummary & {
   error?: string;
@@ -179,7 +191,7 @@ async function fcmAccessToken(account: FcmAccount) {
 async function sendFcmMessage(
   account: FcmAccount,
   deviceToken: string,
-  args: AlertArgs,
+  args: BroadcastArgs,
 ) {
   const payload = {
     message: {
@@ -233,7 +245,7 @@ async function sendFcmMessage(
 /** Envía a todos los equipos Web Push de la cuenta. */
 async function sendWebAlert(
   ctx: ActionCtx,
-  args: AlertArgs,
+  args: BroadcastArgs,
   subscriptions: Doc<"pushSubscriptions">[],
 ): Promise<DeliverySummary> {
   if (subscriptions.length === 0) {
@@ -303,7 +315,7 @@ async function sendWebAlert(
 /** Envía a los teléfonos Android registrados por Firebase. */
 async function sendNativeAlert(
   ctx: ActionCtx,
-  args: AlertArgs,
+  args: BroadcastArgs,
   devices: Doc<"pushDevices">[],
 ): Promise<DeliverySummary & { configured: boolean }> {
   if (devices.length === 0) {
@@ -361,6 +373,54 @@ async function sendNativeAlert(
 
   return { configured: true, sent, dropped, failed };
 }
+
+/**
+ * Difusión de la plataforma a todos los compradores con avisos activados.
+ * Se usa para anuncios creativos, productos nuevos y el producto destacado.
+ */
+export const sendBuyerBroadcast = internalAction({
+  args: {
+    title: v.string(),
+    body: v.string(),
+    url: v.optional(v.string()),
+    tag: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<BuyerBroadcastResult> => {
+    const targets = await ctx.runQuery(internal.push.buyerPushTargets, {});
+    const [web, native] = await Promise.all([
+      sendWebAlert(ctx, args, targets.subscriptions).catch(
+        (error): DeliverySummary & { error?: string } => ({
+          sent: 0,
+          dropped: 0,
+          failed: targets.subscriptions.length,
+          error: error instanceof Error ? error.message : "Error de Web Push",
+        }),
+      ),
+      sendNativeAlert(ctx, args, targets.devices).catch(
+        (
+          error,
+        ): DeliverySummary & { configured: boolean; error?: string } => ({
+          configured: fcmAccount() !== null,
+          sent: 0,
+          dropped: 0,
+          failed: targets.devices.length,
+          error: error instanceof Error ? error.message : "Error de FCM",
+        }),
+      ),
+    ]);
+
+    return {
+      sent: web.sent + native.sent,
+      dropped: web.dropped + native.dropped,
+      failed: web.failed + native.failed,
+      configured: native.configured,
+      recipients: {
+        subscriptions: targets.subscriptions.length,
+        devices: targets.devices.length,
+      },
+    };
+  },
+});
 
 /**
  * Manda el aviso a todos los equipos de la cuenta. Nunca lanza: si un
