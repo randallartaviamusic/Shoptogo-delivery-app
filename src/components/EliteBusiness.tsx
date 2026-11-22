@@ -45,6 +45,8 @@ export function FlashCountdown({
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [endsAt]);
+  // Vencida: se oculta en vez de mostrar "Terminó" en las tarjetas.
+  if (endsAt - now <= 0) return null;
   return (
     <span className={cn("tabular-nums", className)}>
       {remainingText(endsAt, now)}
