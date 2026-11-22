@@ -2469,14 +2469,14 @@ export default function BusinessPage() {
       </Dialog>
 
       <Dialog open={settingsDialog} onOpenChange={setSettingsDialog}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto border-border/80 bg-card sm:max-w-md">
+        <DialogContent className="phone-dialog max-h-[88vh] overflow-y-auto border-border/80 bg-card [&>*]:min-w-0">
           <DialogHeader>
             <DialogTitle className="font-display">Ajustes de la tienda</DialogTitle>
             <DialogDescription>
               Estos datos y la promoción de envío se muestran en todo tu catálogo.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSettingsSubmit} className="space-y-3.5">
+          <form onSubmit={handleSettingsSubmit} className="min-w-0 w-full max-w-full space-y-3.5 overflow-x-clip">
             <div className="space-y-1.5">
               <Label htmlFor="settings-name">Nombre</Label>
               <Input
