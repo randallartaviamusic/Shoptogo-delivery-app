@@ -60,6 +60,12 @@ const GROUP_PRESETS: Array<{
     required: false,
   },
   {
+    label: "Elegir salsas",
+    name: "Elegir salsas",
+    kind: "multi",
+    required: false,
+  },
+  {
     label: "Elegir bebida",
     name: "Elegir bebida",
     kind: "single",
@@ -136,9 +142,9 @@ export function ProductOptionsEditor({
             Opciones para el comprador
           </p>
           <p className="mt-1 max-w-md text-[10px] leading-relaxed text-muted-foreground">
-            Sabor, tipo o bebida: elige una. Acompañamientos o ingredientes:
-            puede elegir varios. Si una opción cuesta más, escribí el extra; si
-            es gratis, dejá 0.
+            Sabor, tipo o bebida: elige una. Acompañamientos, ingredientes o
+            salsas: puede elegir varios. Si una opción cuesta más, escribí el
+            extra; si es gratis, dejá 0.
           </p>
         </div>
         <Button
@@ -179,7 +185,7 @@ export function ProductOptionsEditor({
           <p className="text-xs font-semibold">Este producto no tiene opciones</p>
           <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
             Agregá un grupo si querés que el comprador elija sabor,
-            acompañamientos, ingredientes o una bebida.
+            acompañamientos, ingredientes, salsas o una bebida.
           </p>
         </div>
       )}
