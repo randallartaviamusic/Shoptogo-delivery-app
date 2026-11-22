@@ -53,6 +53,8 @@ export const DEPARTMENTS: Department[] = [
       "Platos al azar de los mejores locales de tu ciudad. Deslizá y armá tu pedido.",
     subcategories: [
       "Comida rápida",
+      "Snacks",
+      "Botanas",
       "Comida típica",
       "Comida tradicional",
       "Comida casera",

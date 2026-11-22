@@ -30,15 +30,42 @@ function newOption(): ProductOption {
   return { id: newId("op"), name: "", price: 0 };
 }
 
-function newGroup(): ProductOptionGroup {
+function newGroup(index: number): ProductOptionGroup {
   return {
     id: newId("grupo"),
-    name: "Sabor",
+    name: `Grupo ${index + 1}`,
     kind: "single",
     required: true,
     options: [newOption()],
   };
 }
+
+const GROUP_PRESETS: Array<{
+  label: string;
+  name: string;
+  kind: ProductOptionGroup["kind"];
+  required: boolean;
+}> = [
+  { label: "Sabor o tipo", name: "Sabor", kind: "single", required: true },
+  {
+    label: "Acompañamientos",
+    name: "Acompañamientos",
+    kind: "multi",
+    required: false,
+  },
+  {
+    label: "Ingredientes",
+    name: "Ingredientes",
+    kind: "multi",
+    required: false,
+  },
+  {
+    label: "Elegir bebida",
+    name: "Elegir bebida",
+    kind: "single",
+    required: true,
+  },
+];
 
 /**
  * Opciones del producto: sabor/tipo (elige una), acompañamientos o
@@ -62,6 +89,24 @@ export function ProductOptionsEditor({
       ),
     );
   };
+
+  const addPreset = (preset: (typeof GROUP_PRESETS)[number]) => {
+    onChange([
+      ...groups,
+      {
+        id: newId("grupo"),
+        name: preset.name,
+        kind: preset.kind,
+        required: preset.required,
+        options: [newOption()],
+      },
+    ]);
+  };
+
+  const hasGroup = (name: string) =>
+    groups.some(
+      (group) => group.name.trim().toLowerCase() === name.toLowerCase(),
+    );
 
   const updateOption = (
     groupId: string,
@@ -91,9 +136,9 @@ export function ProductOptionsEditor({
             Opciones para el comprador
           </p>
           <p className="mt-1 max-w-md text-[10px] leading-relaxed text-muted-foreground">
-            Sabor o tipo: elige una. Acompañamientos o ingredientes: puede
-            elegir varios. Si una opción cuesta más, escribí el extra; si es
-            gratis, dejá 0.
+            Sabor, tipo o bebida: elige una. Acompañamientos o ingredientes:
+            puede elegir varios. Si una opción cuesta más, escribí el extra; si
+            es gratis, dejá 0.
           </p>
         </div>
         <Button
@@ -102,10 +147,31 @@ export function ProductOptionsEditor({
           variant="outline"
           className="h-8 gap-1 border-border/80 text-[11px]"
           disabled={groups.length >= MAX_GROUPS}
-          onClick={() => onChange([...groups, newGroup()])}
+          onClick={() => onChange([...groups, newGroup(groups.length)])}
         >
           <Plus className="size-3.5" /> Agregar grupo
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Atajos
+        </span>
+        {GROUP_PRESETS.map((preset) => (
+          <Button
+            key={preset.name}
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 border-border/80 px-2 text-[10px]"
+            disabled={
+              groups.length >= MAX_GROUPS || hasGroup(preset.name)
+            }
+            onClick={() => addPreset(preset)}
+          >
+            <Plus className="size-3" /> {preset.label}
+          </Button>
+        ))}
       </div>
 
       {groups.length === 0 && (
@@ -113,7 +179,7 @@ export function ProductOptionsEditor({
           <p className="text-xs font-semibold">Este producto no tiene opciones</p>
           <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
             Agregá un grupo si querés que el comprador elija sabor,
-            acompañamientos o qué ingredientes lleva.
+            acompañamientos, ingredientes o una bebida.
           </p>
         </div>
       )}
