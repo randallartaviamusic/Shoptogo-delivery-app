@@ -4,6 +4,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
+  fulfillmentMethodValidator,
   geoPointValidator,
   productOptionChoiceValidator,
 } from "./schema";
@@ -23,6 +24,7 @@ import { money } from "../lib/format";
 import { normalizePhone } from "../lib/notify";
 import { normalizeSinpeNumber } from "../lib/sinpe";
 import { scheduleBlocker } from "../lib/scheduling";
+import { fulfillmentNotice } from "../lib/fulfillment";
 import { discountFor, findCoupon } from "./coupons";
 import { queueNotice } from "./notifications";
 import { internal } from "./_generated/api";
@@ -95,8 +97,10 @@ async function buildCart(
   ctx: DbCtx,
   userId: Id<"users">,
   couponCode?: string | null,
+  fulfillment?: "dine_in" | "pickup" | "delivery" | "reservation",
 ) {
   const buyer = await ctx.db.get(userId);
+  const needsDelivery = (fulfillment ?? "delivery") === "delivery";
   const dropoff = isValidPoint(buyer?.location) ? buyer.location : null;
   const cartItems = await ctx.db
     .query("cartItems")
@@ -117,7 +121,8 @@ async function buildCart(
 
     let group = byBusiness.get(item.businessId);
     if (!group) {
-      const quote = deliveryQuote(business.location, dropoff);
+      // Sin entrega a domicilio no hay envío: el comprador pasa por el local.
+      const quote = needsDelivery ? deliveryQuote(business.location, dropoff) : null;
       // La promoción es del local y se elige en los ajustes de su tienda.
       const promoKind = business.deliveryPromo ?? null;
       group = {
@@ -134,7 +139,7 @@ async function buildCart(
         feeFrom: DELIVERY_RULES.baseFee,
         distanceKm: quote?.distanceKm ?? null,
         deliveryMinutes: quote?.minutes ?? null,
-        deliveryAvailable: quote !== null || dropoff === null,
+        deliveryAvailable: !needsDelivery || quote !== null || dropoff === null,
         etaMinutes: business.etaMinutes,
         isOpen: business.isOpen,
         rating: business.rating,
@@ -254,7 +259,7 @@ async function buildCart(
     groups,
     trips,
     count,
-    deliveryBatches: Math.max(trips.length, dropoff ? 1 : 0),
+    deliveryBatches: needsDelivery ? Math.max(trips.length, dropoff ? 1 : 0) : 0,
     subtotal,
     deliveryTotal,
     deliverySaved: discountTotal,
@@ -273,7 +278,10 @@ async function buildCart(
 }
 
 export const myCart = query({
-  args: { couponCode: v.optional(v.string()) },
+  args: {
+    couponCode: v.optional(v.string()),
+    fulfillmentMethod: v.optional(fulfillmentMethodValidator),
+  },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
@@ -291,7 +299,7 @@ export const myCart = query({
         total: 0,
       };
     }
-    return await buildCart(ctx, userId, args.couponCode);
+    return await buildCart(ctx, userId, args.couponCode, args.fulfillmentMethod);
   },
 });
 
@@ -405,7 +413,10 @@ export const clear = mutation({
 export const checkout = mutation({
   args: {
     address: v.string(),
-    location: geoPointValidator,
+    location: v.optional(geoPointValidator),
+    // Cómo recibe el comprador su pedido. Sin entrega a domicilio no hay
+    // envío ni punto en el mapa: el comprador pasa por el local.
+    fulfillmentMethod: v.optional(fulfillmentMethodValidator),
     notes: v.optional(v.string()),
     // El cliente prefiere que el mismo repartidor haga todas las entregas.
     sameCourier: v.optional(v.boolean()),
@@ -450,14 +461,20 @@ export const checkout = mutation({
       }
     }
 
-    const address = args.address.trim();
-    if (address.length < 6) {
-      throw new Error("Necesitamos una dirección de entrega válida");
+    const fulfillment = args.fulfillmentMethod ?? "delivery";
+    const needsDelivery = fulfillment === "delivery";
+    const address = (args.address ?? "").trim();
+    if (needsDelivery) {
+      if (address.length < 6) {
+        throw new Error("Necesitamos una dirección de entrega válida");
+      }
+      if (!isValidPoint(args.location)) {
+        throw new Error("Marcá en el mapa el punto donde querés recibir el pedido");
+      }
     }
-    if (!isValidPoint(args.location)) {
-      throw new Error("Marcá en el mapa el punto donde querés recibir el pedido");
-    }
-    const dropoff = normalizePoint(args.location);
+    const dropoff = isValidPoint(args.location)
+      ? normalizePoint(args.location)
+      : null;
     const paymentMethod = args.paymentMethod === "sinpe" ? "sinpe" : "cash";
     const scheduledFor = args.scheduledFor
       ? Math.round(args.scheduledFor)
@@ -465,6 +482,10 @@ export const checkout = mutation({
     if (scheduledFor !== null) {
       const blocker = scheduleBlocker(scheduledFor);
       if (blocker) throw new Error(blocker);
+    }
+    // La reserva es con fecha y hora exacta: sin ese dato no se puede pedir.
+    if (fulfillment === "reservation" && scheduledFor === null) {
+      throw new Error("Elegí la fecha y hora exacta de tu reserva");
     }
 
     const cartItems = await ctx.db
@@ -521,6 +542,7 @@ export const checkout = mutation({
       {
         id: Id<"businesses">;
         name: string;
+        address: string;
         ownerId: Id<"users"> | null;
         fee: number;
         distanceKm: number;
@@ -533,6 +555,29 @@ export const checkout = mutation({
     for (const businessId of businessIds) {
       const business = await ctx.db.get(businessId);
       if (!business) continue;
+      // Sin entrega a domicilio el comprador pasa por el local: no hay
+      // envío, distancia ni zona de reparto que validar.
+      if (!needsDelivery) {
+        const sinpePhone = normalizeSinpeNumber(business.sinpePhone);
+        const whatsappPhone = normalizeSinpeNumber(business.whatsappPhone);
+        if (paymentMethod === "sinpe" && (!sinpePhone || !whatsappPhone)) {
+          throw new Error(
+            `${business.name} todavía no configuró su cobro por SINPE. Elegí efectivo o quitá sus productos.`,
+          );
+        }
+        stores.set(businessId, {
+          id: businessId,
+          name: business.name,
+          address: business.address,
+          ownerId: business.ownerId ?? null,
+          fee: 0,
+          distanceKm: 0,
+          promoKind: business.deliveryPromo ?? null,
+          sinpePhone,
+          whatsappPhone,
+        });
+        continue;
+      }
       if (!business.location) {
         throw new Error(
           `${business.name} todavía no fijó su ubicación en el mapa. Probá más tarde.`,
@@ -554,6 +599,7 @@ export const checkout = mutation({
       stores.set(businessId, {
         id: businessId,
         name: business.name,
+        address: business.address,
         ownerId: business.ownerId ?? null,
         fee: quote.fee,
         distanceKm: quote.distanceKm,
@@ -685,6 +731,7 @@ export const checkout = mutation({
             ? `-${trip.index}${tripStops > 1 ? String.fromCharCode(65 + position) : ""}`
             : "";
 
+        const orderAddress = needsDelivery ? address : address || store.address;
         const orderId = await ctx.db.insert("orders", {
           code: `${groupCode}${suffix}`,
           groupCode,
@@ -694,7 +741,8 @@ export const checkout = mutation({
           tripPosition: position,
           pickupCode,
           deliveryPin,
-          sameCourier: args.sameCourier ?? false,
+          fulfillment,
+          sameCourier: needsDelivery ? (args.sameCourier ?? false) : false,
           buyerId: userId,
           businessId: store.id,
           items,
@@ -712,8 +760,8 @@ export const checkout = mutation({
             paymentMethod === "sinpe"
               ? store.whatsappPhone ?? undefined
               : undefined,
-          address,
-          deliveryLocation: dropoff,
+          address: orderAddress,
+          deliveryLocation: dropoff ?? undefined,
           distanceKm: store.distanceKm,
           notes: args.notes?.trim() || undefined,
           requestKey: requestKey ?? undefined,
@@ -758,7 +806,7 @@ export const checkout = mutation({
               itemCount,
               businessAmount,
               paidBySinpe: paymentMethod === "sinpe",
-              dropAddress: address,
+              dropAddress: orderAddress,
             },
           });
 
@@ -769,7 +817,7 @@ export const checkout = mutation({
             title: "¡Pedido nuevo! 🎉",
             body: `${groupCode}${suffix}: ${itemCount} ${
               itemCount === 1 ? "producto" : "productos"
-            } por ${money(businessAmount)}. Entrega en ${address}.`,
+            } por ${money(businessAmount)}. ${fulfillmentNotice(fulfillment, orderAddress)}.`,
             url: "/business?tab=orders",
             tag: `order-${orderId}`,
           });
@@ -787,7 +835,11 @@ export const checkout = mutation({
       }
     }
     for (const item of cartItems) await ctx.db.delete(item._id);
-    await ctx.db.patch(userId, { address, location: dropoff });
+    // La dirección y el punto se guardan sólo con entrega a domicilio: en
+    // las demás modalidades el comprador pasa por el local.
+    if (needsDelivery && dropoff) {
+      await ctx.db.patch(userId, { address, location: dropoff });
+    }
 
     return { created: trips.length, orders: created, total, replayed: false };
   },

@@ -66,6 +66,7 @@ import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/f
 import { ASSIGNMENT_RULES } from "@/lib/delivery";
 import { formatSinpeNumber, normalizeSinpeNumber } from "@/lib/sinpe";
 import { FlashCountdown } from "@/components/EliteBusiness";
+import { fulfillmentLabel } from "@/lib/fulfillment";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
 import type { DeliveryPromo } from "@/lib/promo";
 import { cn } from "@/lib/utils";
@@ -368,7 +369,7 @@ export default function BusinessPage() {
 
   const handleStatus = async (
     orderId: string,
-    status: "accepted" | "preparing" | "ready" | "cancelled",
+    status: "accepted" | "preparing" | "ready" | "delivered" | "cancelled",
     reason?: string,
   ) => {
     setBusyOrder(orderId);
@@ -1568,6 +1569,11 @@ export default function BusinessPage() {
                           Viaje con {order.tripStops} tiendas
                         </span>
                       )}
+                      {(order.fulfillment ?? "delivery") !== "delivery" && (
+                        <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                          {fulfillmentLabel(order.fulfillment)}
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {order.buyerName}
@@ -1629,7 +1635,14 @@ export default function BusinessPage() {
                   <span>{order.address}</span>
                 </div>
 
+                {order.fulfillment === "reservation" && order.scheduledFor && (
+                  <p className="mt-3 rounded-xl border border-accent/30 bg-accent/[0.06] p-2.5 text-[11px] font-semibold leading-relaxed text-accent">
+                    Reserva para {new Intl.DateTimeFormat("es-CR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Costa_Rica" }).format(order.scheduledFor)}.
+                  </p>
+                )}
+
                 {order.pickupCode &&
+                  (order.fulfillment ?? "delivery") === "delivery" &&
                   (order.status === "ready" || order.status === "picked_up") && (
                     <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2.5">
                       <div>
@@ -1667,7 +1680,10 @@ export default function BusinessPage() {
                             order.deliveryFee - (order.deliveryDiscount ?? 0),
                           ),
                         )}{" "}
-                        del envío de esta tienda. El repartidor no cobra efectivo.
+                        del envío de esta tienda.{" "}
+                        {(order.fulfillment ?? "delivery") === "delivery"
+                          ? "El repartidor no cobra efectivo."
+                          : "El comprador paga directo, sin repartidor."}
                       </p>
                     </div>
                     {order.paymentReceipt ? (
@@ -1887,6 +1903,24 @@ export default function BusinessPage() {
                       </Button>
                     ))}
                     {order.status === "ready" &&
+                      (order.fulfillment ?? "delivery") !== "delivery" &&
+                      !order.courierId && (
+                        <Button
+                          size="sm"
+                          className="gap-1.5 bg-ember-gradient text-black"
+                          disabled={busyOrder === order._id || order.locked}
+                          onClick={() => handleStatus(order._id, "delivered")}
+                        >
+                          {busyOrder === order._id ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <PackageCheck className="size-3.5" />
+                          )}
+                          Marcar entregado
+                        </Button>
+                      )}
+                    {order.status === "ready" &&
+                      (order.fulfillment ?? "delivery") === "delivery" &&
                       (order.courierId ? (
                         <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] font-semibold text-accent">
                           {order.courierName ?? "Repartidor"} va a retirar

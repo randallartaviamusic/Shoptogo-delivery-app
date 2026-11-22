@@ -340,6 +340,7 @@ async function decorateOrder(
     couponCode: order.couponCode ?? null,
     couponDiscount: order.couponDiscount ?? 0,
     scheduledFor: order.scheduledFor ?? null,
+    fulfillment: order.fulfillment ?? "delivery",
     total: order.total,
     address: order.address,
     distanceKm: order.distanceKm ?? null,
@@ -726,6 +727,8 @@ export const courierBoard = query({
     const seenTrips = new Set<string>();
     for (const order of readyOrders) {
       if (order.courierId) continue;
+      // Sólo las entregas a domicilio necesitan repartidor.
+      if ((order.fulfillment ?? "delivery") !== "delivery") continue;
       const key = tripKey(order);
       if (seenTrips.has(key)) continue;
       const trip = (await tripOrders(ctx, order)).filter(
@@ -1352,10 +1355,14 @@ const TRANSITIONS: Record<
   cancelled: [],
 };
 
-const TIMESTAMP: Record<string, "acceptedAt" | "readyAt" | "cancelledAt"> = {
+const TIMESTAMP: Record<
+  string,
+  "acceptedAt" | "readyAt" | "cancelledAt" | "deliveredAt"
+> = {
   accepted: "acceptedAt",
   ready: "readyAt",
   cancelled: "cancelledAt",
+  delivered: "deliveredAt",
 };
 
 export const businessUpdateStatus = mutation({
@@ -1365,6 +1372,7 @@ export const businessUpdateStatus = mutation({
       v.literal("accepted"),
       v.literal("preparing"),
       v.literal("ready"),
+      v.literal("delivered"),
       v.literal("cancelled"),
     ),
     reason: v.optional(v.string()),
@@ -1395,8 +1403,19 @@ export const businessUpdateStatus = mutation({
         "El pedido ya está en preparación y no se puede cancelar desde el panel. Si hay un problema, abrí un caso en Ayuda",
       );
     }
+    // Sin entrega a domicilio no hay repartidor: el local marca listo y luego
+    // lo cierra directo cuando lo entrega en mano o lo sirve en la mesa.
+    const orderFulfillment = order.fulfillment ?? "delivery";
+    const businessCanDeliver =
+      args.status === "delivered" &&
+      orderFulfillment !== "delivery" &&
+      order.status === "ready" &&
+      !order.courierId;
     const allowed = TRANSITIONS[order.status] ?? [];
-    if (!allowed.includes(args.status)) {
+    if (
+      !businessCanDeliver &&
+      !allowed.includes(args.status as "accepted" | "preparing" | "ready" | "cancelled")
+    ) {
       throw new Error("Ese cambio de estado no es válido");
     }
     if (args.status !== "cancelled" && (await previousDeliveryOpen(ctx, order))) {
@@ -1404,7 +1423,11 @@ export const businessUpdateStatus = mutation({
         "Esta compra se prepara en orden: primero tiene que salir la entrega anterior",
       );
     }
-    if (args.status === "cancelled" && order.status === "ready") {
+    if (
+      args.status === "cancelled" &&
+      order.status === "ready" &&
+      orderFulfillment === "delivery"
+    ) {
       if (order.courierId) {
         throw new Error(
           "El repartidor ya tomó este pedido: coordiná con él para cancelar",
@@ -1442,7 +1465,8 @@ export const businessUpdateStatus = mutation({
 
     // Recién cuando la entrega está completa se ofrece: antes nadie podría
     // retirarla. Se lee el pedido ya actualizado para no ofrecer algo viejo.
-    if (args.status === "ready") {
+    // Sin domicilio no hay nada que ofrecer: el local lo cierra directo.
+    if (args.status === "ready" && orderFulfillment === "delivery") {
       const updated = await ctx.db.get(args.orderId);
       if (updated) await offerTripToCouriers(ctx, updated);
     }
@@ -1645,6 +1669,8 @@ async function offerTripToCouriers(
   order: Doc<"orders">,
   options?: { general?: boolean },
 ) {
+  // Sin entrega a domicilio no hay viaje que ofrecer: el local lo cierra directo.
+  if ((order.fulfillment ?? "delivery") !== "delivery") return 0;
   const trip = (await tripOrders(ctx, order)).filter(
     (member) => member.status !== "cancelled",
   );
@@ -2023,6 +2049,9 @@ async function acceptTripForCourier(
     }
     const order = await ctx.db.get(orderId);
     if (!order) throw new Error("Ese pedido no existe");
+    if ((order.fulfillment ?? "delivery") !== "delivery") {
+      throw new Error("Este pedido no necesita repartidor: se retira o se sirve en el local");
+    }
     // Una entrega puede retirar en varias tiendas: se toma el viaje completo.
     const trip = (await tripOrders(ctx, order)).filter(
       (member) => member.status !== "cancelled",
@@ -2217,6 +2246,7 @@ export const myOffers = query({
       if (offer.expiresAt <= now) continue;
       const order = await ctx.db.get(offer.orderId);
       if (!order || order.courierId || order.status !== "ready") continue;
+      if ((order.fulfillment ?? "delivery") !== "delivery") continue;
       const business = await ctx.db.get(order.businessId);
       const trip = await tripOrders(ctx, order);
       const tripPayout = trip.reduce(
@@ -2979,6 +3009,8 @@ export const autoCancelStaleReady = internalMutation({
     let cancelled = 0;
     for (const order of ready) {
       if (order.courierId) continue;
+      // Sin domicilio el local cierra el pedido: nunca se cancela solo por falta de repartidor.
+      if ((order.fulfillment ?? "delivery") !== "delivery") continue;
       const trip = await tripForOrder(ctx, order);
       const readyAt = tripReadyAt(trip) ?? order.readyAt;
       if (!readyAt || readyAt > threshold) continue;
@@ -3097,6 +3129,8 @@ export const receipt = query({
       paymentReceipt: order.paymentReceipt
         ? { url: order.paymentReceipt.url, at: order.paymentReceipt.at }
         : null,
+      fulfillment: order.fulfillment ?? "delivery",
+      scheduledFor: order.scheduledFor ?? null,
       address: order.address,
       notes: order.notes ?? null,
       // Cada secreto se entrega sólo a quien debe validarlo.

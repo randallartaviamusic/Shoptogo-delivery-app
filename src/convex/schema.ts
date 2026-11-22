@@ -225,6 +225,16 @@ export const orderPaymentMethodValidator = v.union(
 );
 export type OrderPaymentMethod = Infer<typeof orderPaymentMethodValidator>;
 
+/** Cómo recibe el comprador su pedido: en el local, retirando, con reparto o
+ * con reserva de mesa/cita en fecha y hora exacta. Ausente = entrega. */
+export const fulfillmentMethodValidator = v.union(
+  v.literal("dine_in"),
+  v.literal("pickup"),
+  v.literal("delivery"),
+  v.literal("reservation"),
+);
+export type FulfillmentMethod = Infer<typeof fulfillmentMethodValidator>;
+
 /** Captura del comprobante SINPE que sube el comprador. */
 export const paymentReceiptValidator = v.object({
   storageId: v.id("_storage"),
@@ -526,6 +536,9 @@ const schema = defineSchema(
       deliveryDiscount: v.optional(v.number()),
       total: v.number(),
       status: orderStatusValidator,
+      // Cómo recibe el comprador su pedido. Sin repartidor (local, retiro o
+      // reserva) el envío es 0 y el local cierra el pedido al entregarlo.
+      fulfillment: v.optional(fulfillmentMethodValidator),
       // Forma de pago y datos de cobro copiados al crear el pedido: si el
       // local cambia su número después, el comprador sigue pagando el que se
       // le mostró. En efectivo, sin estos campos, el repartidor cobra al cerrar.

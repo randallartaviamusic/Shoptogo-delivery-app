@@ -17,6 +17,7 @@ import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
 import { optionSummary } from "@/lib/productOptions";
 import { formatSinpeNumber } from "@/lib/sinpe";
+import { FULFILLMENT_OPTIONS, type FulfillmentMethod } from "@/lib/fulfillment";
 import { costaRicaLocalToTimestamp, SCHEDULE_RULES } from "@/lib/scheduling";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -24,18 +25,22 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   Banknote,
+  Bike,
   BookmarkPlus,
+  CalendarClock,
   Loader2,
   Minus,
   MessageCircle,
   PackageCheck,
   Plus,
+  ShoppingBag,
   ShoppingCart,
   Smartphone,
   Star,
   Store,
   Tag,
   Trash2,
+  UtensilsCrossed,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
@@ -47,7 +52,11 @@ export default function CartPage() {
   const [searchParams] = useSearchParams();
   const [couponDraft, setCouponDraft] = useState("");
   const [couponCode, setCouponCode] = useState("");
-  const cart = useQuery(api.cart.myCart, { couponCode: couponCode || undefined });
+  const [fulfillment, setFulfillment] = useState<FulfillmentMethod>("delivery");
+  const cart = useQuery(api.cart.myCart, {
+    couponCode: couponCode || undefined,
+    fulfillmentMethod: fulfillment,
+  });
   const setQuantity = useMutation(api.cart.setQuantity);
   const removeItem = useMutation(api.cart.remove);
   const clearCart = useMutation(api.cart.clear);
@@ -80,13 +89,22 @@ export default function CartPage() {
   const allCovered = groups.every((group) => group.deliveryAvailable);
   // Todos los locales del carrito tienen SINPE y WhatsApp para cobrar directo.
   const sinpeReady = groups.length > 0 && groups.every((group) => group.sinpeReady);
-  const canConfirm = Boolean(dropoff) && address.trim().length >= 6 && allCovered;
-  const scheduledFor = scheduleEnabled
+  // Cómo recibe el comprador su pedido. Sin domicilio no hay punto en el
+  // mapa ni zona de reparto: el comprador pasa por cada local.
+  const needsDelivery = fulfillment === "delivery";
+  const needsSchedule = fulfillment === "reservation";
+  const wantsSchedule = scheduleEnabled || needsSchedule;
+  const canConfirm = needsDelivery
+    ? Boolean(dropoff) && address.trim().length >= 6 && allCovered
+    : true;
+  const scheduledFor = wantsSchedule
     ? costaRicaLocalToTimestamp(scheduledLocal)
     : null;
-  const scheduleError = scheduleEnabled && !scheduledFor
-    ? "Elegí una fecha y hora de entrega"
-    : scheduleEnabled && scheduledFor
+  const scheduleError = wantsSchedule && !scheduledFor
+    ? needsSchedule
+      ? "Elegí la fecha y hora exacta de tu reserva"
+      : "Elegí una fecha y hora de entrega"
+    : wantsSchedule && scheduledFor
       ? scheduledFor <= Date.now() + SCHEDULE_RULES.minMinutesAhead * 60_000
         ? `Programá con al menos ${SCHEDULE_RULES.minMinutesAhead} minutos de anticipación`
         : scheduledFor > Date.now() + SCHEDULE_RULES.maxDaysAhead * 86_400_000
@@ -183,7 +201,7 @@ export default function CartPage() {
       return;
     }
 
-    if (!dropoff) {
+    if (needsDelivery && !dropoff) {
       toast.error("Marcá en el mapa el punto donde querés recibir el pedido");
       return;
     }
@@ -201,13 +219,14 @@ export default function CartPage() {
           ? crypto.randomUUID()
           : `ce-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const result = await checkout({
-        address,
-        location: dropoff,
+        address: needsDelivery ? address : address || "Retiro en el local",
+        location: dropoff ?? undefined,
+        fulfillmentMethod: fulfillment,
         notes,
-        sameCourier: splitInDeliveries ? sameCourier : undefined,
+        sameCourier: needsDelivery && splitInDeliveries ? sameCourier : undefined,
         requestKey: requestKey.current,
         couponCode: cart?.couponTotal ? couponCode : undefined,
-        scheduledFor: scheduleEnabled ? (scheduledFor ?? undefined) : undefined,
+        scheduledFor: wantsSchedule ? (scheduledFor ?? undefined) : undefined,
         paymentMethod,
       });
       // La compra quedó registrada: el próximo intento es un pedido nuevo.
@@ -225,7 +244,9 @@ export default function CartPage() {
             description:
               paymentMethod === "sinpe"
                 ? `Total ${money(result.total)}. En Pedidos pagá cada SINPE, enviá el comprobante por WhatsApp y confirmá el pedido para avisar a la tienda.`
-                : `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`,
+                : needsDelivery
+                  ? `Total ${money(result.total)}. Seguí cada entrega en Pedidos.`
+                  : `Total ${money(result.total)}. Te avisamos cuando esté listo para vos en Pedidos.`,
           },
         );
       }
@@ -302,13 +323,19 @@ export default function CartPage() {
                       <span>·</span>
                       {group.etaMinutes + (group.deliveryMinutes ?? 0)} min
                       <span>·</span>
-                      {group.deliveryFee === null
-                        ? group.deliveryAvailable
-                          ? "Envío al elegir tu punto"
-                          : "Fuera de cobertura"
-                        : group.promo
-                          ? `${group.promo.label} · ${formatKm(group.distanceKm ?? 0)}`
-                          : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
+                      {!needsDelivery
+                        ? fulfillment === "dine_in"
+                          ? "Sin envío · se sirve en el local"
+                          : fulfillment === "reservation"
+                            ? "Sin envío · con reserva de fecha y hora"
+                            : "Sin envío · retirás en el local"
+                        : group.deliveryFee === null
+                          ? group.deliveryAvailable
+                            ? "Envío al elegir tu punto"
+                            : "Fuera de cobertura"
+                          : group.promo
+                            ? `${group.promo.label} · ${formatKm(group.distanceKm ?? 0)}`
+                            : `Envío ${money(group.deliveryFee)} · ${formatKm(group.distanceKm ?? 0)}`}
                     </p>
                   </div>
                   {!group.isOpen && (
@@ -428,9 +455,59 @@ export default function CartPage() {
           >
             <h2 className="font-display text-lg font-bold">Confirmar pedido</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Un pedido por negocio. Cada entrega lleva hasta 3 productos y los
-              repartidores la toman apenas el local la marca lista.
+              {needsDelivery
+                ? "Un pedido por negocio. Cada entrega lleva hasta 3 productos y los repartidores la toman apenas el local la marca lista."
+                : "Un pedido por negocio, sin envío. El local lo prepara y te avisa cuando esté listo para vos."}
             </p>
+
+            <div className="mt-5 space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Cómo lo querés recibir
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {FULFILLMENT_OPTIONS.map((option) => {
+                  const Icon =
+                    option.value === "delivery"
+                      ? Bike
+                      : option.value === "pickup"
+                        ? ShoppingBag
+                        : option.value === "dine_in"
+                          ? UtensilsCrossed
+                          : CalendarClock;
+                  const active = fulfillment === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => {
+                        setFulfillment(option.value);
+                        if (option.value === "reservation" && !scheduledLocal) {
+                          setScheduledLocal(
+                            new Date(Date.now() + 60 * 60 * 1000 - 6 * 60 * 60 * 1000)
+                              .toISOString()
+                              .slice(0, 16),
+                          );
+                        }
+                      }}
+                      className={cn(
+                        "rounded-xl border p-3 text-left transition-colors",
+                        active
+                          ? "border-accent/50 bg-accent/10"
+                          : "border-border/70 hover:border-accent/30",
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5 text-xs font-semibold">
+                        <Icon className="size-3.5 text-accent" /> {option.label}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                        {option.hint}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="mt-5 space-y-3">
               <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
@@ -486,26 +563,12 @@ export default function CartPage() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
-                <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold">
-                  <input
-                    type="checkbox"
-                    checked={scheduleEnabled}
-                    onChange={(event) => {
-                      setScheduleEnabled(event.target.checked);
-                      if (event.target.checked && !scheduledLocal) {
-                        setScheduledLocal(
-                          new Date(Date.now() + 60 * 60 * 1000 - 6 * 60 * 60 * 1000)
-                            .toISOString()
-                            .slice(0, 16),
-                        );
-                      }
-                    }}
-                    className="size-4 accent-[var(--accent)]"
-                  />
-                  Programar para más tarde
-                </label>
-                {scheduleEnabled && (
+              {needsSchedule ? (
+                <div className="rounded-2xl border border-accent/40 bg-accent/[0.06] p-3">
+                  <label className="flex items-center gap-2 text-xs font-semibold">
+                    <CalendarClock className="size-4 text-accent" />
+                    Fecha y hora exacta de tu reserva
+                  </label>
                   <div className="mt-2 space-y-1.5">
                     <Input
                       type="datetime-local"
@@ -513,19 +576,61 @@ export default function CartPage() {
                       min={minScheduledLocal}
                       max={maxScheduledLocal}
                       onChange={(event) => setScheduledLocal(event.target.value)}
-                      aria-label="Fecha y hora del pedido programado"
+                      aria-label="Fecha y hora exacta de la reserva"
                       className="h-9 text-xs"
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      Hasta {SCHEDULE_RULES.maxDaysAhead} días antes. El local lo prepara cerca de la hora elegida.
+                      El local confirma tu reserva para esa fecha y hora.
                     </p>
                     {scheduleError && (
                       <p className="text-[10px] text-primary">{scheduleError}</p>
                     )}
                   </div>
-                )}
-              </div>
+                </div>
+              ) : needsDelivery ? (
+                <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={scheduleEnabled}
+                      onChange={(event) => {
+                        setScheduleEnabled(event.target.checked);
+                        if (event.target.checked && !scheduledLocal) {
+                          setScheduledLocal(
+                            new Date(Date.now() + 60 * 60 * 1000 - 6 * 60 * 60 * 1000)
+                              .toISOString()
+                              .slice(0, 16),
+                          );
+                        }
+                      }}
+                      className="size-4 accent-[var(--accent)]"
+                    />
+                    Programar para más tarde
+                  </label>
+                  {scheduleEnabled && (
+                    <div className="mt-2 space-y-1.5">
+                      <Input
+                        type="datetime-local"
+                        value={scheduledLocal}
+                        min={minScheduledLocal}
+                        max={maxScheduledLocal}
+                        onChange={(event) => setScheduledLocal(event.target.value)}
+                        aria-label="Fecha y hora del pedido programado"
+                        className="h-9 text-xs"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Hasta {SCHEDULE_RULES.maxDaysAhead} días antes. El local lo prepara cerca de la hora elegida.
+                      </p>
+                      {scheduleError && (
+                        <p className="text-[10px] text-primary">{scheduleError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
+              {needsDelivery ? (
+              <>
               {(addressBook?.addresses.length ?? 0) > 0 && (
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium">Usar una dirección guardada</label>
@@ -590,6 +695,26 @@ export default function CartPage() {
                       Quitar {saved.label} ×
                     </button>
                   ))}
+                </div>
+              )}
+              </>
+              ) : (
+                <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold">
+                    <Store className="size-4 text-accent" />
+                    {fulfillment === "dine_in"
+                      ? "Te lo servimos en el local"
+                      : fulfillment === "reservation"
+                        ? "Tu lugar queda reservado"
+                        : "Pasás a retirarlo por el local"}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    {fulfillment === "dine_in"
+                      ? "Presentá el código de tu pedido al llegar. Sin envío ni punto de entrega."
+                      : fulfillment === "reservation"
+                        ? "Presentá el código de tu pedido en la fecha y hora elegida. Sin envío ni punto de entrega."
+                        : "Te avisamos cuando esté listo para retirar. Sin envío ni punto de entrega."}
+                  </p>
                 </div>
               )}
               <Textarea
@@ -692,12 +817,13 @@ export default function CartPage() {
                   <p className="mt-2 flex items-start gap-1.5 text-[10px] leading-relaxed text-muted-foreground">
                     <MessageCircle className="mt-0.5 size-3 shrink-0 text-accent" />
                     Al confirmar, el pedido queda en espera y en Pedidos completás 3 pasos en orden: 1) pagar por SINPE, 2) enviar el comprobante por WhatsApp a la tienda y 3) confirmar el pedido. La tienda lo recibe cuando lo confirmás.
+                    {needsDelivery ? "" : " Sin envío: transferís sólo tus productos."}
                   </p>
                 </div>
               )}
             </div>
 
-            {(splitInDeliveries || multiStore) && (
+            {(splitInDeliveries || multiStore) && needsDelivery && (
               <div className="mt-5 rounded-2xl border border-border/70 bg-black/20 p-3">
                 <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
                   <PackageCheck className="size-3.5" />
@@ -799,7 +925,7 @@ export default function CartPage() {
                 <span>{money(cart?.subtotal ?? 0)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Envíos ({deliveries || groups.length})</span>
+                <span>{needsDelivery ? `Envíos (${deliveries || groups.length})` : "Envío"}</span>
                 <span className="flex items-center gap-2">
                   {(cart?.deliverySaved ?? 0) > 0 && (
                     <span className="text-[11px] text-accent">
@@ -875,9 +1001,15 @@ export default function CartPage() {
             <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
               <Store className="size-3.5" />
               {groups.length} {groups.length === 1 ? "negocio" : "negocios"} ·{" "}
-              {deliveries || groups.length}{" "}
-              {deliveries === 1 ? "entrega" : "entregas"} ·{" "}
-              {paymentMethod === "sinpe" ? "Pago por SINPE" : "Pago en la entrega"}
+              {needsDelivery ? (
+                <>
+                  {deliveries || groups.length}{" "}
+                  {deliveries === 1 ? "entrega" : "entregas"} ·{" "}
+                </>
+              ) : (
+                <>{fulfillment === "reservation" ? "reserva" : fulfillment === "dine_in" ? "consumo en local" : "retiro"} · </>
+              )}
+              {paymentMethod === "sinpe" ? "Pago por SINPE" : needsDelivery ? "Pago en la entrega" : "Pago en el local"}
             </p>
 
 

@@ -20,6 +20,7 @@ import type { CashIssueView } from "@/lib/cash";
 import type { GeoPoint } from "@/lib/delivery";
 import { ASSIGNMENT_RULES, formatKm } from "@/lib/delivery";
 import { ACTIVE_STATUSES, clockTime, money, ORDER_STATUS, relativeTime } from "@/lib/format";
+import { fulfillmentLabel } from "@/lib/fulfillment";
 import {
   optionSummary,
   type SelectedProductOption,
@@ -75,6 +76,8 @@ export type OrderView = {
   couponCode: string | null;
   couponDiscount: number;
   scheduledFor: number | null;
+  /** Cómo recibe el comprador su pedido: delivery, pickup, dine_in o reservation. */
+  fulfillment: string;
   deliveryProof: { url: string; at: number; byName: string | null } | null;
   deliveryConfirmation: {
     buyerPinVerifiedAt: number;
@@ -768,7 +771,7 @@ function OrderDetailDialog({
             </div>
           )}
 
-          {order.status === "ready" && !order.courierId && (
+          {order.status === "ready" && !order.courierId && (order.fulfillment ?? "delivery") === "delivery" && (
             <p className="rounded-xl border border-accent/25 bg-accent/[0.06] p-3 text-[11px] leading-relaxed text-muted-foreground">
               El local ya tiene tu pedido listo y estamos buscando un
               repartidor cerca. Lleva {order.waitingMinutes ?? 0} min esperando:
@@ -777,13 +780,23 @@ function OrderDetailDialog({
             </p>
           )}
 
+          {order.status === "ready" && (order.fulfillment ?? "delivery") !== "delivery" && (
+            <p className="rounded-xl border border-accent/25 bg-accent/[0.06] p-3 text-[11px] leading-relaxed text-accent">
+              Tu pedido está listo: presentá el código {order.code} en {order.businessName}
+              {order.fulfillment === "reservation" && order.scheduledFor
+                ? ` en la fecha de tu reserva.`
+                : `.`}
+            </p>
+          )}
+
           {order.scheduledFor && order.status !== "delivered" && order.status !== "cancelled" && (
             <p className="rounded-xl border border-accent/25 bg-accent/[0.06] p-3 text-[11px] leading-relaxed text-accent">
-              Pedido programado para {new Intl.DateTimeFormat("es-CR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Costa_Rica" }).format(order.scheduledFor)}.
+              {order.fulfillment === "reservation" ? "Reserva para " : "Pedido programado para "}{new Intl.DateTimeFormat("es-CR", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Costa_Rica" }).format(order.scheduledFor)}.
             </p>
           )}
 
           {order.deliveryPin &&
+            (order.fulfillment ?? "delivery") === "delivery" &&
             (order.status === "ready" || order.status === "picked_up") && (
               <div className="rounded-xl border border-accent/40 bg-accent/[0.08] p-3 text-center">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-accent">
@@ -1265,6 +1278,7 @@ export default function OrdersPage() {
                         </>
                       )}
                       {order.tripStops > 1 && <> · {order.tripStops} tiendas</>}
+                      <> · {fulfillmentLabel(order.fulfillment)}</>
                       {order.paymentMethod === "sinpe" && (
                         <>
                           {" "}

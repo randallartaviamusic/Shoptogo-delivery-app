@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { money, ORDER_STATUS } from "@/lib/format";
+import { fulfillmentLabel } from "@/lib/fulfillment";
 import { optionSummary } from "@/lib/productOptions";
 import { cn } from "@/lib/utils";
 import { useQuery } from "convex/react";
@@ -159,7 +160,10 @@ export default function ReceiptPage() {
               <Bike className="size-3.5" /> Repartidor
             </p>
             <p className="mt-1 text-sm font-semibold">
-              {receipt.courier?.name ?? "Aún sin asignar"}
+              {receipt.courier?.name ??
+                ((receipt.fulfillment ?? "delivery") === "delivery"
+                  ? "Aún sin asignar"
+                  : "Sin repartidor")}
             </p>
             <p className="text-[11px] leading-relaxed text-[#6d5f4d]">
               {receipt.courier
@@ -167,18 +171,25 @@ export default function ReceiptPage() {
                     .filter(Boolean)
                     .join(" · ") +
                   (receipt.courier.verified ? " · Verificado" : "")
-                : "Se asigna cuando el pedido esté listo."}
+                : (receipt.fulfillment ?? "delivery") === "delivery"
+                  ? "Se asigna cuando el pedido esté listo."
+                  : "Se retira o se sirve en el local."}
             </p>
           </div>
           <div>
             <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#8a765c]">
-              <MapPin className="size-3.5" /> Entrega
+              <MapPin className="size-3.5" /> {fulfillmentLabel(receipt.fulfillment)}
             </p>
             <p className="mt-1 text-sm font-semibold">{receipt.buyer?.name ?? "Cliente"}</p>
             <p className="text-[11px] leading-relaxed text-[#6d5f4d]">
               {receipt.address}
               {receipt.buyer?.phone ? ` · ${receipt.buyer.phone}` : ""}
             </p>
+            {(receipt.fulfillment ?? "delivery") === "reservation" && receipt.scheduledFor && (
+              <p className="mt-1 text-[11px] font-semibold text-[#8a5f16]">
+                Reserva para {fullDate.format(receipt.scheduledFor)}
+              </p>
+            )}
           </div>
         </div>
 
