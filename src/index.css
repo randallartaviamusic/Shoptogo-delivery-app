@@ -204,7 +204,9 @@
       0 0,
       0 0,
       0 0;
-    animation: bg-shine-sweep 7s linear infinite;
+    /* La luz del fondo cruza una sola vez al entrar a la plataforma. */
+    animation: bg-shine-sweep 2.4s linear 1;
+    animation-fill-mode: forwards;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -322,40 +324,32 @@
     );
   }
 
-  /* Reflejo de cristal que recorre las tarjetas en diagonal. */
+  /* Tarjetas sin barrido: el brillo queda fijo, sin animación. */
   .surface {
     background-color: oklch(0.19 0.006 20 / 82%);
     background-image: linear-gradient(
-      115deg,
-      transparent 46%,
-      oklch(1 0 0 / 28%) 49.2%,
-      oklch(1 0 0 / 62%) 50%,
-      oklch(1 0 0 / 28%) 50.8%,
-      transparent 54%
+      160deg,
+      oklch(1 0 0 / 6%),
+      oklch(1 0 0 / 1%) 45%
     );
-    background-size: 300% 300%;
+    background-size: auto;
     background-repeat: no-repeat;
     border: 1px solid oklch(1 0 0 / 8%);
     backdrop-filter: blur(18px);
-    animation: card-glass-sweep 6s ease-in-out infinite;
+    animation: none;
   }
 
   .surface-raised {
-    background-image:
-      linear-gradient(
-        115deg,
-        transparent 46%,
-        oklch(1 0 0 / 28%) 49.2%,
-        oklch(1 0 0 / 62%) 50%,
-        oklch(1 0 0 / 28%) 50.8%,
-        transparent 54%
-      ),
-      linear-gradient(160deg, oklch(1 0 0 / 7%), oklch(1 0 0 / 1%) 45%);
-    background-size: 300% 300%, auto;
+    background-image: linear-gradient(
+      160deg,
+      oklch(1 0 0 / 7%),
+      oklch(1 0 0 / 1%) 45%
+    );
+    background-size: auto;
     background-repeat: no-repeat;
     background-color: oklch(0.19 0.006 20);
     border: 1px solid oklch(1 0 0 / 9%);
-    animation: card-glass-sweep 6s ease-in-out infinite;
+    animation: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -374,7 +368,7 @@
     }
   }
 
-  /* Reflejo para tarjetas que muestran una foto encima del fondo. */
+  /* Reflejo fijo por defecto: solo se anima en la barra inferior y en etiquetas. */
   .glass-sheen {
     background-image: linear-gradient(
       115deg,
@@ -386,11 +380,45 @@
     );
     background-size: 300% 300%;
     background-repeat: no-repeat;
+    background-position: 50% 50%;
+    animation: none;
+  }
+
+  /* Barra inferior: mantiene la luz cruzando en diagonal. */
+  nav .glass-sheen {
     animation: card-glass-sweep 6s ease-in-out infinite;
   }
 
+  /* Etiquetas con luz cruzando en diagonal. */
+  .sheen-tag {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  .sheen-tag::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: linear-gradient(
+      115deg,
+      transparent 42%,
+      oklch(1 0 0 / 35%) 48%,
+      oklch(1 0 0 / 75%) 50%,
+      oklch(1 0 0 / 35%) 52%,
+      transparent 58%
+    );
+    background-size: 300% 300%;
+    background-repeat: no-repeat;
+    animation: card-glass-sweep 3.2s ease-in-out infinite;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .glass-sheen {
+    .glass-sheen,
+    nav .glass-sheen,
+    .sheen-tag::after {
       animation: none;
     }
   }
@@ -406,17 +434,8 @@
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    background-image: linear-gradient(
-      115deg,
-      transparent 45%,
-      oklch(1 0 0 / 30%) 49%,
-      oklch(0.98 0.004 250 / 62%) 50%,
-      oklch(1 0 0 / 30%) 51%,
-      transparent 55%
-    );
-    background-size: 300% 300%;
-    background-repeat: no-repeat;
-    animation: card-glass-sweep 6s ease-in-out infinite;
+    background-image: none;
+    animation: none;
   }
 
   @media (prefers-reduced-motion: reduce) {

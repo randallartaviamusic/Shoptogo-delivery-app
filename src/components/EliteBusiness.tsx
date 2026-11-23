@@ -59,7 +59,7 @@ export function EliteVerifiedSeal({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-300/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-amber-200",
+        "sheen-tag inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-300/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-amber-200",
         className,
       )}
     >
@@ -80,7 +80,7 @@ export function FlashSaleBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-amber-300/50 bg-amber-300/10 px-2.5 py-1 text-[10px] font-bold text-amber-200",
+        "sheen-tag inline-flex items-center gap-1.5 rounded-full border border-amber-300/50 bg-amber-300/10 px-2.5 py-1 text-[10px] font-bold text-amber-200",
         className,
       )}
     >

@@ -20,7 +20,7 @@ export function PromoBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full bg-ember-gradient px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-black shadow-[0_6px_16px_-6px_rgba(0,0,0,0.9)]",
+        "sheen-tag inline-flex items-center gap-1 rounded-full bg-ember-gradient px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-black shadow-[0_6px_16px_-6px_rgba(0,0,0,0.9)]",
         className,
       )}
     >
