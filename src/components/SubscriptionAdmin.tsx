@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -25,6 +26,7 @@ import { useMutation, useQuery } from "convex/react";
 import {
   Check,
   CheckCircle2,
+  Gift,
   Loader2,
   Save,
   Search,
@@ -159,6 +161,11 @@ export function SubscriptionAdmin() {
     iban: "",
     whatsappNumbers: "",
     graceDays: "3",
+    welcomeOfferEnabled: true,
+    welcomeOfferPlan: "basico" as SubscriptionPlanId,
+    welcomeOfferDays: "30",
+    welcomeOfferTitle: "",
+    welcomeOfferDescription: "",
   });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -174,6 +181,11 @@ export function SubscriptionAdmin() {
       iban: overview.settings.iban,
       whatsappNumbers: overview.settings.whatsappNumbers.join("\n"),
       graceDays: String(overview.settings.graceDays),
+      welcomeOfferEnabled: overview.settings.welcomeOffer.enabled,
+      welcomeOfferPlan: overview.settings.welcomeOffer.plan,
+      welcomeOfferDays: String(overview.settings.welcomeOffer.freeDays),
+      welcomeOfferTitle: overview.settings.welcomeOffer.title,
+      welcomeOfferDescription: overview.settings.welcomeOffer.description,
     });
   }, [overview, loaded]);
 
@@ -198,8 +210,13 @@ export function SubscriptionAdmin() {
           .map((number) => number.trim())
           .filter(Boolean),
         graceDays: Number(settingsForm.graceDays) || 0,
+        welcomeOfferEnabled: settingsForm.welcomeOfferEnabled,
+        welcomeOfferPlan: settingsForm.welcomeOfferPlan,
+        welcomeOfferDays: Number(settingsForm.welcomeOfferDays) || 30,
+        welcomeOfferTitle: settingsForm.welcomeOfferTitle,
+        welcomeOfferDescription: settingsForm.welcomeOfferDescription,
       });
-      toast.success("Datos de cobro actualizados");
+      toast.success("Datos de cobro y oferta actualizados");
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "No pudimos guardar los datos",
@@ -358,7 +375,116 @@ export function SubscriptionAdmin() {
           ) : (
             <Save className="size-4" />
           )}
-          Guardar datos de cobro
+          Guardar datos de cobro y oferta
+        </Button>
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-accent/30 bg-accent/[0.05] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+              <Gift className="size-3.5" /> Oferta de bienvenida
+            </p>
+            <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-muted-foreground">
+              Primer plan gratis para cuentas nuevas de negocio y repartidor. Se activa sola una vez por cuenta: al reclamarla quedan activos al instante sin comprobante. Apagala cuando quieras o cambiala por otra (plan, días y texto).
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-muted-foreground">
+              {settingsForm.welcomeOfferEnabled ? "Activa" : "Pausada"}
+            </span>
+            <Switch
+              checked={settingsForm.welcomeOfferEnabled}
+              onCheckedChange={(value) =>
+                setSettingsForm({ ...settingsForm, welcomeOfferEnabled: value })
+              }
+              aria-label="Activar o pausar la oferta de bienvenida"
+            />
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-offer-plan">Plan regalado</Label>
+            <Select
+              value={settingsForm.welcomeOfferPlan}
+              onValueChange={(value) =>
+                setSettingsForm({
+                  ...settingsForm,
+                  welcomeOfferPlan: value as SubscriptionPlanId,
+                })
+              }
+            >
+              <SelectTrigger id="admin-offer-plan" className="h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SUBSCRIPTION_PLAN_IDS.map((id) => (
+                  <SelectItem key={id} value={id}>
+                    {SUBSCRIPTION_PLANS[id].name} · {money(SUBSCRIPTION_PLANS[id].price)}/mes
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-offer-days">Días gratis</Label>
+            <Input
+              id="admin-offer-days"
+              type="number"
+              min={1}
+              max={90}
+              value={settingsForm.welcomeOfferDays}
+              onChange={(event) =>
+                setSettingsForm({ ...settingsForm, welcomeOfferDays: event.target.value })
+              }
+            />
+            <p className="text-[10px] text-muted-foreground">
+              De 1 a 90 días. Lo normal es 30 días (un mes).
+            </p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="admin-offer-title">Título de la oferta</Label>
+            <Input
+              id="admin-offer-title"
+              value={settingsForm.welcomeOfferTitle}
+              onChange={(event) =>
+                setSettingsForm({ ...settingsForm, welcomeOfferTitle: event.target.value })
+              }
+              placeholder="Estrená Shop To Go sin pagar el primer mes"
+              maxLength={90}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="admin-offer-description">Descripción de la oferta</Label>
+            <Textarea
+              id="admin-offer-description"
+              value={settingsForm.welcomeOfferDescription}
+              onChange={(event) =>
+                setSettingsForm({
+                  ...settingsForm,
+                  welcomeOfferDescription: event.target.value,
+                })
+              }
+              placeholder="Contá qué incluye y qué pasa al vencimiento"
+              maxLength={600}
+              className="min-h-20 resize-none text-xs"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Este texto lo ven los negocios y repartidores nuevos en su suscripción.
+            </p>
+          </div>
+        </div>
+        <Button
+          className="mt-3 gap-2 bg-ember-gradient text-black"
+          disabled={saving}
+          onClick={() => void handleSaveSettings()}
+        >
+          {saving ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Save className="size-4" />
+          )}
+          Guardar oferta
         </Button>
       </div>
 

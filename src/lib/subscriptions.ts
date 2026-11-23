@@ -120,6 +120,52 @@ export function planTier(id?: string | null) {
   return 1;
 }
 
+/**
+ * Oferta de bienvenida: el primer mes del plan Básico sale gratis para las
+ * cuentas que nunca tuvieron suscripción. El administrador la puede activar,
+ * pausar o cambiar por otra (plan, días y texto) desde su panel.
+ */
+export type WelcomeOffer = {
+  enabled: boolean;
+  plan: SubscriptionPlanId;
+  freeDays: number;
+  title: string;
+  description: string;
+};
+
+export const DEFAULT_WELCOME_OFFER: WelcomeOffer = {
+  enabled: true,
+  plan: "basico",
+  freeDays: 30,
+  title: "Estrená Shop To Go sin pagar el primer mes",
+  description:
+    "Si es tu primera suscripción, te regalamos 30 días del plan Básico para que publiques tu local o tomes entregas sin poner un colón. Sin tarjeta y sin comprobante: tocás el botón y quedás activo al instante. Al vencimiento seguís con el precio normal y podés cambiar de plan cuando quieras.",
+};
+
+export function welcomeOfferOf(input: {
+  enabled?: boolean | null;
+  plan?: string | null;
+  freeDays?: number | null;
+  title?: string | null;
+  description?: string | null;
+}): WelcomeOffer {
+  const plan =
+    input.plan === "pro" || input.plan === "elite" || input.plan === "basico"
+      ? input.plan
+      : DEFAULT_WELCOME_OFFER.plan;
+  const freeDays = Math.min(
+    90,
+    Math.max(1, Math.round(input.freeDays ?? DEFAULT_WELCOME_OFFER.freeDays)),
+  );
+  return {
+    enabled: input.enabled ?? DEFAULT_WELCOME_OFFER.enabled,
+    plan,
+    freeDays,
+    title: input.title?.trim() || DEFAULT_WELCOME_OFFER.title,
+    description: input.description?.trim() || DEFAULT_WELCOME_OFFER.description,
+  };
+}
+
 /** Datos de pago por defecto; el administrador los puede cambiar. */
 export const DEFAULT_SINPE_PHONE = "70735003";
 export const DEFAULT_IBAN = "CR75015202001311947709";

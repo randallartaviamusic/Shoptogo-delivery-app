@@ -56,6 +56,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Gift,
   Loader2,
   Lock,
   MessageCircle,
@@ -117,6 +118,8 @@ export default function SubscriptionPage() {
   const requestOnvoPayment = useAction(api.subscriptions.requestOnvoPayment);
   const setReminder = useMutation(api.subscriptions.setReminder);
   const cancelSubscription = useMutation(api.subscriptions.cancelSubscription);
+  const claimWelcomeOffer = useMutation(api.subscriptions.claimWelcomeOffer);
+  const [claiming, setClaiming] = useState(false);
 
   const [plan, setPlan] = useState<SubscriptionPlanId>("basico");
   const [method, setMethod] = useState<PaymentMethod>("sinpe");
@@ -306,6 +309,24 @@ export default function SubscriptionPage() {
 
   const pendingPlanDetail = pendingPlan ? SUBSCRIPTION_PLANS[pendingPlan] : null;
   const currentPlanDetail = subscribedPlan ? planOf(subscribedPlan) : null;
+  const welcomeOffer = data.settings.welcomeOffer;
+  const welcomePlan = planOf(welcomeOffer.plan);
+  const showWelcomeBanner = welcomeOffer.enabled && data.canClaimWelcome && !pending;
+  const isWelcomePlanSelected = plan === welcomeOffer.plan;
+
+  const handleClaimWelcome = async () => {
+    setClaiming(true);
+    try {
+      const result = await claimWelcomeOffer({});
+      toast.success(`Primeros ${result.freeDays} días gratis activados`, {
+        description: `Plan ${planOf(result.plan).name} activo hasta ${formatExpiry(result.activeUntil)}. Después seguís con el precio normal.`,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos activar la oferta");
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   const whatsappMessage = pending
     ? paymentWhatsappMessage({
@@ -332,6 +353,39 @@ export default function SubscriptionPage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-full min-w-0 space-y-4 overflow-x-clip"
       >
+        {showWelcomeBanner && (
+          <section className="w-full max-w-full min-w-0 overflow-x-clip rounded-3xl border border-accent/40 bg-accent/[0.08] p-5">
+            <div className="flex w-full max-w-full min-w-0 flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
+                  <Gift className="size-3.5" /> Oferta de bienvenida · {welcomePlan.name} gratis {welcomeOffer.freeDays} días
+                </p>
+                <h2 className="mt-2 font-display text-lg font-bold leading-tight">
+                  {welcomeOffer.title}
+                </h2>
+                <p className="mt-1.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  {welcomeOffer.description}
+                </p>
+                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                  Al vencimiento seguís con {money(welcomePlan.price)}/mes y podés cambiar de plan cuando quieras. Es una sola vez por cuenta.
+                </p>
+              </div>
+              <Button
+                type="button"
+                disabled={claiming}
+                onClick={() => void handleClaimWelcome()}
+                className="gap-2 bg-ember-gradient text-black hover:opacity-95"
+              >
+                {claiming ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Gift className="size-4" />
+                )}
+                {claiming ? "Activando..." : `Activar mis ${welcomeOffer.freeDays} días gratis`}
+              </Button>
+            </div>
+          </section>
+        )}
         <section className="surface-raised rounded-3xl p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -457,7 +511,13 @@ export default function SubscriptionPage() {
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-display text-sm font-bold">{option.name}{isCurrent && subscribedPlan ? ` · actual` : ``}</p>
+                    <p className="flex flex-wrap items-center gap-1.5 font-display text-sm font-bold">{option.name}{isCurrent && subscribedPlan ? ` · actual` : ``}
+                      {welcomeOffer.enabled && option.id === welcomeOffer.plan && (
+                        <span className="rounded-full bg-accent px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-accent-foreground">
+                          Primeros {welcomeOffer.freeDays} días gratis
+                        </span>
+                      )}
+                    </p>
                     {isSelected ? (
                       <CheckCircle2 className="size-4 text-accent" />
                     ) : (
@@ -582,6 +642,26 @@ export default function SubscriptionPage() {
                 Plan {selected.name}
               </p>
             </div>
+            {showWelcomeBanner && isWelcomePlanSelected && (
+              <div className="mt-4 flex w-full max-w-full min-w-0 flex-wrap items-center justify-between gap-3 overflow-x-clip rounded-2xl border border-accent/40 bg-accent/[0.08] p-3.5">
+                <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground">
+                  <span className="font-semibold text-accent">Tenés {welcomeOffer.freeDays} días gratis del {welcomePlan.name}.</span> Activá la oferta y empezá a operar hoy sin pagar ni mandar comprobante.
+                </p>
+                <Button
+                  type="button"
+                  disabled={claiming}
+                  onClick={() => void handleClaimWelcome()}
+                  className="gap-2 bg-ember-gradient text-black hover:opacity-95"
+                >
+                  {claiming ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Gift className="size-4" />
+                  )}
+                  {claiming ? "Activando..." : "Activar mes gratis"}
+                </Button>
+              </div>
+            )}
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-border/70 bg-black/20 p-3.5">

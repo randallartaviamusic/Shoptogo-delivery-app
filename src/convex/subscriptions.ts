@@ -28,6 +28,7 @@ import {
   renewalBase,
   subscriptionReminderMessage,
   subscriptionStatus,
+  welcomeOfferOf,
 } from "../lib/subscriptions";
 import type { SubscriptionStatus } from "../lib/subscriptions";
 import {
@@ -65,7 +66,7 @@ async function settingsDoc(ctx: DbCtx) {
     .unique();
 }
 
-/** Configuración pública de cobro: SINPE, IBAN y WhatsApps de la plataforma. */
+/** Configuración pública de cobro: SINPE, IBAN, WhatsApps y oferta de bienvenida. */
 export async function subscriptionSettings(ctx: DbCtx) {
   const doc = await settingsDoc(ctx);
   const numbers = (doc?.whatsappNumbers ?? [])
@@ -82,6 +83,13 @@ export async function subscriptionSettings(ctx: DbCtx) {
     whatsappNumbers:
       numbers.length > 0 ? numbers : [...DEFAULT_WHATSAPP_NUMBERS],
     graceDays,
+    welcomeOffer: welcomeOfferOf({
+      enabled: doc?.welcomeOfferEnabled,
+      plan: doc?.welcomeOfferPlan,
+      freeDays: doc?.welcomeOfferDays,
+      title: doc?.welcomeOfferTitle,
+      description: doc?.welcomeOfferDescription,
+    }),
   };
 }
 
@@ -279,6 +287,14 @@ export const mine = query({
       })),
       settings,
       serverNow: now,
+      welcomeOfferUsed:
+        payments.some((payment) => payment.status === "approved") ||
+        Boolean(doc?.activeUntil),
+      canClaimWelcome:
+        settings.welcomeOffer.enabled &&
+        !pending &&
+        !payments.some((payment) => payment.status === "approved") &&
+        !doc?.activeUntil,
     };
   },
 });
@@ -349,6 +365,64 @@ export const requestPayment = mutation({
     // El plan se actualiza recién cuando el administrador aprueba el pago:
     // así nadie obtiene beneficios de un plan superior sin haberlo pagado.
     return { paymentId, expiryAt, price: plan.price };
+  },
+});
+
+/**
+ * Oferta de bienvenida: activa el plan gratis por los días configurados.
+ * Sólo para cuentas que nunca tuvieron suscripción aprobada ni vencimiento.
+ */
+export const claimWelcomeOffer = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("La oferta es para negocios y repartidores");
+    }
+    const settings = await subscriptionSettings(ctx);
+    const offer = settings.welcomeOffer;
+    if (!offer.enabled) {
+      throw new Error("La oferta de bienvenida está pausada por ahora");
+    }
+    if (await pendingPaymentFor(ctx, userId)) {
+      throw new Error("Ya tenés un pago en revisión. Esperá la verificación");
+    }
+    const payments = await ctx.db
+      .query("subscriptionPayments")
+      .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+      .collect();
+    if (payments.some((payment) => payment.status === "approved")) {
+      throw new Error("Esta oferta es sólo para tu primera suscripción");
+    }
+    const existing = await subscriptionDoc(ctx, userId);
+    if (existing?.activeUntil) {
+      throw new Error("Esta oferta es sólo para tu primera suscripción");
+    }
+    const plan = planOf(offer.plan);
+    const now = Date.now();
+    const activeUntil = now + offer.freeDays * DAY_MS;
+    const paymentId = await ctx.db.insert("subscriptionPayments", {
+      ownerId: userId,
+      role: user.role,
+      plan: plan.id,
+      price: 0,
+      method: "cash",
+      reference: "Bienvenida: primer mes gratis",
+      note: `${offer.title} (${offer.freeDays} días gratis)`,
+      expiryAt: activeUntil,
+      reportedAt: now,
+      status: "approved",
+      reviewedAt: now,
+      reviewedBy: userId,
+    });
+    await upsertSubscription(ctx, userId, user.role, {
+      plan: plan.id,
+      price: plan.price,
+      activeSince: now,
+      activeUntil,
+    });
+    return { paymentId, plan: plan.id, activeUntil, freeDays: offer.freeDays };
   },
 });
 
@@ -1173,6 +1247,11 @@ export const adminSaveSettings = mutation({
     iban: v.string(),
     whatsappNumbers: v.array(v.string()),
     graceDays: v.number(),
+    welcomeOfferEnabled: v.boolean(),
+    welcomeOfferPlan: v.string(),
+    welcomeOfferDays: v.number(),
+    welcomeOfferTitle: v.string(),
+    welcomeOfferDescription: v.string(),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -1199,6 +1278,19 @@ export const adminSaveSettings = mutation({
       }
     }
     const graceDays = Math.min(15, Math.max(0, Math.round(args.graceDays)));
+    const offer = welcomeOfferOf({
+      enabled: args.welcomeOfferEnabled,
+      plan: args.welcomeOfferPlan,
+      freeDays: args.welcomeOfferDays,
+      title: args.welcomeOfferTitle,
+      description: args.welcomeOfferDescription,
+    });
+    if (!args.welcomeOfferTitle.trim()) {
+      throw new Error("La oferta necesita un título");
+    }
+    if (!args.welcomeOfferDescription.trim()) {
+      throw new Error("La oferta necesita una descripción");
+    }
     const now = Date.now();
 
     const doc = await settingsDoc(ctx);
@@ -1207,6 +1299,11 @@ export const adminSaveSettings = mutation({
       iban,
       whatsappNumbers: numbers,
       graceDays,
+      welcomeOfferEnabled: offer.enabled,
+      welcomeOfferPlan: offer.plan,
+      welcomeOfferDays: offer.freeDays,
+      welcomeOfferTitle: offer.title,
+      welcomeOfferDescription: offer.description,
       updatedAt: now,
     };
     if (doc) {
