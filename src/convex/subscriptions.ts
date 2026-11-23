@@ -630,6 +630,27 @@ export const requestOnvoPayment = action({
   },
 });
 
+/** Cancela la suscripción vigente: suspende el acceso de inmediato. */
+export const cancelSubscription = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("Las suscripciones son para negocios y repartidores");
+    }
+    const existing = await subscriptionDoc(ctx, userId);
+    if (!existing?.activeUntil) {
+      throw new Error("No tenés una suscripción activa para cancelar");
+    }
+    await ctx.db.patch(existing._id, {
+      activeUntil: undefined,
+      updatedAt: Date.now(),
+    });
+    return { cancelled: true };
+  },
+});
+
 /** Sonido y aviso del recordatorio de pago (lo elige el suscriptor). */
 export const setReminder = mutation({
   args: {

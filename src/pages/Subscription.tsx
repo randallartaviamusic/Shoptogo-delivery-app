@@ -1,4 +1,14 @@
 import { PageHeader } from "@/components/AppShell";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -106,6 +116,7 @@ export default function SubscriptionPage() {
   const requestPayment = useMutation(api.subscriptions.requestPayment);
   const requestOnvoPayment = useAction(api.subscriptions.requestOnvoPayment);
   const setReminder = useMutation(api.subscriptions.setReminder);
+  const cancelSubscription = useMutation(api.subscriptions.cancelSubscription);
 
   const [plan, setPlan] = useState<SubscriptionPlanId>("basico");
   const [method, setMethod] = useState<PaymentMethod>("sinpe");
@@ -123,6 +134,9 @@ export default function SubscriptionPage() {
   const [sound, setSound] = useState("campana");
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const [pendingPlan, setPendingPlan] = useState<SubscriptionPlanId | null>(null);
+  const [showCancelWarning, setShowCancelWarning] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -254,6 +268,45 @@ export default function SubscriptionPage() {
     }
   };
 
+  const subscribedPlan = data.plan;
+  const hasActiveSubscription = Boolean(data.activeUntil);
+
+  const handlePlanClick = (id: SubscriptionPlanId) => {
+    if (!subscribedPlan || id === subscribedPlan) {
+      setPlan(id);
+      return;
+    }
+    setPendingPlan(id);
+  };
+
+  const confirmPlanChange = () => {
+    if (pendingPlan) {
+      setPlan(pendingPlan);
+      toast.info(`Elegiste el plan ${planOf(pendingPlan).name}`, {
+        description: `Reportá el pago de ${money(planOf(pendingPlan).price)} abajo para que lo verifiquen. Tu plan actual sigue activo hasta que se apruebe.`,
+      });
+    }
+    setPendingPlan(null);
+  };
+
+  const confirmCancel = async () => {
+    setCancelling(true);
+    try {
+      await cancelSubscription({});
+      toast.success(`Suscripción cancelada`, {
+        description: `Tu acceso quedó suspendido. Tu historial sigue guardado y podés reactivar cuando quieras.`,
+      });
+      setShowCancelWarning(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `No pudimos cancelar la suscripción`);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const pendingPlanDetail = pendingPlan ? SUBSCRIPTION_PLANS[pendingPlan] : null;
+  const currentPlanDetail = subscribedPlan ? planOf(subscribedPlan) : null;
+
   const whatsappMessage = pending
     ? paymentWhatsappMessage({
         name: user?.name ?? "",
@@ -295,13 +348,35 @@ export default function SubscriptionPage() {
                   {meta.label}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {data.plan ? `Plan ${planOf(data.plan).name}` : "Sin plan elegido"}
+                  {subscribedPlan ? `Plan ${planOf(subscribedPlan).name}` : "Sin plan elegido"}
                   {data.price ? ` · ${money(data.price)}/mes` : ""}
                 </span>
               </div>
               <p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">
                 {meta.hint}
               </p>
+              {hasActiveSubscription && subscribedPlan && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-border/80 text-[11px]"
+                    onClick={() => document.getElementById(`planes`)?.scrollIntoView({ behavior: `smooth`, block: `start` })}
+                  >
+                    Cambiar de plan
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-primary/40 text-[11px] text-primary hover:bg-primary/10"
+                    onClick={() => setShowCancelWarning(true)}
+                  >
+                    Cancelar plan
+                  </Button>
+                </div>
+              )}
             </div>
             {data.activeUntil ? (
               <div className="rounded-2xl border border-border/70 bg-black/20 px-4 py-3 text-right">
@@ -351,7 +426,7 @@ export default function SubscriptionPage() {
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Planes
+                <span id="planes">Planes</span>
               </p>
               <h2 className="mt-1 font-display text-lg font-bold">
                 Precio fijo, beneficios claros
@@ -368,11 +443,12 @@ export default function SubscriptionPage() {
             {SUBSCRIPTION_PLAN_IDS.map((id) => {
               const option = SUBSCRIPTION_PLANS[id];
               const isSelected = plan === id;
+              const isCurrent = subscribedPlan === id;
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setPlan(id)}
+                  onClick={() => handlePlanClick(id)}
                   className={cn(
                     "rounded-2xl border p-4 text-left transition-colors",
                     isSelected
@@ -381,7 +457,7 @@ export default function SubscriptionPage() {
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-display text-sm font-bold">{option.name}</p>
+                    <p className="font-display text-sm font-bold">{option.name}{isCurrent && subscribedPlan ? ` · actual` : ``}</p>
                     {isSelected ? (
                       <CheckCircle2 className="size-4 text-accent" />
                     ) : (
@@ -886,6 +962,32 @@ export default function SubscriptionPage() {
           )}
         </section>
       </motion.div>
+      <AlertDialog open={pendingPlan !== null} onOpenChange={(open) => { if (!open) setPendingPlan(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cambiar de plan?</AlertDialogTitle>
+            <AlertDialogDescription>Estás por cambiar de plan. Si aceptás, elegís el plan nuevo y debés reportar el pago nuevo abajo. El cambio aplica cuando reportés el pago nuevo y la administración lo apruebe. Mientras tanto seguís con tu plan actual. Si aceptás, vas a pagar el precio nuevo y tus beneficios cambian al aprobarse.</AlertDialogDescription>
+          </AlertDialogHeader>
+          {currentPlanDetail && pendingPlanDetail ? <div className="rounded-xl border border-border/70 bg-black/20 p-3 text-[11px]"><p>De {currentPlanDetail.name} a {pendingPlanDetail.name}</p><p>Precio nuevo: {money(pendingPlanDetail.price)} al mes.</p><p>Tu plan actual sigue activo hasta que se apruebe el pago nuevo.</p></div> : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPlanChange}>Aceptar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={showCancelWarning} onOpenChange={setShowCancelWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar suscripción?</AlertDialogTitle>
+            <AlertDialogDescription>Si aceptás, tu acceso actual se suspende de inmediato. Dejás de aparecer y de operar, pero tu historial queda guardado para reactivar cuando quieras.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-xl border p-3 text-[11px]"><p>Al cancelar se suspende todo de inmediato.</p><p>Tu historial queda guardado.</p></div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={cancelling} onClick={() => void confirmCancel()}>{cancelling ? `Cancelando...` : `Aceptar`}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
