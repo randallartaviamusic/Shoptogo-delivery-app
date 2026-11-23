@@ -70,6 +70,36 @@ const STATUS_PILL: Record<string, string> = {
   expired: "border-primary/40 bg-primary/10 text-primary",
 };
 
+function PlanNote({ note }: { note: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div
+      className="mt-2.5 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <p
+        className={
+          expanded
+            ? "text-[10.5px] leading-relaxed text-muted-foreground"
+            : "line-clamp-2 text-[10.5px] leading-relaxed text-muted-foreground"
+        }
+      >
+        {note}
+      </p>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        className="mt-1 text-[11px] font-semibold text-accent hover:underline"
+      >
+        {expanded ? "Leer menos" : "Leer más"}
+      </button>
+    </div>
+  );
+}
+
 export default function SubscriptionPage() {
   const { user } = useAuth();
   const data = useQuery(api.subscriptions.mine);
@@ -366,11 +396,7 @@ export default function SubscriptionPage() {
                     </span>
                   </p>
                   <p className="text-[11px] text-muted-foreground">{option.tagline}</p>
-                  {option.note && (
-                    <p className="mt-2.5 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[10.5px] leading-relaxed text-muted-foreground">
-                      {option.note}
-                    </p>
-                  )}
+                  {option.note && <PlanNote note={option.note} />}
                   <ul className="mt-3 space-y-1.5">
                     {option.benefits[data.role].map((benefit) => (
                       <li key={benefit} className="flex gap-1.5 text-[11px] leading-relaxed">
