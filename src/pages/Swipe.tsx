@@ -328,7 +328,7 @@ export default function SwipePage() {
     deck?.total === 0 && departmentSlug !== DEFAULT_DEPARTMENT;
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
       {!user && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/25 bg-accent/[0.06] px-4 py-3">
           <p className="text-xs leading-relaxed text-accent">

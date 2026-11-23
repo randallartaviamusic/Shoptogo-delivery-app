@@ -93,19 +93,19 @@ function StatCard({
   accent?: "chili" | "ember";
 }) {
   return (
-    <div className="surface-raised rounded-2xl p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="surface-raised w-full max-w-full min-w-0 overflow-hidden rounded-2xl p-4">
+      <p className="break-words text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
         {label}
       </p>
       <p
         className={cn(
-          "mt-2 font-display text-xl font-extrabold",
+          "mt-2 break-words font-display text-xl font-extrabold",
           accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "",
         )}
       >
         {value}
       </p>
-      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-0.5 break-words text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -426,8 +426,8 @@ export default function CourierPage() {
   };
 
   return (
-    <div>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
+      <div className="mb-6 flex w-full max-w-full min-w-0 flex-col gap-4 overflow-x-clip sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
             <span className="inline-block size-1.5 rounded-full bg-accent" />
@@ -446,7 +446,7 @@ export default function CourierPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-6 grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip lg:grid-cols-4">
         {[
           {
             label: "Ganancia hoy",

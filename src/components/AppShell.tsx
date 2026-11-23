@@ -402,10 +402,11 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-14 lg:pt-10 print:max-w-none print:p-0">
+      <main className="mx-auto w-full max-w-6xl min-w-0 overflow-x-clip px-4 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-14 lg:pt-10 print:max-w-none print:p-0">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={`${location.pathname}${location.search}`}
+            className="w-full max-w-full min-w-0 overflow-x-clip"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
@@ -479,7 +480,7 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-6 flex w-full max-w-full min-w-0 flex-col gap-4 overflow-x-clip sm:flex-row sm:items-end sm:justify-between">
       <div>
         {eyebrow && (
           <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">

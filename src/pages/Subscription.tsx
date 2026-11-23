@@ -320,7 +320,7 @@ export default function SubscriptionPage() {
     : "";
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
       <PageHeader
         eyebrow="Suscripción"
         title="Tu plan de Shop To Go"
@@ -330,7 +330,7 @@ export default function SubscriptionPage() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="space-y-4"
+        className="w-full max-w-full min-w-0 space-y-4 overflow-x-clip"
       >
         <section className="surface-raised rounded-3xl p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">

@@ -296,7 +296,7 @@ export function ProductOptionsEditor({
 
             {group.options.map((option) => (
               <div key={option.id} className="space-y-1.5">
-                <div className="grid grid-cols-[minmax(0,1fr)_92px_auto] items-end gap-2">
+                <div className="grid w-full max-w-full min-w-0 grid-cols-[minmax(0,1fr)_92px_auto] items-end gap-2 overflow-x-clip">
                   <div className="space-y-1">
                     <Label
                       htmlFor={`option-name-${option.id}`}

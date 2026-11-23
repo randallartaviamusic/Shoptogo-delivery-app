@@ -90,7 +90,7 @@ export default function HelpPage() {
   };
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
       <PageHeader
         eyebrow="Ayuda"
         title="Estamos para ayudarte"

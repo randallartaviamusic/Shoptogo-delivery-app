@@ -151,11 +151,11 @@ export function CashClosing() {
           </span>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="mt-4 grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip lg:grid-cols-4">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-2xl border border-border/70 bg-black/20 p-3"
+              className="w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-black/20 p-3"
             >
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
                 {stat.label}

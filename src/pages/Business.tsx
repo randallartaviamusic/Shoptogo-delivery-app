@@ -125,19 +125,19 @@ function StatCard({
   accent?: "chili" | "ember";
 }) {
   return (
-    <div className="surface-raised rounded-2xl p-4">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="surface-raised w-full max-w-full min-w-0 overflow-hidden rounded-2xl p-4">
+      <p className="break-words text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
         {label}
       </p>
       <p
         className={cn(
-          "mt-2 font-display text-2xl font-extrabold",
+          "mt-2 break-words font-display text-2xl font-extrabold",
           accent === "ember" ? "text-accent" : accent === "chili" ? "text-primary" : "",
         )}
       >
         {value}
       </p>
-      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-0.5 break-words text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -939,8 +939,8 @@ export default function BusinessPage() {
   };
 
   return (
-    <div>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
+      <div className="mb-6 flex w-full max-w-full min-w-0 flex-col gap-4 overflow-x-clip sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
             <span className="inline-block size-1.5 rounded-full bg-accent" />
@@ -1377,7 +1377,7 @@ export default function BusinessPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip lg:grid-cols-4">
             <StatCard
               label="Ingresos hoy"
               value={money(stats?.revenueToday ?? 0)}
@@ -1417,7 +1417,7 @@ export default function BusinessPage() {
                 <Link to="/business?tab=orders">Ver pedidos del día</Link>
               </Button>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="mt-4 grid w-full max-w-full min-w-0 grid-cols-2 gap-2 overflow-x-clip sm:grid-cols-3 lg:grid-cols-4">
               <StatCard label="Pedidos creados" value={String(stats?.ordersToday ?? 0)} hint={`${stats?.deliveredToday ?? 0} entregados`} />
               <StatCard label="Ventas de productos" value={money(stats?.productSalesToday ?? 0)} hint="pedidos entregados" />
               <StatCard label="Promos de envío" value={money(stats?.promoSpendToday ?? 0)} hint={`${board?.dailyReport.promoOrders.length ?? 0} pedidos con promo`} />
@@ -2252,8 +2252,8 @@ export default function BusinessPage() {
                 placeholder="Dos medallones al carbón, cheddar añejo..."
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+            <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip">
+              <div className="min-w-0 space-y-1.5">
                 <Label htmlFor="product-price">Precio (₡)</Label>
                 <Input
                   id="product-price"

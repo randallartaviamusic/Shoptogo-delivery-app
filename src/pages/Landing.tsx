@@ -93,7 +93,7 @@ const fadeUp = {
 
 function PhoneMockup() {
   return (
-    <div className="relative mx-auto w-[290px] sm:w-[320px]">
+    <div className="relative mx-auto w-full max-w-[290px] min-w-0 sm:w-[320px] sm:max-w-[320px]">
       <div className="pointer-events-none absolute -inset-10 rounded-[60px] bg-[radial-gradient(circle_at_50%_30%,rgba(255,45,85,0.28),transparent_65%)] blur-2xl" />
       <motion.div
         animate={{ y: [0, -12, 0] }}
@@ -176,7 +176,7 @@ function PhoneMockup() {
         initial={{ opacity: 0, scale: 0.9, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ delay: 0.9, duration: 0.5 }}
-        className="absolute -left-6 bottom-24 flex items-center gap-2 rounded-2xl border border-accent/30 bg-[#151110]/95 px-3 py-2 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.9)] backdrop-blur sm:-left-10"
+        className="absolute bottom-24 left-0 flex max-w-[calc(100%-1rem)] items-center gap-2 rounded-2xl border border-accent/30 bg-[#151110]/95 px-3 py-2 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.9)] backdrop-blur sm:-left-10 sm:max-w-none"
       >
         <span className="flex size-7 items-center justify-center rounded-full bg-accent/15 text-accent">
           <Check className="size-4" />
@@ -191,7 +191,7 @@ function PhoneMockup() {
         initial={{ opacity: 0, scale: 0.9, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ delay: 1.2, duration: 0.5 }}
-        className="absolute -right-4 top-24 flex items-center gap-2 rounded-2xl border border-white/12 bg-[#151110]/95 px-3 py-2 backdrop-blur sm:-right-8"
+        className="absolute right-0 top-24 flex max-w-[calc(100%-1rem)] items-center gap-2 rounded-2xl border border-white/12 bg-[#151110]/95 px-3 py-2 backdrop-blur sm:-right-8 sm:max-w-none"
       >
         <span className="flex size-7 items-center justify-center rounded-full bg-primary/15 text-primary">
           <Bike className="size-4" />
@@ -208,7 +208,7 @@ function PhoneMockup() {
 export default function Landing() {
   const headerHidden = useHideOnScroll();
   return (
-    <div className="min-h-screen overflow-x-hidden">
+    <div className="min-h-screen w-full max-w-full min-w-0 overflow-x-clip">
       <header
         className={cn(
           "sticky top-0 z-50 header-atmosphere backdrop-blur-xl transition-transform duration-300 ease-out",

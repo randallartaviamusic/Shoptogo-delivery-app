@@ -62,14 +62,14 @@ export default function ReceiptPage() {
   const status = ORDER_STATUS[receipt.status];
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
-        <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
+      <div className="mb-4 flex w-full max-w-full min-w-0 flex-wrap items-center justify-between gap-3 overflow-x-clip print:hidden">
+        <Button asChild variant="ghost" size="sm" className="max-w-full gap-1.5 text-muted-foreground">
           <Link to="/orders">
             <ArrowLeft className="size-4" /> Volver a mis pedidos
           </Link>
         </Button>
-        <div className="flex gap-2">
+        <div className="flex w-full max-w-full min-w-0 flex-wrap gap-2 sm:w-auto">
           <Button
             variant="outline"
             size="sm"
@@ -84,9 +84,9 @@ export default function ReceiptPage() {
         </div>
       </div>
 
-      <article className="mx-auto max-w-3xl overflow-hidden rounded-3xl bg-[#f7f1e6] text-[#201a14] shadow-[0_24px_80px_-32px_rgba(0,0,0,0.8)] print:max-w-none print:rounded-none print:shadow-none">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[#d9cbb4] px-6 py-5 sm:px-8">
-          <div className="flex items-center gap-3">
+      <article className="mx-auto w-full max-w-3xl min-w-0 overflow-hidden overflow-x-clip rounded-3xl bg-[#f7f1e6] text-[#201a14] shadow-[0_24px_80px_-32px_rgba(0,0,0,0.8)] print:max-w-none print:rounded-none print:shadow-none">
+        <header className="flex w-full max-w-full min-w-0 flex-wrap items-start justify-between gap-4 overflow-x-clip border-b border-[#d9cbb4] px-6 py-5 sm:px-8">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <span className="flex size-11 items-center justify-center rounded-2xl bg-[#1d1914] text-[#f4b942]">
               <Flame className="size-5" />
             </span>
@@ -193,8 +193,9 @@ export default function ReceiptPage() {
           </div>
         </div>
 
-        <div className="px-6 py-5 sm:px-8">
-          <table className="w-full text-left text-xs">
+        <div className="w-full max-w-full min-w-0 overflow-x-clip px-6 py-5 sm:px-8">
+          <div className="w-full max-w-full min-w-0 overflow-x-auto">
+          <table className="w-full min-w-0 text-left text-xs">
             <thead>
               <tr className="border-b border-[#d9cbb4] text-[10px] uppercase tracking-wider text-[#8a765c]">
                 <th className="pb-2 font-bold">Producto</th>
@@ -226,8 +227,9 @@ export default function ReceiptPage() {
               ))}
             </tbody>
           </table>
+          </div>
 
-          <div className="mt-4 ml-auto max-w-xs space-y-1.5 text-xs">
+          <div className="mt-4 ml-auto w-full max-w-xs min-w-0 space-y-1.5 overflow-x-clip text-xs sm:ml-auto">
             <div className="flex justify-between text-[#6d5f4d]">
               <span>Subtotal</span>
               <span>{money(receipt.subtotal)}</span>

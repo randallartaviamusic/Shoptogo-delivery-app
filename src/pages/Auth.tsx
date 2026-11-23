@@ -234,7 +234,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const signInReady = form.email.includes("@") && form.password.length > 0;
 
   return (
-    <div className="relative min-h-screen px-4 py-8 sm:px-6">
+    <div className="relative min-h-screen w-full max-w-full min-w-0 overflow-x-clip px-4 py-8 sm:px-6">
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-30" />
       <div className="mx-auto flex max-w-lg flex-col gap-8">
         <div className="flex items-center justify-between">

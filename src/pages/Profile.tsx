@@ -478,7 +478,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl min-w-0 overflow-x-clip">
       <PageHeader
         eyebrow="Tu cuenta"
         title="Perfil"
@@ -649,7 +649,7 @@ export default function ProfilePage() {
             los archivos de tu compu. JPG, PNG o WebP hasta 8 MB.
           </p>
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="mt-4 grid w-full max-w-full min-w-0 grid-cols-3 gap-2 overflow-x-clip">
             {[
               { label: "Antojos", value: stats?.likes ?? 0, icon: Flame },
               { label: "Guardados", value: stats?.saved ?? 0, icon: Star },
@@ -657,7 +657,7 @@ export default function ProfilePage() {
             ].map((stat) => (
               <div
                 key={stat.label}
-                className="rounded-2xl border border-border/70 bg-black/25 px-3 py-3 text-center"
+                className="w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-black/25 px-3 py-3 text-center"
               >
                 <stat.icon className="mx-auto size-4 text-accent" />
                 <p className="mt-1 font-display text-xl font-bold">{stat.value}</p>

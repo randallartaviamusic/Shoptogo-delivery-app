@@ -100,7 +100,7 @@ export default function OnboardingPage() {
   const isBusiness = user.role === "business";
 
   return (
-    <div className="relative min-h-screen px-4 py-8 sm:px-6">
+    <div className="relative min-h-screen w-full max-w-full min-w-0 overflow-x-clip px-4 py-8 sm:px-6">
       <div className="pointer-events-none absolute inset-0 grid-lines opacity-25 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" />
       <div className="relative mx-auto w-full max-w-2xl">
         <div className="flex items-center justify-between">

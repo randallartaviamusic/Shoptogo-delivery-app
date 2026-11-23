@@ -55,7 +55,7 @@ export default function FavoritesPage() {
   }
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
       <PageHeader
         eyebrow="Súper antojos"
         title="Guardados para después"
@@ -81,7 +81,7 @@ export default function FavoritesPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {favoriteBusinesses.map((business) => (
-              <article key={business._id} className="surface-raised flex overflow-hidden rounded-2xl">
+              <article key={business._id} className="surface-raised flex w-full max-w-full min-w-0 overflow-hidden rounded-2xl">
                 <Link to={`/negocios/${business.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
                   <DishImage src={business.image} alt={business.name} className="size-20 shrink-0" />
                   <div className="min-w-0 py-3">
@@ -121,7 +121,7 @@ export default function FavoritesPage() {
           <Bookmark className="size-4 text-accent" />
           <h2 className="font-display text-base font-bold">Productos guardados</h2>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+        <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip sm:gap-4 lg:grid-cols-3">
           {saved.map((item, index) => (
             <motion.article
               key={item._id}
@@ -129,7 +129,7 @@ export default function FavoritesPage() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.04 }}
-              className="group overflow-hidden rounded-2xl border border-border/70 bg-card"
+              className="group w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card"
             >
               <div className="relative aspect-[4/3] overflow-hidden">
                 <ProductMedia

@@ -254,7 +254,7 @@ function Directory() {
   };
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
       <PageHeader
         title="Todos los negocios"
         description="Entrá al local que quieras y comprá directo de su catálogo completo, sin deslizar."
@@ -818,8 +818,8 @@ function Storefront({ slug }: { slug: string }) {
   const cartTotal = cart?.total ?? 0;
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-[0.22em]">
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
+      <div className="mb-4 flex w-full max-w-full min-w-0 flex-wrap items-center justify-between gap-3 overflow-x-clip text-[11px] font-semibold uppercase tracking-[0.22em]">
         <span className="text-accent">{business.category}</span>
         <Link
           to="/negocios"
@@ -992,11 +992,11 @@ function Storefront({ slug }: { slug: string }) {
                   {products.length} {products.length === 1 ? "producto" : "productos"}
                 </span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid w-full max-w-full min-w-0 gap-3 overflow-x-clip sm:grid-cols-2">
                 {products.map((product) => (
                   <div
                     key={product._id}
-                    className="surface-raised flex gap-3 rounded-2xl p-3"
+                    className="surface-raised flex w-full max-w-full min-w-0 gap-3 overflow-hidden rounded-2xl p-3"
                   >
                     <div className="relative shrink-0">
                       <ProductMedia

@@ -1017,9 +1017,9 @@ function OrderDetailDialog({
           )}
 
           <div className="space-y-2 text-sm">
-            <p className="flex items-start gap-2 text-muted-foreground">
+            <p className="flex w-full max-w-full min-w-0 items-start gap-2 overflow-x-clip text-muted-foreground">
               <MapPin className="mt-0.5 size-4 shrink-0 text-accent" />
-              <span>
+              <span className="min-w-0 flex-1 break-words">
                 {order.address}
                 {order.distanceKm !== null && (
                   <span className="text-xs text-muted-foreground">
@@ -1030,7 +1030,7 @@ function OrderDetailDialog({
               </span>
             </p>
             {order.notes && (
-              <p className="rounded-xl bg-secondary/50 p-2.5 text-xs leading-relaxed text-muted-foreground">
+              <p className="w-full max-w-full min-w-0 break-words rounded-xl bg-secondary/50 p-2.5 text-xs leading-relaxed text-muted-foreground">
                 “{order.notes}”
               </p>
             )}
@@ -1170,7 +1170,7 @@ export default function OrdersPage() {
   };
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
       <PageHeader
         eyebrow="Tus pedidos"
         title="Seguí tu antojo en vivo"
@@ -1250,7 +1250,7 @@ export default function OrdersPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 onClick={() => setSelected(order)}
-                className="surface-raised block w-full rounded-3xl p-4 text-left transition-colors hover:border-accent/25"
+                className="surface-raised block w-full max-w-full min-w-0 overflow-hidden rounded-3xl p-4 text-left transition-colors hover:border-accent/25"
               >
                 <div className="flex items-center gap-3">
                   <DishImage
