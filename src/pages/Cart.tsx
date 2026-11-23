@@ -260,7 +260,7 @@ export default function CartPage() {
   };
 
   return (
-    <div>
+    <div className="w-full max-w-full min-w-0 overflow-x-clip">
       <PageHeader
         eyebrow="Checkout"
         title="Tu carrito"
@@ -297,15 +297,15 @@ export default function CartPage() {
           }
         />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-          <div className="space-y-4">
+        <div className="grid w-full max-w-full min-w-0 gap-6 overflow-x-clip lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+          <div className="w-full max-w-full min-w-0 space-y-4">
             {groups.map((group) => (
               <motion.section
                 key={group.businessId}
                 layout
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="surface-raised overflow-hidden rounded-3xl"
+                className="surface-raised w-full max-w-full min-w-0 overflow-hidden rounded-3xl"
               >
                 <header className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
                   <DishImage
@@ -317,8 +317,8 @@ export default function CartPage() {
                     <p className="truncate font-display text-sm font-bold">
                       {group.businessName}
                     </p>
-                    <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Star className="size-3 fill-accent text-accent" />
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 break-words text-[11px] text-muted-foreground">
+                      <Star className="size-3 shrink-0 fill-accent text-accent" />
                       {group.rating.toFixed(1)}
                       <span>·</span>
                       {group.etaMinutes + (group.deliveryMinutes ?? 0)} min
@@ -347,15 +347,15 @@ export default function CartPage() {
 
                 <ul className="divide-y divide-border/50">
                   {group.items.map((item) => (
-                    <li key={item.cartItemId} className="flex gap-3 px-4 py-3.5">
+                    <li key={item.cartItemId} className="flex w-full max-w-full min-w-0 gap-3 overflow-hidden px-4 py-3.5">
                       <DishImage
                         src={item.image}
                         alt={item.name}
                         className="size-16 shrink-0 rounded-xl"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="flex items-center gap-2 text-sm font-semibold leading-tight">
+                        <div className="flex w-full max-w-full min-w-0 items-start justify-between gap-2">
+                          <p className="flex min-w-0 flex-1 flex-wrap items-center gap-2 break-words text-sm font-semibold leading-tight">
                             {item.name}
                             {!item.isAvailable && (
                               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">Agotado</span>
@@ -366,20 +366,20 @@ export default function CartPage() {
                             onClick={() =>
                               removeItem({ cartItemId: item.cartItemId })
                             }
-                            className="text-muted-foreground transition-colors hover:text-primary"
+                            className="shrink-0 text-muted-foreground transition-colors hover:text-primary"
                           >
                             <Trash2 className="size-4" />
                           </button>
                         </div>
                         {item.options.length > 0 && (
-                          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                          <p className="mt-0.5 break-words text-[11px] leading-relaxed text-muted-foreground">
                             {optionSummary(item.options)}
                           </p>
                         )}
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {money(item.price)} c/u
                         </p>
-                        <div className="mt-2 flex items-center justify-between gap-3">
+                        <div className="mt-2 flex w-full max-w-full min-w-0 flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-1 rounded-full border border-border/80 p-0.5">
                             <Button
                               variant="ghost"
@@ -413,7 +413,7 @@ export default function CartPage() {
                               <Plus className="size-3.5" />
                             </Button>
                           </div>
-                          <p className="font-display text-sm font-bold">
+                          <p className="shrink-0 whitespace-nowrap font-display text-sm font-bold">
                             {money(item.price * item.quantity)}
                           </p>
                         </div>
@@ -422,7 +422,7 @@ export default function CartPage() {
                   ))}
                 </ul>
 
-                <div className="flex items-center justify-between bg-black/25 px-4 py-2.5 text-xs text-muted-foreground">
+                <div className="flex w-full max-w-full flex-wrap items-center justify-between gap-2 bg-black/25 px-4 py-2.5 text-xs text-muted-foreground">
                   <span>
                     Subtotal del local
                     {group.deliveryDiscount > 0 && (
@@ -431,7 +431,7 @@ export default function CartPage() {
                       </span>
                     )}
                   </span>
-                  <span className="font-semibold text-foreground">
+                  <span className="shrink-0 whitespace-nowrap font-semibold text-foreground">
                     {money(group.subtotal)}
                   </span>
                 </div>
@@ -451,7 +451,7 @@ export default function CartPage() {
             ref={summaryRef}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="surface-raised rounded-3xl p-5 lg:sticky lg:top-8"
+            className="surface-raised w-full max-w-full min-w-0 overflow-x-clip rounded-3xl p-5 lg:sticky lg:top-8"
           >
             <h2 className="font-display text-lg font-bold">Confirmar pedido</h2>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -514,14 +514,14 @@ export default function CartPage() {
                 <label className="flex items-center gap-2 text-xs font-semibold">
                   <Tag className="size-4 text-accent" /> Cupón del local
                 </label>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex w-full max-w-full min-w-0 gap-2">
                   <Input
                     value={couponDraft}
                     onChange={(event) => setCouponDraft(event.target.value.toUpperCase())}
                     maxLength={16}
                     placeholder="Ej.: ANTOJO10"
                     aria-label="Código de cupón del local"
-                    className="h-9 text-xs uppercase"
+                    className="h-9 min-w-0 flex-1 text-xs uppercase"
                   />
                   {couponCode ? (
                     <Button
@@ -793,7 +793,7 @@ export default function CartPage() {
                     {groups.map((group) => (
                       <li
                         key={group.businessId}
-                        className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 rounded-lg bg-black/20 px-2.5 py-1.5 text-[10px]"
+                        className="flex w-full max-w-full min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 overflow-hidden rounded-lg bg-black/20 px-2.5 py-1.5 text-[10px]"
                       >
                         <span className="max-w-full truncate font-semibold">
                           {group.businessName}
@@ -841,9 +841,9 @@ export default function CartPage() {
                   {trips.map((trip) => (
                     <li
                       key={trip.index}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-black/20 px-2.5 py-2"
+                      className="flex w-full max-w-full min-w-0 items-start justify-between gap-2 overflow-hidden rounded-xl border border-border/60 bg-black/20 px-2.5 py-2"
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-semibold">
                           Entrega {trip.index} · {trip.stops.length}{" "}
                           {trip.stops.length === 1 ? "tienda" : "tiendas"}

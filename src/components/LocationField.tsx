@@ -172,7 +172,7 @@ export function LocationField({
     : null;
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("w-full max-w-full min-w-0 space-y-2 overflow-x-clip", className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
@@ -183,8 +183,8 @@ export function LocationField({
         </span>
       </div>
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <div className="flex w-full max-w-full min-w-0 gap-2">
+        <div className="relative min-w-0 flex-1">
           <MapPin className="absolute left-3 top-3 size-4 text-muted-foreground" />
           <Input
             value={address}
