@@ -1,3 +1,4 @@
+import AccountWelcomeModal from "@/components/AccountWelcomeModal";
 import { EmptyState } from "@/components/AppShell";
 import { CashClosing } from "@/components/CashClosing";
 import { CashIssueNote } from "@/components/CashIssueNote";
@@ -1673,6 +1674,8 @@ export default function CourierPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AccountWelcomeModal audience="courier" />
     </div>
   );
 }

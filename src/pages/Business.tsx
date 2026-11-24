@@ -1,3 +1,4 @@
+import AccountWelcomeModal from "@/components/AccountWelcomeModal";
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import { StarPicker } from "@/components/StarPicker";
@@ -3350,6 +3351,8 @@ export default function BusinessPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AccountWelcomeModal audience="business" />
     </div>
   );
 }
