@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
@@ -84,10 +85,73 @@ export default function CartPage() {
   const [saveAddressBusy, setSaveAddressBusy] = useState(false);
   // Pago por SINPE en 3 pasos y en orden: 1) pagar, 2) comprobante +
   // WhatsApp, 3) confirmar. Sin los dos primeros no se habilita el tercero.
-  const [sinpePaid, setSinpePaid] = useState(false);
-  const [sinpeFiles, setSinpeFiles] = useState<Array<{ file: File; preview: string }>>([]);
-  const [sinpeWhatsappOpened, setSinpeWhatsappOpened] = useState<Record<string, boolean>>({});
+  // Todo el avance se guarda en el teléfono: al volver de WhatsApp (aunque el
+  // sistema recargue la página) el pago, las capturas y los envíos siguen
+  // marcados, y el mensaje siempre lleva el enlace de cada comprobante.
+  const SINPE_CART_KEY = "stg:sinpe-cart-v1";
+  const readSinpeCartSaved = (): {
+    storeKey: string;
+    paid: boolean;
+    sent: Record<string, boolean>;
+    receipts: Array<{ storageId: string; url: string; name: string }>;
+  } | null => {
+    try {
+      const raw = window.localStorage.getItem(SINPE_CART_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as {
+        storeKey?: unknown;
+        paid?: unknown;
+        sent?: unknown;
+        receipts?: unknown;
+      };
+      if (!parsed || typeof parsed !== "object") return null;
+      const receipts = Array.isArray(parsed.receipts)
+        ? (parsed.receipts as Array<{ storageId?: unknown; url?: unknown; name?: unknown }>)
+            .filter((item) => typeof item?.storageId === "string" && typeof item?.url === "string")
+            .map((item) => ({
+              storageId: item.storageId as string,
+              url: item.url as string,
+              name: typeof item.name === "string" ? item.name : "comprobante",
+            }))
+        : [];
+      return {
+        storeKey: typeof parsed.storeKey === "string" ? parsed.storeKey : "",
+        paid: parsed.paid === true,
+        sent:
+          parsed.sent && typeof parsed.sent === "object"
+            ? (parsed.sent as Record<string, boolean>)
+            : {},
+        receipts,
+      };
+    } catch {
+      return null;
+    }
+  };
+  const [sinpePaid, setSinpePaid] = useState(() => readSinpeCartSaved()?.paid ?? false);
+  const [sinpeFiles, setSinpeFiles] = useState<
+    Array<{
+      file?: File;
+      preview: string;
+      name: string;
+      uploading: boolean;
+      storageId?: string;
+      url?: string;
+    }>
+  >(() =>
+    (readSinpeCartSaved()?.receipts ?? []).map((item) => ({
+      preview: item.url,
+      name: item.name,
+      uploading: false,
+      storageId: item.storageId,
+      url: item.url,
+    })),
+  );
+  const [sinpeWhatsappOpened, setSinpeWhatsappOpened] = useState<Record<string, boolean>>(
+    () => readSinpeCartSaved()?.sent ?? {},
+  );
   const sinpeFileRef = useRef<HTMLInputElement>(null);
+  const generateReceiptUploadUrl = useMutation(api.orders.generatePaymentReceiptUploadUrl);
+  const resolveReceiptUrl = useMutation(api.orders.resolveReceiptUrl);
 
   const groups = cart?.groups ?? [];
   const count = cart?.count ?? 0;
@@ -187,15 +251,55 @@ export default function CartPage() {
     setDropoff(saved.location);
   };
 
-  // Si cambia el carrito, los WhatsApp de tiendas que ya no están se limpian.
+  // Tiendas actuales del carrito: si cambian por completo, el avance SINPE
+  // guardado ya no aplica y se descarta.
+  const sinpeStoreKey = useMemo(
+    () => groups.map((group) => String(group.businessId)).sort().join("|"),
+    [groups],
+  );
   useEffect(() => {
+    if (groups.length === 0) return;
+    const saved = readSinpeCartSaved();
+    if (saved && saved.storeKey !== sinpeStoreKey) {
+      setSinpePaid(false);
+      setSinpeFiles([]);
+      setSinpeWhatsappOpened({});
+      try {
+        window.localStorage.removeItem(SINPE_CART_KEY);
+      } catch {
+        // Sin almacenamiento el avance se pierde al recargar, sin frenar nada.
+      }
+      return;
+    }
+    // Si cambia el carrito, los WhatsApp de tiendas que ya no están se limpian.
     const ids = new Set(groups.map((group) => String(group.businessId)));
     setSinpeWhatsappOpened((prev) => {
       const next: Record<string, boolean> = {};
       for (const id of Object.keys(prev)) if (ids.has(id)) next[id] = true;
       return next;
     });
-  }, [groups]);
+  }, [groups, sinpeStoreKey]);
+
+  // Guarda el avance SINPE en el teléfono en cada cambio: pago marcado,
+  // capturas ya subidas (con su enlace) y WhatsApps enviados por tienda.
+  useEffect(() => {
+    if (groups.length === 0) return;
+    try {
+      window.localStorage.setItem(
+        SINPE_CART_KEY,
+        JSON.stringify({
+          storeKey: sinpeStoreKey,
+          paid: sinpePaid,
+          sent: sinpeWhatsappOpened,
+          receipts: sinpeFiles
+            .filter((item) => item.storageId && item.url)
+            .map((item) => ({ storageId: item.storageId, url: item.url, name: item.name })),
+        }),
+      );
+    } catch {
+      // Sin almacenamiento el avance se pierde al recargar, sin frenar nada.
+    }
+  }, [groups.length, sinpeStoreKey, sinpePaid, sinpeWhatsappOpened, sinpeFiles]);
 
   const copySinpeNumber = async (raw: string | null, businessName: string, amount: number) => {
     const normalized = normalizeSinpeNumber(raw);
@@ -213,14 +317,22 @@ export default function CartPage() {
     });
   };
 
+  const sinpeReceiptLinks = sinpeFiles.map((item) => item.url).filter((url): url is string => typeof url === "string" && url.length > 0);
+  const sinpeUploading = sinpeFiles.some((item) => item.uploading);
+
   const sinpeCartMessage = (businessName: string, amount: number) => {
     const buyer = user?.name?.trim() || "un cliente de Shop To Go";
     return [
       `Hola, soy ${buyer}.`,
       `Hice el pago por SINPE de ${businessName} por ${money(amount)} (mi carrito de Shop To Go, productos más el envío de la tienda).`,
-      "Adjunto la captura del comprobante en este chat.",
+      ...sinpeReceiptLinks.map((url) => `Captura del comprobante: ${url}`),
+      sinpeReceiptLinks.length === 0
+        ? "Adjunto la captura del comprobante en este chat."
+        : sinpeReceiptLinks.length < sinpeFiles.length
+          ? "Adjunto el resto de las capturas en este chat."
+          : null,
       "Por favor confirmame la recepción del pago.",
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   };
 
   const openSinpeWhatsapp = (businessId: string, whatsapp: string | null, businessName: string, amount: number) => {
@@ -237,10 +349,52 @@ export default function CartPage() {
     });
   };
 
+  // Sube una captura y le resuelve su enlace público para incluirlo en el
+  // mensaje de WhatsApp. Si falla, la imagen queda local y se reintenta al
+  // confirmar el pedido.
+  const uploadSinpeEntry = async (preview: string, file: File) => {
+    try {
+      const uploadUrl = await generateReceiptUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir la captura");
+      const payload = (await response.json()) as { storageId: string };
+      const resolved = await resolveReceiptUrl({
+        storageId: payload.storageId as Id<"_storage">,
+      });
+      setSinpeFiles((prev) =>
+        prev.map((item) =>
+          item.preview === preview
+            ? { ...item, file: undefined, uploading: false, storageId: payload.storageId, url: resolved.url }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setSinpeFiles((prev) =>
+        prev.map((item) =>
+          item.preview === preview ? { ...item, uploading: false } : item,
+        ),
+      );
+      toast.error(error instanceof Error ? error.message : "No pudimos subir la captura", {
+        description: "Quedó guardada en este paso y se reintenta al confirmar.",
+      });
+    }
+  };
+
   const handleSinpeFiles = (files: FileList | null) => {
     if (!files) return;
-    const next: Array<{ file: File; preview: string }> = [];
-    for (const file of Array.from(files)) {
+    const loggedIn = Boolean(user && !user.isAnonymous);
+    if (!loggedIn) {
+      toast.info("Creá tu cuenta para guardar el comprobante", {
+        description: "Sin cuenta las capturas se pierden al salir de la app. Entrá y volvé a subirlas: desde entonces quedan guardadas con su enlace.",
+      });
+    }
+    const room = Math.max(0, 6 - sinpeFiles.length);
+    const next: Array<{ file?: File; preview: string; name: string; uploading: boolean }> = [];
+    for (const file of Array.from(files).slice(0, room)) {
       if (!file.type.startsWith("image/")) {
         toast.error("Subí imágenes de la captura (JPG, PNG o WebP)");
         continue;
@@ -249,13 +403,27 @@ export default function CartPage() {
         toast.error(`"${file.name}" pesa más de 8 MB`);
         continue;
       }
-      next.push({ file, preview: URL.createObjectURL(file) });
+      next.push({
+        file: loggedIn ? file : undefined,
+        preview: URL.createObjectURL(file),
+        name: file.name,
+        uploading: loggedIn,
+      });
     }
     if (next.length > 0) {
       setSinpeFiles((prev) => [...prev, ...next].slice(0, 6));
-      toast.success(next.length === 1 ? "Captura lista" : `${next.length} capturas listas`, {
-        description: "Ahora envialas por WhatsApp a cada tienda con el botón 2.",
-      });
+      if (loggedIn) {
+        toast.success(next.length === 1 ? "Subiendo captura" : `Subiendo ${next.length} capturas`, {
+          description: "Cuando termine, el mensaje de WhatsApp ya lleva su enlace.",
+        });
+        for (const entry of next) {
+          if (entry.file) void uploadSinpeEntry(entry.preview, entry.file);
+        }
+      } else {
+        toast.success(next.length === 1 ? "Captura lista" : `${next.length} capturas listas`, {
+          description: "Creá tu cuenta para que queden guardadas con su enlace.",
+        });
+      }
     }
     if (sinpeFileRef.current) sinpeFileRef.current.value = "";
   };
@@ -263,7 +431,7 @@ export default function CartPage() {
   const removeSinpeFile = (index: number) => {
     setSinpeFiles((prev) => {
       const target = prev[index];
-      if (target) URL.revokeObjectURL(target.preview);
+      if (target && target.preview.startsWith("blob:")) URL.revokeObjectURL(target.preview);
       return prev.filter((_, i) => i !== index);
     });
   };
@@ -273,7 +441,7 @@ export default function CartPage() {
     paymentMethod !== "sinpe" || groups.length === 0
       ? true
       : groups.every((group) => sinpeWhatsappOpened[group.businessId]);
-  const sinpeStep2Done = paymentMethod === "sinpe" ? sinpeFiles.length > 0 && sinpeWhatsappDone : true;
+  const sinpeStep2Done = paymentMethod === "sinpe" ? sinpeFiles.length > 0 && !sinpeUploading && sinpeWhatsappDone : true;
   const sinpeBlockedReason =
     paymentMethod !== "sinpe"
       ? null
@@ -281,9 +449,11 @@ export default function CartPage() {
         ? "Primero completá el paso 1: pagá por SINPE y marcalo como hecho."
         : sinpeFiles.length === 0
           ? "Subí al menos una captura del pago para habilitar el paso 3."
-          : !sinpeWhatsappDone
-            ? "Enviá el comprobante por WhatsApp a cada tienda para habilitar el paso 3."
-            : null;
+          : sinpeUploading
+            ? "Esperá a que termine de subirse la captura: el mensaje lleva su enlace."
+            : !sinpeWhatsappDone
+              ? "Enviá el comprobante por WhatsApp a cada tienda para habilitar el paso 3."
+              : null;
 
   // Volvemos acá después de crear la cuenta o iniciar sesión: llevamos la vista
   // directo al bloque para confirmar el pedido.
@@ -302,9 +472,15 @@ export default function CartPage() {
   const handleCheckout = async () => {
     // Confirmar el pedido siempre pide cuenta: si no hay sesión, a registrarse.
     if (!user || user.isAnonymous) {
-      toast("Creá tu cuenta para confirmar el pedido", {
-        description: "Entrás con tu correo y contraseña y volvés directo acá.",
-      });
+      if (paymentMethod === "sinpe" && sinpeFiles.length > 0) {
+        toast("Creá tu cuenta antes de subir el comprobante", {
+          description: "Sin cuenta las capturas se pierden al salir. Entrá y volvé a subirlas: desde entonces quedan guardadas con su enlace.",
+        });
+      } else {
+        toast("Creá tu cuenta para confirmar el pedido", {
+          description: "Entrás con tu correo y contraseña y volvés directo acá.",
+        });
+      }
       navigate("/auth?role=buyer&returnTo=%2Fcart");
       return;
     }
@@ -338,6 +514,44 @@ export default function CartPage() {
       return;
     }
 
+    // Si alguna captura quedó sin subir (cuenta recién creada o fallo de red),
+    // se sube acá para que el mensaje y el pedido siempre lleven el enlace.
+    if (paymentMethod === "sinpe") {
+      for (const item of sinpeFiles) {
+        if (item.url || !item.file) continue;
+        try {
+          const uploadUrl = await generateReceiptUploadUrl({});
+          const response = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": item.file.type },
+            body: item.file,
+          });
+          if (!response.ok) throw new Error("No pudimos subir la captura");
+          const payload = (await response.json()) as { storageId: string };
+          const resolved = await resolveReceiptUrl({
+            storageId: payload.storageId as Id<"_storage">,
+          });
+          const preview = item.preview;
+          setSinpeFiles((prev) =>
+            prev.map((entry) =>
+              entry.preview === preview
+                ? { ...entry, file: undefined, uploading: false, storageId: payload.storageId, url: resolved.url }
+                : entry,
+            ),
+          );
+          item.storageId = payload.storageId;
+          item.url = resolved.url;
+          item.file = undefined;
+          item.uploading = false;
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "No pudimos subir la captura", {
+            description: "Revisá tu conexión e intentalo de nuevo.",
+          });
+          return;
+        }
+      }
+    }
+
     setPlacing(true);
     try {
       requestKey.current ??=
@@ -354,6 +568,19 @@ export default function CartPage() {
         couponCode: cart?.couponTotal ? couponCode : undefined,
         scheduledFor: wantsSchedule ? (scheduledFor ?? undefined) : undefined,
         paymentMethod,
+        sinpeReceiptStorageIds:
+          paymentMethod === "sinpe"
+            ? sinpeFiles
+                .map((item) => item.storageId)
+                .filter((id): id is string => typeof id === "string")
+                .map((id) => id as Id<"_storage">)
+            : undefined,
+        sinpeWhatsappSentBusinessIds:
+          paymentMethod === "sinpe"
+            ? groups
+                .filter((group) => sinpeWhatsappOpened[group.businessId])
+                .map((group) => String(group.businessId))
+            : undefined,
       });
       // La compra quedó registrada: el próximo intento es un pedido nuevo.
       requestKey.current = null;
@@ -377,6 +604,14 @@ export default function CartPage() {
         );
       }
       setNotes("");
+      setSinpePaid(false);
+      setSinpeFiles([]);
+      setSinpeWhatsappOpened({});
+      try {
+        window.localStorage.removeItem(SINPE_CART_KEY);
+      } catch {
+        // Sin almacenamiento no hay nada que limpiar.
+      }
       navigate("/orders");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos cerrar el pedido");
@@ -1009,12 +1244,17 @@ export default function CartPage() {
                   {sinpeFiles.length > 0 && (
                     <div className="flex w-full max-w-full min-w-0 flex-wrap gap-2 overflow-x-clip">
                       {sinpeFiles.map((item, index) => (
-                        <div key={`${item.preview}-${index}`} className="relative shrink-0">
+                        <div key={`${item.storageId ?? item.preview}-${index}`} className="relative shrink-0">
                           <img
-                            src={item.preview}
+                            src={item.url ?? item.preview}
                             alt={`Captura ${index + 1} del pago SINPE`}
                             className="size-16 rounded-lg border border-border/60 object-cover"
                           />
+                          {item.uploading && (
+                            <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50">
+                              <Loader2 className="size-4 animate-spin text-white" />
+                            </span>
+                          )}
                           <button
                             type="button"
                             aria-label={`Quitar captura ${index + 1}`}
@@ -1034,7 +1274,7 @@ export default function CartPage() {
                         <Button
                           key={group.businessId}
                           type="button"
-                          disabled={!sinpePaid || sinpeFiles.length === 0}
+                          disabled={!sinpePaid || sinpeFiles.length === 0 || sinpeUploading}
                           onClick={() => openSinpeWhatsapp(group.businessId, group.whatsappPhone, group.businessName, group.paymentAmount)}
                           className={cn(
                             "h-10 w-full gap-2",
@@ -1048,12 +1288,14 @@ export default function CartPage() {
                     })}
                   </div>
                   <p className="text-center text-[10px] leading-relaxed text-muted-foreground">
-                    {sinpeFiles.length === 0
-                      ? "Subí al menos una captura para habilitar los envíos por WhatsApp."
-                      : !sinpeWhatsappDone
-                        ? "Enviá el comprobante por WhatsApp a cada tienda para habilitar el paso 3."
-                        : "Comprobante listo y enviado. Ya podés usar el paso 3 para confirmar."}
-                    {" "}En Pedidos la captura se adjunta por tienda con el código del pedido.
+                    {sinpeUploading
+                      ? "Subiendo captura... esperá a que termine para que el mensaje de WhatsApp lleve su enlace."
+                      : sinpeFiles.length === 0
+                        ? "Subí al menos una captura para habilitar los envíos por WhatsApp."
+                        : !sinpeWhatsappDone
+                          ? "Enviá el comprobante por WhatsApp a cada tienda para habilitar el paso 3."
+                          : "Comprobante listo y enviado. Ya podés usar el paso 3 para confirmar."}
+                    {" "}La captura y los envíos viajan con tu pedido: en Pedidos ya aparecen adjuntos por tienda.
                   </p>
                 </div>
               )}

@@ -430,6 +430,11 @@ export const checkout = mutation({
     paymentMethod: v.optional(
       v.union(v.literal("cash"), v.literal("sinpe")),
     ),
+    // Capturas del SINPE ya subidas desde el carrito: se adjuntan a cada
+    // pedido para no pedirlas de nuevo en Pedidos si se sale a WhatsApp.
+    sinpeReceiptStorageIds: v.optional(v.array(v.id("_storage"))),
+    // Tiendas a las que ya se les envió el comprobante por WhatsApp.
+    sinpeWhatsappSentBusinessIds: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -677,6 +682,22 @@ export const checkout = mutation({
     const now = Date.now();
     const groupCode = `CE-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    // Comprobante del carrito: se guarda una vez y se adjunta a cada pedido
+    // SINPE para que en Pedidos ya aparezca listo y con el envío marcado.
+    let sinpeReceipt:
+      | { storageId: Id<"_storage">; url: string; at: number; by: Id<"users"> }
+      | undefined;
+    if (paymentMethod === "sinpe") {
+      for (const storageId of args.sinpeReceiptStorageIds ?? []) {
+        const url = await ctx.storage.getUrl(storageId);
+        if (url) {
+          sinpeReceipt = { storageId, url, at: now, by: userId };
+          break;
+        }
+      }
+    }
+    const sinpeSentStores = new Set(args.sinpeWhatsappSentBusinessIds ?? []);
+
     for (const trip of trips) {
       const tripStops = trip.stops.length;
       // Un código de retiro y un PIN de entrega por entrega, no por tienda: el
@@ -759,6 +780,13 @@ export const checkout = mutation({
           paymentWhatsappPhone:
             paymentMethod === "sinpe"
               ? store.whatsappPhone ?? undefined
+              : undefined,
+          paymentReceipt: sinpeReceipt,
+          paymentWhatsappSentAt:
+            paymentMethod === "sinpe" &&
+            sinpeReceipt &&
+            sinpeSentStores.has(store.id)
+              ? now
               : undefined,
           address: orderAddress,
           deliveryLocation: dropoff ?? undefined,

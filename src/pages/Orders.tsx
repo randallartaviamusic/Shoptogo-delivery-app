@@ -320,10 +320,12 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
   const paidKey = `stg:sinpe-paid:${order._id}`;
   const [paidStep, setPaidStep] = useState(() => {
     try {
-      return window.localStorage.getItem(paidKey) === "1";
+      if (window.localStorage.getItem(paidKey) === "1") return true;
     } catch {
-      return false;
+      // Sin almacenamiento se usa el estado del pedido.
     }
+    // Si el comprobante ya viene adjunto desde el carrito, el pago ya se hizo.
+    return Boolean(order.paymentReceipt);
   });
   const [preview, setPreview] = useState<string | null>(null);
   // La imagen queda en memoria para poder compartirla adjunta desde el teléfono.

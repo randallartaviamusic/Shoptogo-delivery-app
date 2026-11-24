@@ -2847,6 +2847,18 @@ export const generatePaymentReceiptUploadUrl = mutation({
   },
 });
 
+/** Devuelve la URL pública de una captura recién subida del SINPE. */
+export const resolveReceiptUrl = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const url = await ctx.storage.getUrl(args.storageId);
+    if (!url) throw new Error("No pudimos leer la captura");
+    return { url };
+  },
+});
+
 /** Verifica que el pedido sea del comprador y se pague por SINPE. */
 async function buyerSinpeOrder(
   ctx: DbCtx,
