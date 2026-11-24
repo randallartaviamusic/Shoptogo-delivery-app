@@ -18,7 +18,7 @@ import { formatKm } from "@/lib/delivery";
 import { money } from "@/lib/format";
 import { optionSummary } from "@/lib/productOptions";
 import { formatSinpeNumber, normalizeSinpeNumber, sinpeWhatsappHref } from "@/lib/sinpe";
-import { FULFILLMENT_OPTIONS, type FulfillmentMethod } from "@/lib/fulfillment";
+import { FULFILLMENT_LABEL, FULFILLMENT_OPTIONS, productFulfillmentMethods, type FulfillmentMethod } from "@/lib/fulfillment";
 import { costaRicaLocalToTimestamp, SCHEDULE_RULES } from "@/lib/scheduling";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -211,6 +211,25 @@ export default function CartPage() {
     () => groups.flatMap((g) => g.items.map((i) => i.productId as Id<"products">)),
     [groups],
   );
+  // Cada producto ofrece solo las modalidades que el local activó: en el
+  // carrito solo se muestran las que todos los productos aceptan.
+  const allowedFulfillment = useMemo<FulfillmentMethod[]>(() => {
+    const all = groups.flatMap((g) => g.items);
+    if (all.length === 0) return FULFILLMENT_OPTIONS.map((o) => o.value);
+    return FULFILLMENT_OPTIONS.map((o) => o.value).filter((method) =>
+      all.every((item) =>
+        productFulfillmentMethods({
+          fulfillmentMethods: (item as { fulfillmentMethods?: FulfillmentMethod[] }).fulfillmentMethods,
+          reservable: item.reservable,
+        }).includes(method),
+      ),
+    );
+  }, [groups]);
+  useEffect(() => {
+    if (groups.length > 0 && !allowedFulfillment.includes(fulfillment)) {
+      setFulfillment(allowedFulfillment[0] ?? "delivery");
+    }
+  }, [allowedFulfillment, fulfillment, groups.length]);
   const reservationStatus = useQuery(
     api.cart.reservationCheck,
     needsSchedule && reservationProductIds.length > 0
@@ -218,8 +237,8 @@ export default function CartPage() {
       : "skip",
   );
   const reservationError = needsSchedule
-    ? reservationStatus?.find((r) => !r.reservable)
-      ? `${reservationStatus.find((r) => !r.reservable)?.name} no aplica para reservación; quitalo o cambiá a retiro/entrega`
+    ? reservationStatus?.find((r) => !(r.fulfillmentMethods ?? []).includes("reservation") && !r.reservable)
+      ? `${reservationStatus.find((r) => !(r.fulfillmentMethods ?? []).includes("reservation") && !r.reservable)?.name} no aplica para reservación; quitalo o cambiá a otra opción`
       : scheduledFor
         ? reservationStatus?.find((r) => r.blocked)
           ? `${reservationStatus.find((r) => r.blocked)?.name} no está disponible en esa fecha y hora; elegí otro horario`
@@ -761,6 +780,14 @@ export default function CartPage() {
                             {item.reservable && (
                               <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent">Con cita</span>
                             )}
+                            <span className="rounded-full bg-secondary px-2 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                              {productFulfillmentMethods({
+                                fulfillmentMethods: (item as { fulfillmentMethods?: FulfillmentMethod[] }).fulfillmentMethods,
+                                reservable: item.reservable,
+                              })
+                                .map((method) => FULFILLMENT_LABEL[method])
+                                .join(" · ")}
+                            </span>
                           </p>
                           <button
                             aria-label={`Quitar ${item.name}`}
@@ -867,8 +894,13 @@ export default function CartPage() {
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Cómo lo querés recibir
               </p>
+              {allowedFulfillment.length === 0 ? (
+                <p className="rounded-xl border border-primary/30 bg-primary/[0.06] px-3 py-2 text-[11px] leading-relaxed text-primary">
+                  Estos productos no comparten ninguna forma de entrega: quitá alguno para poder confirmar.
+                </p>
+              ) : null}
               <div className="grid gap-2 sm:grid-cols-2">
-                {FULFILLMENT_OPTIONS.map((option) => {
+                {FULFILLMENT_OPTIONS.filter((option) => allowedFulfillment.includes(option.value)).map((option) => {
                   const Icon =
                     option.value === "delivery"
                       ? Bike
@@ -1508,7 +1540,7 @@ export default function CartPage() {
 
             <Button
               className="mt-5 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
-              disabled={placing || !canConfirm || Boolean(scheduleError) || Boolean(reservationError) || hasClosed || (paymentMethod === "sinpe" && !sinpeReady) || Boolean(sinpeBlockedReason) || groups.some((group) => group.items.some((item) => !item.isAvailable || (item.stockEnabled && (item.stock ?? 0) < item.quantity)))}
+              disabled={placing || !canConfirm || !allowedFulfillment.includes(fulfillment) || Boolean(scheduleError) || Boolean(reservationError) || hasClosed || (paymentMethod === "sinpe" && !sinpeReady) || Boolean(sinpeBlockedReason) || groups.some((group) => group.items.some((item) => !item.isAvailable || (item.stockEnabled && (item.stock ?? 0) < item.quantity)))}
               onClick={handleCheckout}
             >
               {placing ? (

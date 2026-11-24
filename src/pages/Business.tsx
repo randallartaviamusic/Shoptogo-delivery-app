@@ -73,7 +73,7 @@ import { ASSIGNMENT_RULES } from "@/lib/delivery";
 import { formatSinpeNumber, normalizeSinpeNumber } from "@/lib/sinpe";
 import { DEFAULT_WHATSAPP_NUMBERS } from "@/lib/subscriptions";
 import { FlashCountdown } from "@/components/EliteBusiness";
-import { fulfillmentLabel } from "@/lib/fulfillment";
+import { fulfillmentLabel, productFulfillmentMethods, type FulfillmentMethod } from "@/lib/fulfillment";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
 import type { DeliveryPromo } from "@/lib/promo";
 import { cn } from "@/lib/utils";
@@ -291,6 +291,7 @@ export default function BusinessPage() {
     stockEnabled: false,
     stock: "",
     reservable: false,
+    fulfillmentMethods: ["delivery", "pickup", "dine_in"] as FulfillmentMethod[],
     blockedSlots: [] as Array<{ start: number; end: number; note?: string }>,
   });
   const [productVideoStorageId, setProductVideoStorageId] =
@@ -522,6 +523,7 @@ export default function BusinessPage() {
       stockEnabled: false,
       stock: "",
       reservable: false,
+      fulfillmentMethods: ["delivery", "pickup", "dine_in"] as FulfillmentMethod[],
       blockedSlots: [],
     });
     setProductVideoStorageId(null);
@@ -553,6 +555,7 @@ export default function BusinessPage() {
       stockEnabled: product.stockEnabled ?? false,
       stock: product.stockEnabled ? String(product.stock ?? 0) : "",
       reservable: product.reservable ?? false,
+      fulfillmentMethods: productFulfillmentMethods(product),
       blockedSlots: (product.blockedSlots ?? []).map((s) => ({ ...s })),
     });
     setProductVideoStorageId(null);
@@ -702,7 +705,8 @@ export default function BusinessPage() {
       image: productForm.image,
       stockEnabled: productForm.stockEnabled,
       stock: productForm.stockEnabled ? Math.max(0, Math.floor(Number(productForm.stock) || 0)) : undefined,
-      reservable: productForm.reservable,
+      reservable: productForm.fulfillmentMethods.includes("reservation"),
+      fulfillmentMethods: productForm.fulfillmentMethods,
       blockedSlots: productForm.blockedSlots,
       attributes: Object.entries(productForm.attributes)
         .filter(([, value]) => value.length > 0)
@@ -2471,6 +2475,7 @@ export default function BusinessPage() {
               stockEnabled={productForm.stockEnabled}
               stock={productForm.stock}
               reservable={productForm.reservable}
+              fulfillmentMethods={productForm.fulfillmentMethods}
               blockedSlots={productForm.blockedSlots}
               booked={editing?._id ? (availability?.booked ?? []) : []}
               onChange={(patch) => setProductForm((prev) => ({ ...prev, ...patch }))}

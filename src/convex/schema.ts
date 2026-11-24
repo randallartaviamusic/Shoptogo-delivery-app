@@ -424,6 +424,10 @@ const schema = defineSchema(
       // y hora exacta. El local bloquea los tramos ocupados en blockedSlots.
       reservable: v.optional(v.boolean()),
       blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
+      // Modalidades activas de este producto: llevar, retirar, comer en el
+      // local o reservación/cita. Ausente = llevar + retirar + comer en el
+      // local (+ reservación si reservable es true, por compatibilidad).
+      fulfillmentMethods: v.optional(v.array(fulfillmentMethodValidator)),
     })
       .index("by_business", ["businessId"])
       .index("by_department", ["department"]),

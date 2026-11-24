@@ -5,6 +5,7 @@ import type { Doc } from "./_generated/dataModel";
 import { DELIVERY_RULES, deliveryQuote, isValidPoint } from "../lib/delivery";
 import type { GeoPoint } from "../lib/delivery";
 import { planTier } from "../lib/subscriptions";
+import { productFulfillmentMethods } from "../lib/fulfillment";
 import { normalizeSubcategory } from "../lib/departments";
 import { subscriptionAccess } from "./subscriptions";
 import { isAccountVerified } from "./verification";
@@ -173,6 +174,7 @@ export const deck = query({
           stockEnabled: product.stockEnabled ?? false,
           stock: product.stockEnabled ? (product.stock ?? 0) : null,
           reservable: product.reservable ?? false,
+          fulfillmentMethods: productFulfillmentMethods(product),
         };
       })
       .sort(

@@ -2,7 +2,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { CalendarClock, Package, Plus, Trash2 } from "lucide-react";
+import {
+  FULFILLMENT_OPTIONS,
+  productFulfillmentMethods,
+  type FulfillmentMethod,
+} from "@/lib/fulfillment";
+import { cn } from "@/lib/utils";
+import { Bike, CalendarClock, Package, Plus, ShoppingBag, Trash2, UtensilsCrossed } from "lucide-react";
 import { useState } from "react";
 
 export type BlockedSlot = { start: number; end: number; note?: string };
@@ -33,12 +39,20 @@ function formatSlot(start: number, end: number) {
   return `${fmt(s)} → ${fmt(e)}`;
 }
 
+const FULFILLMENT_ICON: Record<FulfillmentMethod, typeof Bike> = {
+  delivery: Bike,
+  pickup: ShoppingBag,
+  dine_in: UtensilsCrossed,
+  reservation: CalendarClock,
+};
+
 export function ProductInventoryFields({
   stockEnabled,
   stock,
   reservable,
   blockedSlots,
   booked = [],
+  fulfillmentMethods,
   onChange,
 }: {
   stockEnabled: boolean;
@@ -46,13 +60,30 @@ export function ProductInventoryFields({
   reservable: boolean;
   blockedSlots: BlockedSlot[];
   booked?: BookedSlot[];
+  /** Modalidades activas del producto. Ausente = se derivan de `reservable`. */
+  fulfillmentMethods?: FulfillmentMethod[];
   onChange: (patch: {
     stockEnabled?: boolean;
     stock?: string;
     reservable?: boolean;
     blockedSlots?: BlockedSlot[];
+    fulfillmentMethods?: FulfillmentMethod[];
   }) => void;
 }) {
+  const active = productFulfillmentMethods({ fulfillmentMethods, reservable });
+  const toggleMethod = (method: FulfillmentMethod, checked: boolean) => {
+    const next = checked
+      ? Array.from(new Set([...active, method]))
+      : active.filter((value) => value !== method);
+    if (next.length === 0) return;
+    onChange({
+      fulfillmentMethods: FULFILLMENT_OPTIONS.filter((option) =>
+        next.includes(option.value),
+      ).map((option) => option.value),
+      reservable: next.includes("reservation"),
+    });
+  };
+  const reservationActive = active.includes("reservation");
   const [draftStart, setDraftStart] = useState("");
   const [draftEnd, setDraftEnd] = useState("");
   const [draftNote, setDraftNote] = useState("");
@@ -111,20 +142,41 @@ export function ProductInventoryFields({
         </div>
       )}
 
-      <label className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-black/30 px-3 py-2.5">
-        <span className="flex min-w-0 items-center gap-2">
-          <CalendarClock className="size-4 shrink-0 text-accent" />
-          <span className="min-w-0">
-            <span className="block break-words text-sm font-medium">Aplica para reservación o cita</span>
-            <span className="block break-words text-[11px] text-muted-foreground">
-              El cliente elige día y hora; vos bloqueás lo ocupado
-            </span>
-          </span>
-        </span>
-        <Switch checked={reservable} onCheckedChange={(checked) => onChange({ reservable: checked })} />
-      </label>
+      <div className="space-y-2">
+        <p className="break-words text-xs font-semibold">Cómo se puede pedir este producto</p>
+        <p className="break-words text-[10px] leading-relaxed text-muted-foreground">
+          Marcá las opciones que acepta este producto. En el carrito solo aparecen las que estén activas.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {FULFILLMENT_OPTIONS.map((option) => {
+            const Icon = FULFILLMENT_ICON[option.value];
+            const checked = active.includes(option.value);
+            return (
+              <label
+                key={option.value}
+                className={cn(
+                  "flex cursor-pointer items-center justify-between gap-2 rounded-xl border px-2.5 py-2",
+                  checked ? "border-accent/50 bg-accent/10" : "border-border/60 bg-black/30",
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <Icon className="size-4 shrink-0 text-accent" />
+                  <span className="min-w-0">
+                    <span className="block break-words text-xs font-semibold">{option.label}</span>
+                    <span className="block break-words text-[10px] text-muted-foreground">{option.hint}</span>
+                  </span>
+                </span>
+                <Switch
+                  checked={checked}
+                  onCheckedChange={(value) => toggleMethod(option.value, value)}
+                />
+              </label>
+            );
+          })}
+        </div>
+      </div>
 
-      {reservable && (
+      {reservationActive && (
         <div className="space-y-2 rounded-xl border border-border/60 bg-black/30 p-2.5">
           <p className="break-words text-xs font-semibold">Días y horas no disponibles</p>
           <p className="break-words text-[10px] leading-relaxed text-muted-foreground">

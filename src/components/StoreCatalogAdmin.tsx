@@ -32,6 +32,7 @@ import { ProductInventoryFields } from "@/components/ProductInventoryFields";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DEPARTMENTS, getDepartment, normalizeSubcategory } from "@/lib/departments";
+import { productFulfillmentMethods, type FulfillmentMethod } from "@/lib/fulfillment";
 import type { ProductOptionGroup } from "@/lib/productOptions";
 import { ProductOptionsEditor } from "@/components/ProductOptionsEditor";
 import { money } from "@/lib/format";
@@ -164,6 +165,7 @@ type StoreProduct = {
   stockEnabled?: boolean;
   stock?: number | null;
   reservable?: boolean;
+  fulfillmentMethods?: FulfillmentMethod[];
   blockedSlots?: Array<{ start: number; end: number; note?: string }>;
 };
 
@@ -210,6 +212,7 @@ type ProductDraft = {
   stockEnabled: boolean;
   stock: string;
   reservable: boolean;
+  fulfillmentMethods: FulfillmentMethod[];
   blockedSlots: Array<{ start: number; end: number; note?: string }>;
 };
 
@@ -358,6 +361,7 @@ function productDraftOf(product: StoreProduct): ProductDraft {
     stockEnabled: product.stockEnabled ?? false,
     stock: product.stockEnabled ? String(product.stock ?? 0) : "",
     reservable: product.reservable ?? false,
+    fulfillmentMethods: productFulfillmentMethods(product),
     blockedSlots: (product.blockedSlots ?? []).map((s) => ({ ...s })),
   };
 }
@@ -377,6 +381,7 @@ function emptyProductDraft(category: string): ProductDraft {
     stockEnabled: false,
     stock: "",
     reservable: false,
+    fulfillmentMethods: ["delivery", "pickup", "dine_in"] as FulfillmentMethod[],
     blockedSlots: [],
   };
 }
@@ -530,7 +535,8 @@ export function StoreCatalogAdmin() {
         category: productDraft.category,
         stockEnabled: productDraft.stockEnabled,
         stock: productDraft.stockEnabled ? Math.max(0, Math.floor(Number(productDraft.stock) || 0)) : undefined,
-        reservable: productDraft.reservable,
+        reservable: productDraft.fulfillmentMethods.includes("reservation"),
+        fulfillmentMethods: productDraft.fulfillmentMethods,
         blockedSlots: productDraft.blockedSlots,
         image: editImageStorageId ? undefined : productDraft.image,
         ...(editImageStorageId ? { imageStorageId: editImageStorageId } : {}),
@@ -594,7 +600,8 @@ export function StoreCatalogAdmin() {
         category: newDraft.category,
         stockEnabled: newDraft.stockEnabled,
         stock: newDraft.stockEnabled ? Math.max(0, Math.floor(Number(newDraft.stock) || 0)) : undefined,
-        reservable: newDraft.reservable,
+        reservable: newDraft.fulfillmentMethods.includes("reservation"),
+        fulfillmentMethods: newDraft.fulfillmentMethods,
         blockedSlots: newDraft.blockedSlots,
         image: newImageStorageId
           ? undefined
@@ -1212,6 +1219,7 @@ export function StoreCatalogAdmin() {
                   stockEnabled={newDraft.stockEnabled}
                   stock={newDraft.stock}
                   reservable={newDraft.reservable}
+                  fulfillmentMethods={newDraft.fulfillmentMethods}
                   blockedSlots={newDraft.blockedSlots}
                   onChange={(patch) => setNewDraft((prev) => (prev ? { ...prev, ...patch } : prev))}
                 />
@@ -1486,6 +1494,7 @@ export function StoreCatalogAdmin() {
                   stockEnabled={productDraft.stockEnabled}
                   stock={productDraft.stock}
                   reservable={productDraft.reservable}
+                  fulfillmentMethods={productDraft.fulfillmentMethods}
                   blockedSlots={productDraft.blockedSlots}
                   booked={editAvailability?.booked ?? []}
                   onChange={(patch) => setProductDraft((prev) => (prev ? { ...prev, ...patch } : prev))}

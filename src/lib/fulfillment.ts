@@ -40,6 +40,46 @@ export const FULFILLMENT_OPTIONS: Array<{
   },
 ];
 
+export const ALL_FULFILLMENT_METHODS: FulfillmentMethod[] = [
+  "delivery",
+  "pickup",
+  "dine_in",
+  "reservation",
+];
+
+/** Modalidades activas de un producto. Sin dato guardado: llevar + retirar +
+ * comer en el local (+ reservación si reservable es true, por compatibilidad
+ * con productos viejos). */
+export function productFulfillmentMethods(product: {
+  fulfillmentMethods?: FulfillmentMethod[] | null;
+  reservable?: boolean | null;
+}): FulfillmentMethod[] {
+  const stored = (product.fulfillmentMethods ?? []).filter((value): value is FulfillmentMethod =>
+    value === "delivery" || value === "pickup" || value === "dine_in" || value === "reservation",
+  );
+  if (stored.length > 0) return Array.from(new Set(stored));
+  const base: FulfillmentMethod[] = ["delivery", "pickup", "dine_in"];
+  if (product.reservable) base.push("reservation");
+  return base;
+}
+
+/** Limpia las modalidades elegidas en el editor: únicas, válidas y al menos una. */
+export function normalizeFulfillmentMethods(
+  input: unknown,
+  fallbackReservable = false,
+): FulfillmentMethod[] {
+  const list = Array.isArray(input) ? input : [];
+  const clean = Array.from(
+    new Set(list.filter((value): value is FulfillmentMethod =>
+      value === "delivery" || value === "pickup" || value === "dine_in" || value === "reservation",
+    )),
+  );
+  if (clean.length > 0) return clean;
+  const base: FulfillmentMethod[] = ["delivery", "pickup", "dine_in"];
+  if (fallbackReservable) base.push("reservation");
+  return base;
+}
+
 export const FULFILLMENT_LABEL: Record<FulfillmentMethod, string> = {
   delivery: "Entrega a domicilio",
   pickup: "Retiro en el local",

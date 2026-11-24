@@ -6,11 +6,16 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   businessHourValidator,
+  fulfillmentMethodValidator,
   geoPointValidator,
   productBlockedSlotValidator,
   productOptionGroupValidator,
   promoKindValidator,
 } from "./schema";
+import {
+  normalizeFulfillmentMethods,
+  productFulfillmentMethods,
+} from "../lib/fulfillment";
 import { normalizeOptionGroups } from "../lib/productOptions";
 import { normalizeSubcategory } from "../lib/departments";
 import { planTier } from "../lib/subscriptions";
@@ -928,6 +933,7 @@ export const addProduct = mutation({
     stock: v.optional(v.number()),
     reservable: v.optional(v.boolean()),
     blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
+    fulfillmentMethods: v.optional(v.array(fulfillmentMethodValidator)),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -948,6 +954,11 @@ export const addProduct = mutation({
     const stockEnabled = args.stockEnabled ?? false;
     const stock = stockEnabled ? Math.max(0, Math.floor(args.stock ?? 0)) : undefined;
     const blockedSlots = normalizeBlockedSlots(args.blockedSlots);
+    const fulfillmentMethods =
+      args.fulfillmentMethods !== undefined
+        ? normalizeFulfillmentMethods(args.fulfillmentMethods, args.reservable)
+        : normalizeFulfillmentMethods(undefined, args.reservable);
+    const reservable = fulfillmentMethods.includes("reservation");
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
@@ -968,8 +979,9 @@ export const addProduct = mutation({
       isAvailable: true,
       sortOrder: Date.now(),
       ...(stockEnabled ? { stockEnabled: true, stock: stock ?? 0 } : {}),
-      ...(args.reservable ? { reservable: true } : {}),
+      ...(reservable ? { reservable: true } : {}),
       ...(blockedSlots.length > 0 ? { blockedSlots } : {}),
+      fulfillmentMethods,
     });
     await ctx.scheduler.runAfter(0, internal.marketing.announceNewProduct, {
       productId,
@@ -998,6 +1010,7 @@ export const updateProduct = mutation({
     stock: v.optional(v.number()),
     reservable: v.optional(v.boolean()),
     blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
+    fulfillmentMethods: v.optional(v.array(fulfillmentMethodValidator)),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -1017,7 +1030,22 @@ export const updateProduct = mutation({
     if (args.stockEnabled !== undefined) patch.stockEnabled = args.stockEnabled;
     if (args.stock !== undefined)
       patch.stock = Math.max(0, Math.floor(args.stock));
-    if (args.reservable !== undefined) patch.reservable = args.reservable;
+    if (args.fulfillmentMethods !== undefined) {
+      const clean = normalizeFulfillmentMethods(
+        args.fulfillmentMethods,
+        args.reservable ?? product.reservable ?? false,
+      );
+      patch.fulfillmentMethods = clean;
+      patch.reservable = clean.includes("reservation");
+    } else if (args.reservable !== undefined) {
+      patch.reservable = args.reservable;
+      // Sin lista explícita, sincroniza la reservación con la lista guardada.
+      const current = productFulfillmentMethods(product);
+      const next = args.reservable
+        ? Array.from(new Set([...current, "reservation" as const]))
+        : current.filter((value) => value !== "reservation");
+      patch.fulfillmentMethods = next.length > 0 ? next : ["delivery", "pickup", "dine_in"];
+    }
     if (args.blockedSlots !== undefined)
       patch.blockedSlots = normalizeBlockedSlots(args.blockedSlots);
     if (args.imageStorageId) {
@@ -1081,6 +1109,7 @@ export const duplicateProduct = mutation({
       ...(product.stockEnabled ? { stockEnabled: true, stock: product.stock ?? 0 } : {}),
       ...(product.reservable ? { reservable: true } : {}),
       ...(product.blockedSlots?.length ? { blockedSlots: product.blockedSlots } : {}),
+      fulfillmentMethods: productFulfillmentMethods(product),
     });
     return await ctx.db.get(productId);
   },
@@ -1162,6 +1191,7 @@ export const productAvailability = query({
       stockEnabled: product.stockEnabled ?? false,
       stock: product.stock ?? null,
       reservable: product.reservable ?? false,
+      fulfillmentMethods: productFulfillmentMethods(product),
       blocked,
       booked: booked.slice(0, 50),
     };

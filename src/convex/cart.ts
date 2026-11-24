@@ -7,6 +7,7 @@ import {
   fulfillmentMethodValidator,
   geoPointValidator,
   productOptionChoiceValidator,
+  type FulfillmentMethod,
 } from "./schema";
 import { requireSubscriptionAccess } from "./subscriptions";
 import { requireVerifiedAccount } from "./verification";
@@ -24,7 +25,7 @@ import { money } from "../lib/format";
 import { normalizePhone } from "../lib/notify";
 import { normalizeSinpeNumber } from "../lib/sinpe";
 import { scheduleBlocker } from "../lib/scheduling";
-import { fulfillmentNotice } from "../lib/fulfillment";
+import { fulfillmentLabel, fulfillmentNotice, productFulfillmentMethods } from "../lib/fulfillment";
 import { discountFor, findCoupon } from "./coupons";
 import { queueNotice } from "./notifications";
 import { internal } from "./_generated/api";
@@ -92,6 +93,7 @@ export type CartGroup = {
     stockEnabled: boolean;
     stock: number | null;
     reservable: boolean;
+    fulfillmentMethods: FulfillmentMethod[];
     blockedSlots: Array<{ start: number; end: number; note?: string }>;
   }>;
   subtotal: number;
@@ -177,6 +179,7 @@ async function buildCart(
       stockEnabled: product.stockEnabled ?? false,
       stock: product.stockEnabled ? (product.stock ?? 0) : null,
       reservable: product.reservable ?? false,
+      fulfillmentMethods: productFulfillmentMethods(product),
       blockedSlots: product.blockedSlots ?? [],
     });
     group.subtotal += unitPrice * item.quantity;
@@ -294,6 +297,7 @@ export const reservationCheck = query({
       productId: Id<"products">;
       name: string;
       reservable: boolean;
+      fulfillmentMethods: FulfillmentMethod[];
       blocked: boolean;
       booked: boolean;
       stockLeft: number | null;
@@ -323,6 +327,7 @@ export const reservationCheck = query({
         productId,
         name: product.name,
         reservable: product.reservable ?? false,
+        fulfillmentMethods: productFulfillmentMethods(product),
         blocked,
         booked,
         stockLeft: product.stockEnabled ? (product.stock ?? 0) : null,
@@ -608,6 +613,12 @@ export const checkout = mutation({
       }
       if (product.stockEnabled && (product.stock ?? 0) < (wantedByProduct.get(String(product._id)) ?? item.quantity)) {
         throw new Error(`Solo quedan ${product.stock ?? 0} de ${product.name} en stock; bajá la cantidad para continuar`);
+      }
+      // Cada producto ofrece solo las modalidades que el local activó.
+      if (!productFulfillmentMethods(product).includes(fulfillment)) {
+        throw new Error(
+          `${product.name} no admite ${fulfillmentLabel(fulfillment)}; quitalo o elegí otra forma de recibirlo`,
+        );
       }
       if (fulfillment === "reservation") {
         if (!(product.reservable ?? false)) {

@@ -8,7 +8,8 @@ import { isAdminEmail } from "./branding";
 import { ASSIGNMENT_RULES, deliveryQuote } from "../lib/delivery";
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, getDepartment } from "../lib/departments";
 import { hasSubscriptionAccess, subscriptionStatus } from "../lib/subscriptions";
-import { productBlockedSlotValidator, productOptionGroupValidator } from "./schema";
+import { fulfillmentMethodValidator, productBlockedSlotValidator, productOptionGroupValidator } from "./schema";
+import { normalizeFulfillmentMethods, productFulfillmentMethods } from "../lib/fulfillment";
 import { normalizeOptionGroups } from "../lib/productOptions";
 
 /**
@@ -487,6 +488,7 @@ export const demoCatalog = query({
             stockEnabled: product.stockEnabled ?? false,
             stock: product.stock ?? null,
             reservable: product.reservable ?? false,
+            fulfillmentMethods: productFulfillmentMethods(product),
             blockedSlots: product.blockedSlots ?? [],
           })),
         };
@@ -906,6 +908,7 @@ export const storeCatalog = query({
             stockEnabled: product.stockEnabled ?? false,
             stock: product.stock ?? null,
             reservable: product.reservable ?? false,
+            fulfillmentMethods: productFulfillmentMethods(product),
             blockedSlots: product.blockedSlots ?? [],
           })),
         };
@@ -1069,6 +1072,7 @@ export const createStoreProduct = mutation({
     stock: v.optional(v.number()),
     reservable: v.optional(v.boolean()),
     blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
+    fulfillmentMethods: v.optional(v.array(fulfillmentMethodValidator)),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -1110,6 +1114,10 @@ export const createStoreProduct = mutation({
       ? await storeProductVideoUrl(ctx, args.videoStorageId)
       : undefined;
     const optionGroups = normalizeOptionGroups(args.optionGroups);
+    const fulfillmentMethods =
+      args.fulfillmentMethods !== undefined
+        ? normalizeFulfillmentMethods(args.fulfillmentMethods, args.reservable)
+        : normalizeFulfillmentMethods(undefined, args.reservable);
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
@@ -1126,8 +1134,9 @@ export const createStoreProduct = mutation({
       isAvailable: args.isAvailable ?? true,
       sortOrder: Date.now(),
       ...((args.stockEnabled ?? false) ? { stockEnabled: true, stock: Math.max(0, Math.floor(args.stock ?? 0)) } : {}),
-      ...(args.reservable ? { reservable: true } : {}),
+      ...(fulfillmentMethods.includes("reservation") ? { reservable: true } : {}),
       ...((args.blockedSlots?.length ?? 0) > 0 ? { blockedSlots: normalizeBlockedSlots(args.blockedSlots) } : {}),
+      fulfillmentMethods,
     });
     await ctx.scheduler.runAfter(0, internal.marketing.announceNewProduct, {
       productId,
@@ -1158,6 +1167,7 @@ export const updateStoreProduct = mutation({
     stock: v.optional(v.number()),
     reservable: v.optional(v.boolean()),
     blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
+    fulfillmentMethods: v.optional(v.array(fulfillmentMethodValidator)),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -1211,7 +1221,21 @@ export const updateStoreProduct = mutation({
     }
     if (args.stockEnabled !== undefined) patch.stockEnabled = args.stockEnabled;
     if (args.stock !== undefined) patch.stock = Math.max(0, Math.floor(args.stock));
-    if (args.reservable !== undefined) patch.reservable = args.reservable;
+    if (args.fulfillmentMethods !== undefined) {
+      const clean = normalizeFulfillmentMethods(
+        args.fulfillmentMethods,
+        args.reservable ?? product.reservable ?? false,
+      );
+      patch.fulfillmentMethods = clean;
+      patch.reservable = clean.includes("reservation");
+    } else if (args.reservable !== undefined) {
+      patch.reservable = args.reservable;
+      const current = productFulfillmentMethods(product);
+      const next = args.reservable
+        ? Array.from(new Set([...current, "reservation" as const]))
+        : current.filter((value) => value !== "reservation");
+      patch.fulfillmentMethods = next.length > 0 ? next : ["delivery", "pickup", "dine_in"];
+    }
     if (args.blockedSlots !== undefined) patch.blockedSlots = normalizeBlockedSlots(args.blockedSlots);
     if (args.attributes !== undefined) patch.attributes = args.attributes;
     if (args.optionGroups !== undefined) {
