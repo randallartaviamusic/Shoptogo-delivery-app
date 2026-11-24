@@ -105,10 +105,10 @@ function AdminProductImagePicker({
         <img
           src={shown}
           alt="Foto del producto"
-          className="h-24 w-full rounded-xl border border-border/60 object-cover"
+          className="aspect-[4/3] w-full rounded-xl border border-border/60 object-cover"
         />
       ) : (
-        <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-border/70 text-muted-foreground">
+        <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-dashed border-border/70 text-muted-foreground">
           <ImageUp className="size-5" />
         </div>
       )}

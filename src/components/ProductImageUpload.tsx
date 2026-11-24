@@ -62,10 +62,10 @@ export function ProductImageUpload({
           <img
             src={preview}
             alt="Imagen del producto"
-            className="h-20 w-28 shrink-0 rounded-xl border border-border/60 object-cover"
+            className="aspect-[4/3] w-full rounded-xl border border-border/60 object-cover"
           />
         ) : (
-          <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-xl border border-dashed border-border/70 text-muted-foreground">
+          <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-dashed border-border/70 text-muted-foreground">
             <ImageUp className="size-5" />
           </div>
         )}
