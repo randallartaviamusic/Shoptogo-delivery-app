@@ -6,7 +6,7 @@ import { clockTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Bike, Check, MapPin, Store } from "lucide-react";
+import { Bike, Check, MapPin, Maximize2, Store, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import {
   MapContainer,
@@ -132,6 +132,113 @@ function FitTrackingBounds({
   return null;
 }
 
+/** Lienzo del mapa: se usa igual en la tarjeta y en pantalla completa. */
+function MapCanvas({
+  businessLocation,
+  deliveryLocation,
+  courierLocation,
+  onRoute,
+  className,
+}: {
+  businessLocation: GeoPoint | null;
+  deliveryLocation: GeoPoint | null;
+  courierLocation: GeoPoint | null;
+  onRoute: (summary: RouteSummary | null) => void;
+  className?: string;
+}) {
+  const center = businessLocation ?? deliveryLocation ?? { lat: 10.47093, lng: -84.96745 };
+  return (
+    <div
+      className={cn(
+        "relative isolate z-0 overflow-hidden rounded-xl border border-border/70",
+        className ?? "h-56 sm:h-64",
+      )}
+    >
+      <MapContainer
+        center={[center.lat, center.lng]}
+        zoom={14}
+        scrollWheelZoom={false}
+        className="size-full"
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        />
+        <FitTrackingBounds
+          businessLocation={businessLocation}
+          deliveryLocation={deliveryLocation}
+        />
+        {businessLocation && deliveryLocation && (
+          <RouteLayer
+            from={businessLocation}
+            to={deliveryLocation}
+            onResolved={onRoute}
+          />
+        )}
+        {businessLocation && (
+          <Marker position={[businessLocation.lat, businessLocation.lng]} icon={storeIcon}>
+            <Tooltip>Negocio · punto de retiro</Tooltip>
+          </Marker>
+        )}
+        {deliveryLocation && (
+          <Marker position={[deliveryLocation.lat, deliveryLocation.lng]} icon={buyerIcon}>
+            <Tooltip>Cliente · punto de entrega</Tooltip>
+          </Marker>
+        )}
+        {courierLocation && (
+          <Marker position={[courierLocation.lat, courierLocation.lng]} icon={courierIcon}>
+            <Tooltip>Repartidor</Tooltip>
+          </Marker>
+        )}
+      </MapContainer>
+    </div>
+  );
+}
+
+/** Barra de progreso del seguimiento: pasos con hora de cada avance. */
+function TrackingSteps({
+  status,
+  courierAcceptedAt,
+  pickedUpAt,
+  deliveredAt,
+}: {
+  status: OrderStatus;
+  courierAcceptedAt: number | null;
+  pickedUpAt: number | null;
+  deliveredAt: number | null;
+}) {
+  const steps = [
+    { label: "Repartidor asignado", at: courierAcceptedAt, icon: Check },
+    { label: "Retirado en el negocio", at: pickedUpAt, icon: Store },
+    { label: "Entregado al cliente", at: deliveredAt, icon: MapPin },
+  ];
+  return (
+    <ol className="grid gap-2 sm:grid-cols-3">
+      {steps.map((step) => {
+        const done = step.at !== null;
+        const current = !done && step.label === (status === "picked_up" ? "Entregado al cliente" : "Retirado en el negocio");
+        return (
+          <li
+            key={step.label}
+            className={cn(
+              "flex items-center gap-2 rounded-xl border px-2.5 py-2",
+              done
+                ? "border-accent/25 bg-accent/5"
+                : current
+                  ? "border-primary/25 bg-primary/5"
+                  : "border-border/60 bg-black/10",
+            )}
+          >
+            <step.icon className={cn("size-3.5 shrink-0", done ? "text-accent" : current ? "text-primary" : "text-muted-foreground")} />
+            <span className="min-w-0 flex-1 text-[10px] font-medium leading-tight">{step.label}</span>
+            {step.at !== null && <time className="text-[10px] text-muted-foreground">{clockTime(step.at)}</time>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function DeliveryTrackingMap(props: TrackingProps) {
   const {
     status,
@@ -148,12 +255,8 @@ export function DeliveryTrackingMap(props: TrackingProps) {
   } = props;
   const late = (lateMinutes ?? 0) > 0;
   const [routeInfo, setRouteInfo] = useState<RouteSummary | null>(null);
-  const center = businessLocation ?? deliveryLocation ?? { lat: 10.47093, lng: -84.96745 };
-  const steps = [
-    { label: "Repartidor asignado", at: courierAcceptedAt, icon: Check },
-    { label: "Retirado en el negocio", at: pickedUpAt, icon: Store },
-    { label: "Entregado al cliente", at: deliveredAt, icon: MapPin },
-  ];
+  // Mapa en pantalla completa con la barra de seguimiento incluida.
+  const [fullscreen, setFullscreen] = useState(false);
 
   return (
     <section className="space-y-3 rounded-2xl border border-accent/20 bg-black/15 p-3 sm:p-4">
@@ -167,6 +270,13 @@ export function DeliveryTrackingMap(props: TrackingProps) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFullscreen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-border/70 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground transition-colors hover:border-accent/40 hover:text-accent"
+          >
+            <Maximize2 className="size-3" /> Pantalla completa
+          </button>
           {estimatedArrivalAt && status !== "delivered" && (
             <span
               className={cn(
@@ -198,45 +308,12 @@ export function DeliveryTrackingMap(props: TrackingProps) {
         </p>
       )}
 
-      <div className="relative isolate z-0 h-56 overflow-hidden rounded-xl border border-border/70 sm:h-64">
-        <MapContainer
-          center={[center.lat, center.lng]}
-          zoom={14}
-          scrollWheelZoom={false}
-          className="size-full"
-        >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          />
-          <FitTrackingBounds
-            businessLocation={businessLocation}
-            deliveryLocation={deliveryLocation}
-          />
-          {businessLocation && deliveryLocation && (
-            <RouteLayer
-              from={businessLocation}
-              to={deliveryLocation}
-              onResolved={setRouteInfo}
-            />
-          )}
-          {businessLocation && (
-            <Marker position={[businessLocation.lat, businessLocation.lng]} icon={storeIcon}>
-              <Tooltip>Negocio · punto de retiro</Tooltip>
-            </Marker>
-          )}
-          {deliveryLocation && (
-            <Marker position={[deliveryLocation.lat, deliveryLocation.lng]} icon={buyerIcon}>
-              <Tooltip>Cliente · punto de entrega</Tooltip>
-            </Marker>
-          )}
-          {courierLocation && (
-            <Marker position={[courierLocation.lat, courierLocation.lng]} icon={courierIcon}>
-              <Tooltip>Repartidor</Tooltip>
-            </Marker>
-          )}
-        </MapContainer>
-      </div>
+      <MapCanvas
+        businessLocation={businessLocation}
+        deliveryLocation={deliveryLocation}
+        courierLocation={courierLocation}
+        onRoute={setRouteInfo}
+      />
 
       <p className="text-[10px] text-muted-foreground">
         {routeInfo
@@ -244,29 +321,57 @@ export function DeliveryTrackingMap(props: TrackingProps) {
           : "Calculando la ruta real del repartidor…"}
       </p>
 
-      <ol className="grid gap-2 sm:grid-cols-3">
-        {steps.map((step) => {
-          const done = step.at !== null;
-          const current = !done && step.label === (status === "picked_up" ? "Entregado al cliente" : "Retirado en el negocio");
-          return (
-            <li
-              key={step.label}
-              className={cn(
-                "flex items-center gap-2 rounded-xl border px-2.5 py-2",
-                done
-                  ? "border-accent/25 bg-accent/5"
-                  : current
-                    ? "border-primary/25 bg-primary/5"
-                    : "border-border/60 bg-black/10",
-              )}
+      <TrackingSteps
+        status={status}
+        courierAcceptedAt={courierAcceptedAt}
+        pickedUpAt={pickedUpAt}
+        deliveredAt={deliveredAt}
+      />
+
+      {fullscreen && (
+        <div className="fixed inset-0 z-[90] flex flex-col bg-[#0a0a0b]" role="dialog" aria-modal="true" aria-label="Seguimiento en pantalla completa">
+          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate font-display text-sm font-bold">Seguimiento en vivo</p>
+              <p className="text-[11px] text-muted-foreground">
+                {courierLocationAt
+                  ? `Ubicación actualizada ${clockTime(courierLocationAt)} hs`
+                  : "Esperando la ubicación del repartidor…"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFullscreen(false)}
+              aria-label="Salir de pantalla completa"
+              className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:border-accent/40 hover:text-accent"
             >
-              <step.icon className={cn("size-3.5 shrink-0", done ? "text-accent" : current ? "text-primary" : "text-muted-foreground")} />
-              <span className="min-w-0 flex-1 text-[10px] font-medium leading-tight">{step.label}</span>
-              {step.at !== null && <time className="text-[10px] text-muted-foreground">{clockTime(step.at)}</time>}
-            </li>
-          );
-        })}
-      </ol>
+              <X className="size-4" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+            <MapCanvas
+              businessLocation={businessLocation}
+              deliveryLocation={deliveryLocation}
+              courierLocation={courierLocation}
+              onRoute={setRouteInfo}
+              className="h-[52vh] min-h-[320px]"
+            />
+            {routeInfo && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {`Ruta real: ${routeInfo.km.toFixed(1)} km · ${routeInfo.minutes} min · ${routeInfo.source}`}
+              </p>
+            )}
+            <div className="mt-3">
+              <TrackingSteps
+                status={status}
+                courierAcceptedAt={courierAcceptedAt}
+                pickedUpAt={pickedUpAt}
+                deliveredAt={deliveredAt}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

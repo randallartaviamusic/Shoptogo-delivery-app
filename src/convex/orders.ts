@@ -1490,6 +1490,11 @@ export const businessUpdateStatus = mutation({
       if (updated) await offerTripToCouriers(ctx, updated);
     }
 
+    // Refresca la barra de seguimiento en la barra de notificaciones: al
+    // tocarla el comprador abre el pedido con el mapa en vivo.
+    const tracked = await ctx.db.get(args.orderId);
+    if (tracked) await notifyBuyerTracking(ctx, tracked);
+
     return { status: args.status };
   },
 });
@@ -1920,6 +1925,76 @@ export const releaseFavoritePriorityOffers = internalMutation({
 });
 
 /**
+ * Barra de seguimiento en la barra de notificaciones del comprador.
+ *
+ * Cada cambio de estado manda un aviso con la misma etiqueta
+ * (`tracking-<pedido>`): en Android y en el navegador el aviso nuevo reemplaza
+ * al anterior, así la notificación funciona como una barra de seguimiento
+ * persistente aunque la app esté en segundo plano. Al tocarla se abre el
+ * pedido con el mapa en vivo.
+ */
+function buyerTrackingCopy(order: Doc<"orders">, courierName: string | null): {
+  title: string;
+  body: string;
+} {
+  const code = order.code;
+  switch (order.status) {
+    case "accepted":
+      return {
+        title: `Pedido ${code} confirmado`,
+        body: "El local aceptó tu pedido y lo va a preparar.",
+      };
+    case "preparing":
+      return {
+        title: `Pedido ${code} en preparación`,
+        body: "Tu pedido se está preparando en el local.",
+      };
+    case "ready":
+      return courierName
+        ? {
+            title: `Pedido ${code} listo`,
+            body: `${courierName} pasa a retirarlo en el local.`,
+          }
+        : {
+            title: `Pedido ${code} listo`,
+            body: "Tu pedido está listo. Estamos buscando repartidor.",
+          };
+    case "picked_up":
+      return {
+        title: `Pedido ${code} en camino`,
+        body: courierName
+          ? `${courierName} va en camino a tu dirección.`
+          : "El repartidor va en camino a tu dirección.",
+      };
+    case "delivered":
+      return {
+        title: `Pedido ${code} entregado`,
+        body: "¡Que lo disfrutes! Contanos cómo te fue.",
+      };
+    case "cancelled":
+      return {
+        title: `Pedido ${code} cancelado`,
+        body: order.cancellationReason ?? "El pedido fue cancelado.",
+      };
+    default:
+      return { title: `Pedido ${code}`, body: "Tu pedido sigue en curso." };
+  }
+}
+
+/** Refresca la barra de seguimiento del comprador tras un cambio de estado. */
+async function notifyBuyerTracking(ctx: MutationCtx, order: Doc<"orders">) {
+  const courier = order.courierId ? await ctx.db.get(order.courierId) : null;
+  const copy = buyerTrackingCopy(order, courier?.name ?? null);
+  await ctx.scheduler.runAfter(0, internal.pushNode.sendOrderAlert, {
+    userId: order.buyerId,
+    title: copy.title,
+    body: copy.body,
+    url: `/orders?order=${order._id}`,
+    tag: `tracking-${order._id}`,
+  });
+}
+
+/**
  * Avisos de "repartidor asignado": el local necesita saber quién va a retirar
  * el efectivo, y el comprador que pidió avisos recibe el contacto.
  */
@@ -1965,7 +2040,7 @@ async function notifyAssignment(ctx: MutationCtx, trip: Doc<"orders">[]) {
       recipientId: leader.buyerId,
       recipientRole: "buyer",
       phone: buyerPhone,
-      link: "/orders",
+      link: `/orders?order=${leader._id}`,
       draft: {
         kind: "courier_assigned",
         orderNumber: leader.code,
@@ -1974,6 +2049,10 @@ async function notifyAssignment(ctx: MutationCtx, trip: Doc<"orders">[]) {
       },
     });
   }
+  // La barra de seguimiento del comprador ahora muestra al repartidor: al
+  // tocarla se abre el pedido con el mapa en vivo.
+  const freshLeader = await ctx.db.get(leader._id);
+  if (freshLeader) await notifyBuyerTracking(ctx, freshLeader);
 }
 
 /**
@@ -2457,7 +2536,7 @@ export const updateCourierLocation = mutation({
         userId: leader.buyerId,
         title: "¡Tu pedido está en la puerta! 🛎️",
         body: `${leader.code}: el repartidor llegó a tu dirección. Tené el PIN a mano.`,
-        url: "/orders",
+        url: `/orders?order=${leader._id}`,
         tag: `arrival-${leader._id}`,
       });
       const buyer = await ctx.db.get(leader.buyerId);
@@ -2739,6 +2818,8 @@ export const courierUpdateStatus = mutation({
           pickedUpAt: now,
         });
       }
+      const pickedTracked = await ctx.db.get(order._id);
+      if (pickedTracked) await notifyBuyerTracking(ctx, pickedTracked);
       return { status: args.status, orders: trip.length };
     }
 
@@ -2831,6 +2912,8 @@ export const courierUpdateStatus = mutation({
       courierId: userId,
     };
     await ctx.db.patch(leader._id, closePatch);
+    const deliveredTracked = await ctx.db.get(leader._id);
+    if (deliveredTracked) await notifyBuyerTracking(ctx, deliveredTracked);
     return {
       status: args.status,
       orders: trip.length,

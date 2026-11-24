@@ -35,6 +35,8 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  BellOff,
+  BellRing,
   Bike,
   Check,
   ChefHat,
@@ -53,8 +55,15 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
+import {
+  hideTrackingNotification,
+  isTrackingPinned,
+  setTrackingPinned,
+  showTrackingNotification,
+  trackingSupported,
+} from "@/lib/trackingNotification";
 
 type OrderItem = {
   productId: string;
@@ -692,6 +701,120 @@ function SinpePaymentPanel({ order }: { order: OrderView }) {
   );
 }
 
+/**
+ * Fija la barra de seguimiento en la barra de notificaciones: el progreso del
+ * pedido queda visible aunque la app esté en segundo plano, y al tocarlo se
+ * abre el pedido con el mapa en vivo.
+ */
+function TrackingPinButton({ order }: { order: OrderView }) {
+  const [pinned, setPinned] = useState(() => isTrackingPinned(order._id));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setPinned(isTrackingPinned(order._id));
+  }, [order._id]);
+
+  // Cada avance del pedido refresca la barra; al entregarse o cancelarse se
+  // quita de la bandeja.
+  useEffect(() => {
+    if (!pinned) return;
+    if (!ACTIVE_STATUSES.includes(order.status)) {
+      void hideTrackingNotification(order._id);
+      setTrackingPinned(order._id, false);
+      setPinned(false);
+      return;
+    }
+    void showTrackingNotification({
+      orderId: order._id,
+      code: order.code,
+      status: order.status,
+    });
+  }, [pinned, order._id, order.code, order.status]);
+
+  if (!ACTIVE_STATUSES.includes(order.status) && !pinned) return null;
+
+  const toggle = async () => {
+    if (pinned) {
+      setTrackingPinned(order._id, false);
+      setPinned(false);
+      await hideTrackingNotification(order._id);
+      return;
+    }
+    if (!trackingSupported()) {
+      toast.error("Este teléfono no permite fijar el seguimiento", {
+        description: "Probá con Chrome en Android o con la app instalada.",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      // Safari exige pedir el permiso dentro del gesto del toque.
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast.error("Permití las notificaciones para fijar el seguimiento");
+        return;
+      }
+      const result = await showTrackingNotification({
+        orderId: order._id,
+        code: order.code,
+        status: order.status,
+      });
+      if (result === "shown") {
+        setTrackingPinned(order._id, true);
+        setPinned(true);
+        toast.success("Seguimiento fijado en la barra", {
+          description:
+            "Vas a ver el progreso aunque salgas de la app. Al tocarlo se abre el mapa.",
+        });
+      } else {
+        toast.error("No pudimos fijar el seguimiento en este teléfono");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void toggle()}
+      disabled={busy}
+      className={cn(
+        "flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors",
+        pinned
+          ? "border-accent/40 bg-accent/[0.07]"
+          : "border-border/70 bg-black/20 hover:border-accent/30",
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        {pinned ? (
+          <BellRing className="size-4 shrink-0 text-accent" />
+        ) : (
+          <BellOff className="size-4 shrink-0 text-muted-foreground" />
+        )}
+        <span className="min-w-0">
+          <span className="block text-xs font-semibold">
+            {pinned ? "Seguimiento fijado en la barra" : "Fijar seguimiento en la barra"}
+          </span>
+          <span className="block break-words text-[10px] leading-snug text-muted-foreground">
+            {pinned
+              ? "El progreso queda visible en las notificaciones. Al tocarlo se abre el mapa."
+              : "Mirá el progreso en las notificaciones aunque salgas de la app."}
+          </span>
+        </span>
+      </span>
+      <span
+        className={cn(
+          "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold",
+          pinned ? "bg-accent text-accent-foreground" : "bg-secondary text-muted-foreground",
+        )}
+      >
+        {busy ? "..." : pinned ? "Fijado" : "Fijar"}
+      </span>
+    </button>
+  );
+}
+
 function OrderDetailDialog({
   order,
   open,
@@ -760,6 +883,7 @@ function OrderDetailDialog({
         <div className="space-y-4">
           <StatusPill status={order.status} />
           <OrderProgress status={order.status} />
+          <TrackingPinButton order={order} />
 
           {order.status === "cancelled" && order.cancellationReason && (
             <div className="rounded-xl border border-border/70 bg-secondary/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
@@ -1115,6 +1239,7 @@ export default function OrdersPage() {
   const cancelOrder = useMutation(api.orders.cancel);
   const repeatOrder = useMutation(api.cart.repeatOrder);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [quickRepeating, setQuickRepeating] = useState(false);
   const [tab, setTab] = useState<"active" | "history">("active");
   const [selected, setSelected] = useState<OrderView | null>(null);
@@ -1128,6 +1253,20 @@ export default function OrdersPage() {
   }
 
   const typed = orders as unknown as OrderView[];
+  // Al tocar la notificación de seguimiento se abre la app directo en el
+  // pedido, con el mapa en vivo adentro del detalle.
+  const deepLinked = useRef<string | null>(null);
+  useEffect(() => {
+    if (orders === undefined) return;
+    const id = searchParams.get("order");
+    if (!id || deepLinked.current === id) return;
+    const match = typed.find((order) => order._id === id);
+    if (match) {
+      deepLinked.current = id;
+      if (!ACTIVE_STATUSES.includes(match.status)) setTab("history");
+      setSelected(match);
+    }
+  }, [orders, searchParams, typed]);
   const active = typed.filter((order) => ACTIVE_STATUSES.includes(order.status));
   const history = typed.filter((order) => !ACTIVE_STATUSES.includes(order.status));
   const list = tab === "active" ? active : history;
@@ -1369,7 +1508,10 @@ export default function OrdersPage() {
         order={typed.find((order) => order._id === selected?._id) ?? selected}
         open={selected !== null}
         onOpenChange={(open) => {
-          if (!open) setSelected(null);
+          if (!open) {
+            setSelected(null);
+            if (searchParams.get("order")) setSearchParams({});
+          }
         }}
         onCancel={selected ? () => handleCancel(selected) : undefined}
       />
