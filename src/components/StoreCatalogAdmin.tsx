@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
   ChevronDown,
+  ImageUp,
   Loader2,
   Package,
   Pencil,
@@ -45,8 +46,101 @@ import {
   Store,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
+
+const STORE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
+function AdminProductImagePicker({
+  preview,
+  fallbackUrl,
+  onPicked,
+}: {
+  preview: string;
+  fallbackUrl: string;
+  onPicked: (storageId: Id<"_storage">, localPreview: string) => void;
+}) {
+  const generateUploadUrl = useMutation(
+    api.admin.generateStoreProductImageUploadUrl,
+  );
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const shown = preview || fallbackUrl.trim();
+
+  const handleFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Elegi una imagen (JPG, PNG o WebP)");
+      return;
+    }
+    if (file.size > STORE_IMAGE_MAX_BYTES) {
+      toast.error("La imagen no puede pesar mas de 8 MB");
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir la imagen");
+      const { storageId } = (await response.json()) as { storageId: string };
+      onPicked(storageId as Id<"_storage">, URL.createObjectURL(file));
+      toast.success("Foto cargada desde la galeria");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir la imagen",
+      );
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-black/20 p-3">
+      {shown ? (
+        <img
+          src={shown}
+          alt="Foto del producto"
+          className="h-24 w-full rounded-xl border border-border/60 object-cover"
+        />
+      ) : (
+        <div className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-border/70 text-muted-foreground">
+          <ImageUp className="size-5" />
+        </div>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full gap-2 border-border/80"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {uploading ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <ImageUp className="size-3.5" />
+        )}
+        {uploading
+          ? "Subiendo..."
+          : shown
+            ? "Cambiar foto desde galeria"
+            : "Subir foto desde galeria"}
+      </Button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => void handleFile(event.target.files?.[0])}
+      />
+    </div>
+  );
+}
 
 type StoreProduct = {
   _id: Id<"products">;
@@ -158,10 +252,16 @@ export function StoreCatalogAdmin() {
   const [productDraft, setProductDraft] = useState<ProductDraft | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<StoreProduct | null>(null);
+  const [editImageStorageId, setEditImageStorageId] =
+    useState<Id<"_storage"> | null>(null);
+  const [editImagePreview, setEditImagePreview] = useState("");
 
   const [creatingFor, setCreatingFor] = useState<StoreBusiness | null>(null);
   const [newDraft, setNewDraft] = useState<ProductDraft | null>(null);
   const [creating, setCreating] = useState(false);
+  const [newImageStorageId, setNewImageStorageId] =
+    useState<Id<"_storage"> | null>(null);
+  const [newImagePreview, setNewImagePreview] = useState("");
 
   const [removing, setRemoving] = useState(false);
 
@@ -173,11 +273,15 @@ export function StoreCatalogAdmin() {
   const openProductEditor = (product: StoreProduct) => {
     setEditingProduct(product);
     setProductDraft(productDraftOf(product));
+    setEditImageStorageId(null);
+    setEditImagePreview("");
   };
 
   const openProductCreator = (business: StoreBusiness) => {
     setCreatingFor(business);
     setNewDraft(emptyProductDraft(business.category));
+    setNewImageStorageId(null);
+    setNewImagePreview("");
   };
 
   const handleSaveBusiness = async () => {
@@ -224,7 +328,8 @@ export function StoreCatalogAdmin() {
         description: productDraft.description,
         price,
         category: productDraft.category,
-        image: productDraft.image,
+        image: editImageStorageId ? undefined : productDraft.image,
+        ...(editImageStorageId ? { imageStorageId: editImageStorageId } : {}),
         tags: productDraft.tags
           .split(",")
           .map((tag) => tag.trim())
@@ -236,6 +341,8 @@ export function StoreCatalogAdmin() {
       });
       setEditingProduct(null);
       setProductDraft(null);
+      setEditImageStorageId(null);
+      setEditImagePreview("");
     } catch (error) {
       toast.error(errorMessage(error, "No pudimos guardar el producto"));
     } finally {
@@ -261,7 +368,12 @@ export function StoreCatalogAdmin() {
         description: newDraft.description,
         price,
         category: newDraft.category,
-        image: newDraft.image.trim() ? newDraft.image : undefined,
+        image: newImageStorageId
+          ? undefined
+          : newDraft.image.trim()
+            ? newDraft.image
+            : undefined,
+        ...(newImageStorageId ? { imageStorageId: newImageStorageId } : {}),
         tags: newDraft.tags
           .split(",")
           .map((tag) => tag.trim())
@@ -273,6 +385,8 @@ export function StoreCatalogAdmin() {
       });
       setCreatingFor(null);
       setNewDraft(null);
+      setNewImageStorageId(null);
+      setNewImagePreview("");
     } catch (error) {
       toast.error(errorMessage(error, "No pudimos publicar el producto"));
     } finally {
@@ -708,6 +822,8 @@ export function StoreCatalogAdmin() {
           if (!open) {
             setCreatingFor(null);
             setNewDraft(null);
+            setNewImageStorageId(null);
+            setNewImagePreview("");
           }
         }}
       >
@@ -793,22 +909,30 @@ export function StoreCatalogAdmin() {
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="store-new-image">Foto (enlace)</Label>
+                <Label>Foto del producto</Label>
+                <AdminProductImagePicker
+                  preview={newImagePreview}
+                  fallbackUrl={newDraft.image}
+                  onPicked={(storageId, preview) => {
+                    setNewImageStorageId(storageId);
+                    setNewImagePreview(preview);
+                    setNewDraft({ ...newDraft, image: "" });
+                  }}
+                />
+                <Label htmlFor="store-new-image">O pegá un enlace</Label>
                 <Input
                   id="store-new-image"
                   value={newDraft.image}
                   placeholder="https://..."
-                  onChange={(event) =>
-                    setNewDraft({ ...newDraft, image: event.target.value })
-                  }
+                  onChange={(event) => {
+                    setNewDraft({ ...newDraft, image: event.target.value });
+                    if (event.target.value.trim()) {
+                      setNewImageStorageId(null);
+                      setNewImagePreview("");
+                    }
+                  }}
                 />
-                {newDraft.image.trim() ? (
-                  <img
-                    src={newDraft.image}
-                    alt="Vista previa del producto"
-                    className="mt-1 h-24 w-full rounded-xl border border-border/60 object-cover"
-                  />
-                ) : (
+                {!newImagePreview && !newDraft.image.trim() && (
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     Sin foto se usa la foto de la tienda.
                   </p>
@@ -842,6 +966,8 @@ export function StoreCatalogAdmin() {
               onClick={() => {
                 setCreatingFor(null);
                 setNewDraft(null);
+                setNewImageStorageId(null);
+                setNewImagePreview("");
               }}
             >
               Cancelar
@@ -869,6 +995,8 @@ export function StoreCatalogAdmin() {
           if (!open) {
             setEditingProduct(null);
             setProductDraft(null);
+            setEditImageStorageId(null);
+            setEditImagePreview("");
           }
         }}
       >
@@ -963,25 +1091,32 @@ export function StoreCatalogAdmin() {
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="store-product-image">Foto (enlace)</Label>
+                <Label>Foto del producto</Label>
+                <AdminProductImagePicker
+                  preview={editImagePreview}
+                  fallbackUrl={productDraft.image}
+                  onPicked={(storageId, preview) => {
+                    setEditImageStorageId(storageId);
+                    setEditImagePreview(preview);
+                    setProductDraft({ ...productDraft, image: "" });
+                  }}
+                />
+                <Label htmlFor="store-product-image">O pegá un enlace</Label>
                 <Input
                   id="store-product-image"
                   value={productDraft.image}
                   placeholder="https://..."
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setProductDraft({
                       ...productDraft,
                       image: event.target.value,
-                    })
-                  }
+                    });
+                    if (event.target.value.trim()) {
+                      setEditImageStorageId(null);
+                      setEditImagePreview("");
+                    }
+                  }}
                 />
-                {productDraft.image.trim() && (
-                  <img
-                    src={productDraft.image}
-                    alt="Vista previa del producto"
-                    className="mt-1 h-24 w-full rounded-xl border border-border/60 object-cover"
-                  />
-                )}
               </div>
 
               <label className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-black/20 px-3 py-2.5 sm:col-span-2">
@@ -1014,6 +1149,8 @@ export function StoreCatalogAdmin() {
               onClick={() => {
                 setEditingProduct(null);
                 setProductDraft(null);
+                setEditImageStorageId(null);
+                setEditImagePreview("");
               }}
             >
               Cancelar

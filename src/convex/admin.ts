@@ -357,6 +357,8 @@ export const deleteUser = mutation({
 
 const DEPARTMENT_SLUGS = new Set(DEPARTMENTS.map((department) => department.slug));
 
+const STORE_PRODUCT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+
 function cleanImage(value: string, label: string) {
   const trimmed = value.trim();
   if (!/^(https?:\/\/|\/)/i.test(trimmed)) {
@@ -368,6 +370,22 @@ function cleanImage(value: string, label: string) {
     throw new ConvexError(`${label}: el enlace de la imagen es demasiado largo`);
   }
   return trimmed;
+}
+
+async function storeProductImageUrl(ctx: MutationCtx, storageId: string) {
+  const metadata = await ctx.storage.getMetadata(storageId as never);
+  if (!metadata) throw new ConvexError("No pudimos leer la imagen");
+  const contentType = (metadata as { contentType?: string }).contentType;
+  if (!contentType?.startsWith("image/")) {
+    throw new ConvexError("El archivo tiene que ser una imagen");
+  }
+  const size = (metadata as { size?: number }).size ?? 0;
+  if (size > STORE_PRODUCT_IMAGE_MAX_BYTES) {
+    throw new ConvexError("La imagen no puede pesar mas de 8 MB");
+  }
+  const url = await ctx.storage.getUrl(storageId as never);
+  if (!url) throw new ConvexError("No pudimos guardar la imagen");
+  return url;
 }
 
 /** Tiendas demo con su catálogo, para editar o borrar desde el perfil admin. */
@@ -968,6 +986,15 @@ export const updateStoreBusiness = mutation({
   },
 });
 
+/** URL temporal para que el admin suba la foto de un producto desde la galeria. */
+export const generateStoreProductImageUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 /** Publica un producto nuevo en una tienda real a solicitud del negocio. */
 export const createStoreProduct = mutation({
   args: {
@@ -977,6 +1004,7 @@ export const createStoreProduct = mutation({
     price: v.number(),
     category: v.string(),
     image: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     tags: v.optional(v.array(v.string())),
     isAvailable: v.optional(v.boolean()),
   },
@@ -1010,9 +1038,12 @@ export const createStoreProduct = mutation({
     if (tags.some((tag) => tag.length > 40)) {
       throw new ConvexError("Cada etiqueta puede tener hasta 40 letras");
     }
-    const image = args.image?.trim()
+    const uploadedImage = args.imageStorageId
+      ? await storeProductImageUrl(ctx, args.imageStorageId)
+      : null;
+    const image = uploadedImage ?? (args.image?.trim()
       ? cleanImage(args.image, "La foto del producto")
-      : business.image;
+      : business.image);
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
@@ -1043,6 +1074,7 @@ export const updateStoreProduct = mutation({
     price: v.optional(v.number()),
     category: v.optional(v.string()),
     image: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     tags: v.optional(v.array(v.string())),
     isAvailable: v.optional(v.boolean()),
   },
@@ -1087,7 +1119,9 @@ export const updateStoreProduct = mutation({
       }
       patch.category = category;
     }
-    if (args.image !== undefined) {
+    if (args.imageStorageId) {
+      patch.image = await storeProductImageUrl(ctx, args.imageStorageId);
+    } else if (args.image !== undefined) {
       patch.image = cleanImage(args.image, "La foto del producto");
     }
     if (args.tags !== undefined) {
