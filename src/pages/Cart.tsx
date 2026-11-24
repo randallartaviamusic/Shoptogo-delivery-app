@@ -78,7 +78,23 @@ export default function CartPage() {
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduledLocal, setScheduledLocal] = useState("");
   const [placing, setPlacing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "sinpe">("cash");
+  // El método elegido se guarda en el teléfono: al volver de WhatsApp (aunque
+  // la página se recargue) la opción SINPE sigue activada.
+  const PAYMENT_METHOD_KEY = "stg:cart-payment-method";
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "sinpe">(() => {
+    try {
+      return window.localStorage.getItem(PAYMENT_METHOD_KEY) === "sinpe" ? "sinpe" : "cash";
+    } catch {
+      return "cash";
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PAYMENT_METHOD_KEY, paymentMethod);
+    } catch {
+      // Sin almacenamiento el método vuelve a efectivo al recargar.
+    }
+  }, [paymentMethod]);
   // Para compras de más de 3 productos: mismo repartidor en todas las entregas.
   const [sameCourier, setSameCourier] = useState(true);
   const [saveLabel, setSaveLabel] = useState("Casa");
