@@ -115,6 +115,20 @@ const TABS = [
   { key: "stories", label: "Historias", to: "/business?tab=stories" },
 ];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Períodos del selector de "Últimos pedidos" en el panel del negocio. */
+const RECENT_ORDER_RANGES = [
+  { label: "Último día", ms: DAY_MS },
+  { label: "Últimos 3 días", ms: 3 * DAY_MS },
+  { label: "Últimos 7 días", ms: 7 * DAY_MS },
+  { label: "Últimos 15 días", ms: 15 * DAY_MS },
+  { label: "Últimos 30 días", ms: 30 * DAY_MS },
+  { label: "Últimos 3 meses", ms: 90 * DAY_MS },
+  { label: "Últimos 6 meses", ms: 180 * DAY_MS },
+  { label: "Último año", ms: 365 * DAY_MS },
+];
+
 function StatCard({
   label,
   value,
@@ -244,6 +258,7 @@ export default function BusinessPage() {
     useState<Id<"products"> | null>(null);
   // Orden local mientras se arrastra; se conserva hasta que Convex confirma.
   const [dragOrder, setDragOrder] = useState<Doc<"products">[] | null>(null);
+  const [recentRange, setRecentRange] = useState(7 * DAY_MS);
   const [draggingProductId, setDraggingProductId] =
     useState<Id<"products"> | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
@@ -363,6 +378,9 @@ export default function BusinessPage() {
       : productCategories;
   const stats = board?.stats;
   const orders = (board?.orders ?? []) as unknown as OrderView[];
+  const recentOrders = orders.filter(
+    (order) => order.createdAt >= now - recentRange,
+  );
   // La subida de video se habilita sola cuando el plan Élite está vigente.
   const eliteVideoEnabled =
     subscription?.plan === "elite" && subscription?.hasAccess === true;
@@ -1452,24 +1470,51 @@ export default function BusinessPage() {
           </section>
 
           <div className="surface-raised rounded-3xl p-5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-display text-lg font-bold">Últimos pedidos</h2>
-              <Link
-                to="/business?tab=orders"
-                className="flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
-              >
-                Ver todos
-                <ArrowRight className="size-3.5" />
-              </Link>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(recentRange)}
+                  onValueChange={(value) => setRecentRange(Number(value))}
+                >
+                  <SelectTrigger
+                    aria-label="Filtrar últimos pedidos por período"
+                    className="h-8 w-40 text-xs"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RECENT_ORDER_RANGES.map((range) => (
+                      <SelectItem key={range.ms} value={String(range.ms)}>
+                        {range.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Link
+                  to="/business?tab=orders"
+                  className="flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+                >
+                  Ver todos
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </div>
             </div>
             {orders.length === 0 ? (
               <p className="mt-4 rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
                 Todavía no recibiste pedidos. Cuando alguien deslice a la derecha
                 uno de tus productos, aparece acá.
               </p>
+            ) : recentOrders.length === 0 ? (
+              <p className="mt-4 rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
+                Sin pedidos en este período. Elegí un período más amplio en el selector.
+              </p>
             ) : (
               <div className="mt-4 space-y-2">
-                {orders.slice(0, 4).map((order) => (
+                <p className="text-[11px] text-muted-foreground">
+                  {recentOrders.length} {recentOrders.length === 1 ? "pedido" : "pedidos"} en el período elegido.
+                </p>
+                {recentOrders.slice(0, 8).map((order) => (
                   <div
                     key={order._id}
                     className="flex items-center gap-3 rounded-xl border border-border/60 bg-black/20 p-3"
@@ -1495,6 +1540,14 @@ export default function BusinessPage() {
                     </div>
                   </div>
                 ))}
+                {recentOrders.length > 8 && (
+                  <Link
+                    to="/business?tab=orders"
+                    className="block pt-1 text-center text-xs font-semibold text-accent hover:underline"
+                  >
+                    Ver los {recentOrders.length - 8} restantes en Pedidos
+                  </Link>
+                )}
               </div>
             )}
           </div>
