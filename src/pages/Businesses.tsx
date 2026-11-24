@@ -1036,73 +1036,86 @@ function Storefront({ slug }: { slug: string }) {
                   {products.length} {products.length === 1 ? "producto" : "productos"}
                 </span>
               </div>
-              <div className="grid w-full max-w-full min-w-0 gap-3 overflow-x-clip sm:grid-cols-2">
+              <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip sm:gap-4 lg:grid-cols-3">
                 {products.map((product) => (
-                  <div
+                  <article
                     key={product._id}
-                    className="surface-raised flex w-full max-w-full min-w-0 gap-3 overflow-hidden rounded-2xl p-3"
+                    className="group w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card"
                   >
-                    <div className="relative shrink-0">
+                    <div className="relative aspect-[4/3] overflow-hidden">
                       <ProductMedia
                         image={product.image}
                         video={product.video}
                         alt={product.name}
-                        className="size-20 rounded-xl"
+                        className="size-full transition-transform duration-500 group-hover:scale-105"
                       />
-                      <PromoBadge
-                        promo={product.promo}
-                        withIcon={false}
-                        className="absolute inset-x-1 bottom-1 justify-center px-1 py-0.5 text-[9px]"
-                      />
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <p className="flex items-center gap-2 text-sm font-semibold">
-                        <span className="truncate text-shadow-dark">
-                          {product.name}
-                        </span>
-                        {!product.isAvailable && (
-                          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
-                            Agotado
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-                        {product.description || "Sin descripción"}
-                      </p>
-                      <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-                        <span className="font-display text-sm font-bold">
+                      <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_40%,rgba(6,6,7,0.85)_100%)]" />
+                      <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+                        <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-accent backdrop-blur">
                           {money(product.price)}
                         </span>
-                        <Button
-                          size="sm"
-                          className="h-8 gap-1 bg-ember-gradient px-2.5 text-[11px] text-black"
-                          disabled={!business.isOpen || !product.isAvailable || busy === product._id}
-                          onClick={() => {
-                            if ((product.optionGroups?.length ?? 0) > 0) {
-                              if (!user) {
-                                requireAccount();
-                                return;
-                              }
-                              setOptionProduct(product);
-                            } else {
-                              void handleAdd(product._id, product.name);
+                        <PromoBadge
+                          promo={product.promo}
+                          withIcon={false}
+                          className="px-2 py-0.5 text-[9px]"
+                        />
+                      </div>
+                      {!product.isAvailable && (
+                        <span className="absolute right-2 top-2 rounded-full border border-primary/50 bg-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                          Agotado
+                        </span>
+                      )}
+                      <div className="absolute inset-x-2 bottom-2">
+                        <p className="line-clamp-1 font-display text-sm font-bold text-white">
+                          {product.name}
+                        </p>
+                        <p className="line-clamp-1 text-[10px] text-white/65">
+                          {product.description || business.name}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 p-3">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Star className="size-3 fill-accent text-accent" />
+                          {business.rating.toFixed(1)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="size-3" />
+                          {business.etaMinutes + (delivery.minutes ?? 0)} min
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full gap-1.5 bg-secondary text-foreground hover:bg-accent hover:text-accent-foreground"
+                        disabled={!business.isOpen || !product.isAvailable || busy === product._id}
+                        onClick={() => {
+                          if ((product.optionGroups?.length ?? 0) > 0) {
+                            if (!user) {
+                              requireAccount();
+                              return;
                             }
-                          }}
-                        >
-                          {busy === product._id ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <Plus className="size-3.5" />
-                          )}
-                          {!product.isAvailable
+                            setOptionProduct(product);
+                          } else {
+                            void handleAdd(product._id, product.name);
+                          }
+                        }}
+                      >
+                        {busy === product._id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="size-3.5" />
+                        )}
+                        {!business.isOpen
+                          ? "Cerrado"
+                          : !product.isAvailable
                             ? "Agotado"
                             : (product.optionGroups?.length ?? 0) > 0
                               ? "Elegir"
                               : "Agregar"}
-                        </Button>
-                      </div>
+                      </Button>
                     </div>
-                  </div>
+                  </article>
                 ))}
               </div>
             </section>
