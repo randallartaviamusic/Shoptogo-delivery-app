@@ -63,6 +63,23 @@ const normalize = (value: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+/** Baraja una lista con semilla: el mismo seed y la misma entrada dan el mismo orden. */
+function shuffled<T>(list: T[], seed: number): T[] {
+  const arr = [...list];
+  let state = seed | 0;
+  const rand = () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 /** Mensaje real de un ConvexError, o el respaldo si el servidor lo censura. */
 function favoriteErrorMessage(error: unknown, fallback: string) {
   const data = (error as { data?: unknown } | null)?.data;
@@ -105,6 +122,16 @@ function Directory() {
   const term = normalize(search.trim());
   const searching = term.length > 0;
 
+  // Orden aleatorio por visita: cada vez que se entra a Negocios las
+  // categorías y las cards salen barajadas. La semilla se fija al montar la
+  // sección, así el orden se mantiene estable mientras se filtra o se busca
+  // y nada salta de lugar en pantalla.
+  const visitSeed = useMemo(() => Math.floor(Math.random() * 1_000_000_000), []);
+  const shuffledRows = useMemo(
+    () => shuffled(rows, visitSeed),
+    [rows, visitSeed],
+  );
+
   const departmentCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const business of rows) {
@@ -116,9 +143,9 @@ function Directory() {
   const departmentBusinesses = useMemo(
     () =>
       departmentSlug === "todos"
-        ? rows
-        : rows.filter((business) => business.department === departmentSlug),
-    [rows, departmentSlug],
+        ? shuffledRows
+        : shuffledRows.filter((business) => business.department === departmentSlug),
+    [shuffledRows, departmentSlug],
   );
 
   const categories = useMemo(() => {
@@ -190,7 +217,7 @@ function Directory() {
     const departmentOrder = DEPARTMENTS.map((item) => item.slug);
     const categoryOrder = categories.map(([name]) => name);
     const isDepartmentGroup = departmentSlug === "todos" || searching;
-    return Array.from(map.entries())
+    const ordered = Array.from(map.entries())
       .map(([key, businesses]) => {
         const info = getDepartment(key);
         const order = isDepartmentGroup
@@ -205,7 +232,10 @@ function Directory() {
         };
       })
       .sort((a, b) => a.order - b.order);
-  }, [filtered, departmentSlug, searching, categories]);
+    // Las cards ya vienen barajadas por visita; acá se barajan también las
+    // categorías para que cada entrada muestre un orden distinto.
+    return shuffled(ordered, (visitSeed ^ 0x9e3779b9) | 0);
+  }, [filtered, departmentSlug, searching, categories, visitSeed]);
 
   // Portada Élite: rota cada semana entre los locales Élite abiertos.
   const spotlight = useMemo(() => {
