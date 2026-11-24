@@ -115,6 +115,12 @@ export default function SubscriptionPage() {
   const { user } = useAuth();
   const data = useQuery(api.subscriptions.mine);
   const requestPayment = useMutation(api.subscriptions.requestPayment);
+  const requestCashActivation = useMutation(
+    api.subscriptions.requestCashActivation,
+  );
+  const generateReceiptUploadUrl = useMutation(
+    api.subscriptions.generateSubscriptionReceiptUploadUrl,
+  );
   const requestOnvoPayment = useAction(api.subscriptions.requestOnvoPayment);
   const setReminder = useMutation(api.subscriptions.setReminder);
   const cancelSubscription = useMutation(api.subscriptions.cancelSubscription);
@@ -134,6 +140,11 @@ export default function SubscriptionPage() {
   const [cashAddress, setCashAddress] = useState("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [receiptStorageId, setReceiptStorageId] = useState<string | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const [activatingCash, setActivatingCash] = useState(false);
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
   const [sound, setSound] = useState("campana");
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [now, setNow] = useState(Date.now());
@@ -230,6 +241,40 @@ export default function SubscriptionPage() {
     }
   };
 
+  const handleReceiptFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Subí una imagen del comprobante (JPG, PNG o WebP)");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("La imagen no puede pesar más de 8 MB");
+      return;
+    }
+    setUploadingReceipt(true);
+    try {
+      const uploadUrl = await generateReceiptUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir el comprobante");
+      const { storageId } = (await response.json()) as { storageId: string };
+      setReceiptStorageId(storageId);
+      setReceiptPreview(URL.createObjectURL(file));
+      toast.success("Comprobante listo", {
+        description: "Ya podés activar tu plan con el botón de abajo.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir el comprobante",
+      );
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
+
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
@@ -256,11 +301,14 @@ export default function SubscriptionPage() {
           note: note.trim() || undefined,
           expiryHour: hour,
           expiryMinute: minute,
+          receiptStorageId: receiptStorageId as never,
         });
-        toast.success("Pago reportado", {
-          description: `Vence ${formatExpiry(result.expiryAt)}. Mandá el comprobante por WhatsApp para que lo verifiquen.`,
+        toast.success("Tu nuevo plan ya está activo", {
+          description: `Vence ${formatExpiry(result.expiryAt)}. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días.`,
         });
         setReference("");
+        setReceiptStorageId(null);
+        setReceiptPreview(null);
       }
       setNote("");
     } catch (error) {
@@ -269,6 +317,30 @@ export default function SubscriptionPage() {
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCashActivate = async () => {
+    setActivatingCash(true);
+    try {
+      const result = await requestCashActivation({
+        plan,
+        expiryHour: hour,
+        expiryMinute: minute,
+        cashPhone,
+        cashAddress,
+        note: note.trim() || undefined,
+      });
+      toast.success("Tu nuevo plan ya está activo", {
+        description: `Vence ${formatExpiry(result.expiryAt)}. Un administrador evaluará que el pago en efectivo se concrete; si hubo un error o no se realizó, el plan será desactivado en 3 días.`,
+      });
+      window.open(cashHref, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos activar tu plan",
+      );
+    } finally {
+      setActivatingCash(false);
     }
   };
 
@@ -287,7 +359,7 @@ export default function SubscriptionPage() {
     if (pendingPlan) {
       setPlan(pendingPlan);
       toast.info(`Elegiste el plan ${planOf(pendingPlan).name}`, {
-        description: `Reportá el pago de ${money(planOf(pendingPlan).price)} abajo para que lo verifiquen. Tu plan actual sigue activo hasta que se apruebe.`,
+        description: `Reportá el pago de ${money(planOf(pendingPlan).price)} abajo y tu plan nuevo se activa al instante.`,
       });
     }
     setPendingPlan(null);
@@ -346,7 +418,7 @@ export default function SubscriptionPage() {
       <PageHeader
         eyebrow="Suscripción"
         title="Tu plan de Shop To Go"
-        description="Tarifa fija mensual, sin comisión por venta. Elegís el plan, reportás el pago y la administración lo verifica."
+        description="Tarifa fija mensual, sin comisión por venta. Elegís el plan, subís el comprobante y tu plan se activa al instante; la administración lo revisa después."
       />
 
       <motion.div
@@ -561,7 +633,7 @@ export default function SubscriptionPage() {
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                   {pending.method === "onvo"
                     ? `Esperando la confirmación automática de ONVO por ${money(pending.price)}. No necesitás enviar un comprobante.`
-                    : `Reportaste ${money(pending.price)} del plan ${planOf(pending.plan).name} por ${PAYMENT_METHODS.find((option) => option.id === pending.method)?.label}. Un administrador revisará el pago.`}
+                    : `Reportaste ${money(pending.price)} del plan ${planOf(pending.plan).name} por ${PAYMENT_METHODS.find((option) => option.id === pending.method)?.label}. Tu plan ya está activo y un administrador lo revisará; si el pago no aparece, se desactiva en 3 días.`}
                 </p>
               </div>
               <span className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-[11px] font-semibold text-accent">
@@ -583,6 +655,20 @@ export default function SubscriptionPage() {
                 <dd className="mt-1 font-semibold">{formatExpiry(pending.expiryAt)}</dd>
               </div>
             </dl>
+            {pending.receiptUrl && (
+              <a
+                href={pending.receiptUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block overflow-hidden rounded-xl border border-border/60"
+              >
+                <img
+                  src={pending.receiptUrl}
+                  alt="Comprobante del pago"
+                  className="h-28 w-auto object-cover"
+                />
+              </a>
+            )}
 
             {pending.method === "onvo" ? (
               <div className="mt-4 rounded-xl border border-accent/30 bg-accent/[0.06] p-3">
@@ -858,32 +944,94 @@ export default function SubscriptionPage() {
                       )}
                     </div>
                   </div>
-                  {cashReady ? (
-                    <Button asChild className="h-11 w-full gap-2 bg-[#25d366] text-black hover:bg-[#1ebe5b]">
-                      <a href={cashHref} target="_blank" rel="noreferrer">
-                        <MessageCircle className="size-4" />
-                        Activar pago en efectivo
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      className="h-11 w-full gap-2 bg-[#25d366] text-black opacity-60"
-                      disabled
-                    >
+                  <Button
+                    type="button"
+                    className="h-11 w-full gap-2 bg-[#25d366] text-black hover:bg-[#1ebe5b] disabled:opacity-60"
+                    disabled={!cashReady || activatingCash}
+                    onClick={() => void handleCashActivate()}
+                  >
+                    {activatingCash ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
                       <MessageCircle className="size-4" />
-                      Activar pago en efectivo
-                    </Button>
-                  )}
-                  <p className="text-center text-[10px] text-muted-foreground">
-                    Se abre WhatsApp con el mensaje completo: plan, tu número y la
-                    dirección de retiro. Tocá enviar para que lo coordinemos.
+                    )}
+                    {activatingCash ? "Activando tu plan..." : "Activar pago en efectivo"}
+                  </Button>
+                  <p className="text-center text-[10px] leading-relaxed text-muted-foreground">
+                    Tu plan se activa al instante al darle al botón y se abre WhatsApp con el mensaje completo para coordinar el retiro. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-1.5">
-                  <Label htmlFor="sub-reference">Referencia o comprobante</Label>
-                  <Input id="sub-reference" value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Ej: 2026-0451 / SINPE 8492..." />
+                <div className="space-y-3 rounded-2xl border border-border/70 bg-black/20 p-3.5">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sub-reference">Referencia o comprobante</Label>
+                    <Input id="sub-reference" value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Ej: 2026-0451 / SINPE 8492..." />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Imagen del comprobante</Label>
+                    <input
+                      ref={receiptInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void handleReceiptFile(file);
+                      }}
+                    />
+                    {receiptPreview ? (
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={receiptPreview}
+                          alt="Comprobante de pago"
+                          className="size-20 shrink-0 rounded-xl border border-border/60 object-cover"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 border-border/80 text-[11px]"
+                            disabled={uploadingReceipt}
+                            onClick={() => receiptInputRef.current?.click()}
+                          >
+                            Cambiar imagen
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5 text-[11px] text-muted-foreground"
+                            onClick={() => {
+                              setReceiptStorageId(null);
+                              setReceiptPreview(null);
+                            }}
+                          >
+                            Quitar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full gap-2 border-dashed border-border/80 text-xs"
+                        disabled={uploadingReceipt}
+                        onClick={() => receiptInputRef.current?.click()}
+                      >
+                        {uploadingReceipt ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="size-4" />
+                        )}
+                        {uploadingReceipt ? "Subiendo comprobante..." : "Subir imagen del comprobante"}
+                      </Button>
+                    )}
+                    <p className="text-[10px] leading-relaxed text-muted-foreground">
+                      Obligatoria para activar tu plan al instante. JPG, PNG o WebP hasta 8 MB.
+                    </p>
+                  </div>
                 </div>
               )}
               {method !== "cash" && (
@@ -903,9 +1051,10 @@ export default function SubscriptionPage() {
                 className="h-11 w-full gap-2 bg-ember-gradient text-black"
                 disabled={
                   submitting ||
+                  uploadingReceipt ||
                   (method === "onvo"
                     ? !data.onvoConfigured || !payerIdentification.trim() || !payerPhone.trim()
-                    : reference.trim().length < 3)
+                    : reference.trim().length < 3 || !receiptStorageId)
                 }
                 onClick={() => void handleSubmit()}
               >
@@ -916,10 +1065,10 @@ export default function SubscriptionPage() {
                 )}
                 {method === "onvo" ? "Crear pago SINPE automático" : "Ya pagué · reportar para verificación"}
               </Button>
-              <p className="text-center text-[10px] text-muted-foreground">
+              <p className="text-center text-[10px] leading-relaxed text-muted-foreground">
                 {method === "onvo"
                   ? "Se activa automáticamente sólo después de la confirmación de pago firmada por ONVO."
-                  : "El pago manual no se activa solo: un administrador verifica el comprobante."}
+                  : "Tu plan se activa al instante al darle al botón. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días."}
               </p>
                 </>
               )}
@@ -1032,6 +1181,20 @@ export default function SubscriptionPage() {
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
                     Vencimiento solicitado: {formatExpiry(payment.expiryAt)}
                   </p>
+                  {payment.receiptUrl && (
+                    <a
+                      href={payment.receiptUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-block overflow-hidden rounded-xl border border-border/60"
+                    >
+                      <img
+                        src={payment.receiptUrl}
+                        alt="Comprobante del pago"
+                        className="h-20 w-auto object-cover"
+                      />
+                    </a>
+                  )}
                   {payment.reviewNote && (
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       Nota del administrador: {payment.reviewNote}
@@ -1047,9 +1210,9 @@ export default function SubscriptionPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Cambiar de plan?</AlertDialogTitle>
-            <AlertDialogDescription>Estás por cambiar de plan. Si aceptás, elegís el plan nuevo y debés reportar el pago nuevo abajo. El cambio aplica cuando reportés el pago nuevo y la administración lo apruebe. Mientras tanto seguís con tu plan actual. Si aceptás, vas a pagar el precio nuevo y tus beneficios cambian al aprobarse.</AlertDialogDescription>
+            <AlertDialogDescription>Estás por cambiar de plan. Si aceptás, elegís el plan nuevo y debés reportar el pago nuevo abajo con su comprobante. El cambio se activa al instante con la fecha correcta del mes que inicia; la administración lo revisa después y lo desactiva en 3 días si el pago no aparece.</AlertDialogDescription>
           </AlertDialogHeader>
-          {currentPlanDetail && pendingPlanDetail ? <div className="rounded-xl border border-border/70 bg-black/20 p-3 text-[11px]"><p>De {currentPlanDetail.name} a {pendingPlanDetail.name}</p><p>Precio nuevo: {money(pendingPlanDetail.price)} al mes.</p><p>Tu plan actual sigue activo hasta que se apruebe el pago nuevo.</p></div> : null}
+          {currentPlanDetail && pendingPlanDetail ? <div className="rounded-xl border border-border/70 bg-black/20 p-3 text-[11px]"><p>De {currentPlanDetail.name} a {pendingPlanDetail.name}</p><p>Precio nuevo: {money(pendingPlanDetail.price)} al mes.</p><p>Tu plan nuevo se activa al instante con la fecha correcta del mes que inicia.</p></div> : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmPlanChange}>Aceptar</AlertDialogAction>

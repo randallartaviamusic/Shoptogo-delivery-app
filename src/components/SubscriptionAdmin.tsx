@@ -64,10 +64,12 @@ function AccountRow({
   account,
   busy,
   onGrant,
+  onDeactivate,
 }: {
   account: AdminAccount;
   busy: boolean;
   onGrant: (ownerId: string, plan: SubscriptionPlanId) => void;
+  onDeactivate: (ownerId: string) => void;
 }) {
   const [plan, setPlan] = useState<SubscriptionPlanId>(
     (account.plan as SubscriptionPlanId | null) ?? "basico",
@@ -129,6 +131,22 @@ function AccountRow({
             ))}
           </SelectContent>
         </Select>
+        {account.hasAccess && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 border-primary/40 text-xs text-primary hover:bg-primary/10"
+            disabled={busy}
+            onClick={() => onDeactivate(account.ownerId)}
+          >
+            {busy ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <X className="size-3.5" />
+            )}
+            Desactivar plan
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"
@@ -155,6 +173,7 @@ export function SubscriptionAdmin() {
   const saveSettings = useMutation(api.subscriptions.adminSaveSettings);
   const review = useMutation(api.subscriptions.adminReviewPayment);
   const grant = useMutation(api.subscriptions.adminGrant);
+  const deactivate = useMutation(api.subscriptions.adminDeactivate);
 
   const [settingsForm, setSettingsForm] = useState({
     sinpePhone: "",
@@ -274,6 +293,25 @@ export function SubscriptionAdmin() {
     }
   };
 
+  const handleDeactivate = async (ownerId: string) => {
+    setBusyAccount(ownerId);
+    try {
+      await deactivate({
+        ownerId: ownerId as Id<"users">,
+        note: notes[`deactivate-${ownerId}`] || "Plan desactivado por el administrador (pago no verificado)",
+      });
+      toast.success("Plan desactivado", {
+        description: "La cuenta quedó sin acceso de inmediato.",
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos desactivar la cuenta",
+      );
+    } finally {
+      setBusyAccount(null);
+    }
+  };
+
   return (
     <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -283,9 +321,7 @@ export function SubscriptionAdmin() {
           </p>
           <h2 className="font-display text-lg font-bold">Suscripciones</h2>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Verificá los pagos reportados por negocios y repartidores, activá
-            cuentas y editá los datos de cobro. Las tarifas son fijas: nunca un
-            porcentaje de los pedidos.
+            Los pagos manuales y en efectivo se activan solos al instante. Revisá los comprobantes, desactivá el plan si el pago no aparece (hasta 3 días) y editá los datos de cobro. Las tarifas son fijas: nunca un porcentaje de los pedidos.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px]">
@@ -489,10 +525,10 @@ export function SubscriptionAdmin() {
       </div>
 
       <div className="mt-5">
-        <h3 className="font-display text-base font-bold">Pagos por verificar</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Confirmá que el monto y la referencia coinciden antes de activar.
-        </p>
+                  <h3 className="font-display text-base font-bold">Pagos por verificar</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Los pagos manuales y en efectivo nuevos se activan solos al instante con su comprobante. Revisá acá los SINPE automáticos pendientes y los reportes anteriores; si un pago activado no aparece, desactivá el plan desde Cuentas (tenés hasta 3 días).
+          </p>
         {overview.pending.length === 0 ? (
           <p className="mt-3 rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
             No hay pagos pendientes.
@@ -533,6 +569,20 @@ export function SubscriptionAdmin() {
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         Nota: {payment.note}
                       </p>
+                    )}
+                    {payment.receiptUrl && (
+                      <a
+                        href={payment.receiptUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block overflow-hidden rounded-xl border border-border/60"
+                      >
+                        <img
+                          src={payment.receiptUrl}
+                          alt="Comprobante del pago"
+                          className="h-24 w-auto object-cover"
+                        />
+                      </a>
                     )}
                   </div>
                 </div>
@@ -603,6 +653,7 @@ export function SubscriptionAdmin() {
                 account={account as AdminAccount}
                 busy={busyAccount === account.ownerId}
                 onGrant={(ownerId, plan) => void handleGrant(ownerId, plan)}
+                onDeactivate={(ownerId) => void handleDeactivate(ownerId)}
               />
             ))}
           </ul>
@@ -618,9 +669,19 @@ export function SubscriptionAdmin() {
                 key={payment._id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 px-2.5 py-2 text-[11px]"
               >
-                <span className="truncate">
+                <span className="min-w-0 flex-1 truncate">
                   {payment.businessName ?? payment.name} ·{" "}
                   {planOf(payment.plan).name} · {money(payment.price)}
+                  {payment.receiptUrl && (
+                    <a
+                      href={payment.receiptUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-2 font-semibold text-accent hover:underline"
+                    >
+                      Ver comprobante
+                    </a>
+                  )}
                 </span>
                 <span
                   className={cn(

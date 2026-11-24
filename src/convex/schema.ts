@@ -696,6 +696,8 @@ const schema = defineSchema(
       reviewedAt: v.optional(v.number()),
       reviewedBy: v.optional(v.id("users")),
       reviewNote: v.optional(v.string()),
+      // Captura del comprobante subida por el negocio o repartidor.
+      receiptStorageId: v.optional(v.id("_storage")),
       // ONVO SINPE Móvil confirma transferencias por webhook sin revisión
       // manual. Las instrucciones quedan asociadas a la intención específica.
       onvoPaymentIntentId: v.optional(v.string()),

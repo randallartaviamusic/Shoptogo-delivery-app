@@ -271,21 +271,29 @@ export const mine = query({
             status: pending.status,
             onvoPaymentIntentId: pending.onvoPaymentIntentId ?? null,
             onvoDestinationPhone: pending.onvoDestinationPhone ?? null,
+            receiptUrl: pending.receiptStorageId
+              ? ((await ctx.storage.getUrl(pending.receiptStorageId)) ?? null)
+              : null,
           }
         : null,
       onvoConfigured: Boolean(process.env.ONVO_SECRET_KEY?.trim()),
-      payments: payments.slice(0, 8).map((payment) => ({
-        _id: payment._id,
-        plan: payment.plan,
-        price: payment.price,
-        method: payment.method,
-        reference: payment.reference,
-        expiryAt: payment.expiryAt,
-        reportedAt: payment.reportedAt,
-        status: payment.status,
-        reviewNote: payment.reviewNote ?? null,
-        reviewedAt: payment.reviewedAt ?? null,
-      })),
+      payments: await Promise.all(
+        payments.slice(0, 8).map(async (payment) => ({
+          _id: payment._id,
+          plan: payment.plan,
+          price: payment.price,
+          method: payment.method,
+          reference: payment.reference,
+          expiryAt: payment.expiryAt,
+          reportedAt: payment.reportedAt,
+          status: payment.status,
+          reviewNote: payment.reviewNote ?? null,
+          reviewedAt: payment.reviewedAt ?? null,
+          receiptUrl: payment.receiptStorageId
+            ? ((await ctx.storage.getUrl(payment.receiptStorageId)) ?? null)
+            : null,
+        })),
+      ),
       settings,
       serverNow: now,
       welcomeOfferUsed:
@@ -304,6 +312,18 @@ export const mine = query({
  * El negocio o repartidor elige plan, método y hora de vencimiento, y reporta
  * el pago. La fecha la fija la plataforma (mensual): no se puede editar.
  */
+export const generateSubscriptionReceiptUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("Las suscripciones son para negocios y repartidores");
+    }
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 export const requestPayment = mutation({
   args: {
     plan: subscriptionPlanValidator,
@@ -312,6 +332,7 @@ export const requestPayment = mutation({
     note: v.optional(v.string()),
     expiryHour: v.number(),
     expiryMinute: v.number(),
+    receiptStorageId: v.optional(v.id("_storage")),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -325,6 +346,12 @@ export const requestPayment = mutation({
     const reference = args.reference.trim();
     if (reference.length < 3) {
       throw new Error("Escribí la referencia o el número de comprobante");
+    }
+    if (
+      (args.method === "sinpe" || args.method === "deposit") &&
+      !args.receiptStorageId
+    ) {
+      throw new Error("Subí la imagen del comprobante para activar tu plan");
     }
     if (await pendingPaymentFor(ctx, userId)) {
       throw new Error(
@@ -354,6 +381,7 @@ export const requestPayment = mutation({
       minute,
     );
 
+    const now = Date.now();
     const paymentId = await ctx.db.insert("subscriptionPayments", {
       ownerId: userId,
       role: user.role,
@@ -363,12 +391,129 @@ export const requestPayment = mutation({
       reference,
       note: args.note?.trim() || undefined,
       expiryAt,
-      reportedAt: Date.now(),
-      status: "pending",
+      reportedAt: now,
+      status: "approved",
+      reviewedAt: now,
+      reviewedBy: userId,
+      reviewNote: "Activación automática al reportar el pago",
+      receiptStorageId: args.receiptStorageId,
     });
-    // El plan se actualiza recién cuando el administrador aprueba el pago:
-    // así nadie obtiene beneficios de un plan superior sin haberlo pagado.
-    return { paymentId, expiryAt, price: plan.price };
+    // Activación automática: el plan queda activo al instante con la fecha
+    // correcta. Un administrador revisa después el comprobante y desactiva
+    // la cuenta si el pago no aparece o tiene un error (hasta 3 días).
+    await upsertSubscription(ctx, userId, user.role, {
+      plan: plan.id,
+      price: plan.price,
+      activeSince: existing?.activeSince ?? now,
+      activeUntil: expiryAt,
+    });
+    return { paymentId, expiryAt, price: plan.price, activeUntil: expiryAt };
+  },
+});
+
+/**
+ * Pago en efectivo: se activa al instante y se coordina el retiro por
+ * WhatsApp. El administrador revisa después y desactiva si no se concreta.
+ */
+export const requestCashActivation = mutation({
+  args: {
+    plan: subscriptionPlanValidator,
+    expiryHour: v.number(),
+    expiryMinute: v.number(),
+    cashPhone: v.string(),
+    cashAddress: v.string(),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const user = await ctx.db.get(userId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("Las suscripciones son para negocios y repartidores");
+    }
+    const phone = args.cashPhone.trim();
+    const address = args.cashAddress.trim();
+    if (phone.replace(/\D/g, "").length < 8) {
+      throw new Error("Escribí un número de WhatsApp válido");
+    }
+    if (address.length < 5) {
+      throw new Error("Escribí la dirección completa del retiro");
+    }
+    const existing = await subscriptionDoc(ctx, userId);
+    const plan = planOf(args.plan);
+    const requestNow = Date.now();
+    const isPlanChange = Boolean(existing?.plan) && existing?.plan !== plan.id;
+    const hour = Math.min(23, Math.max(0, Math.round(args.expiryHour)));
+    const minute = Math.min(59, Math.max(0, Math.round(args.expiryMinute)));
+    const expiryAt = nextMonthlyExpiry(
+      isPlanChange ? requestNow : renewalBase(existing?.activeUntil, requestNow),
+      hour,
+      minute,
+    );
+    const paymentId = await ctx.db.insert("subscriptionPayments", {
+      ownerId: userId,
+      role: user.role,
+      plan: plan.id,
+      price: plan.price,
+      method: "cash",
+      reference: `Efectivo por retirar (${phone})`,
+      note:
+        args.note?.trim() ||
+        `Retiro en: ${address}. WhatsApp: ${phone}`,
+      expiryAt,
+      reportedAt: requestNow,
+      status: "approved",
+      reviewedAt: requestNow,
+      reviewedBy: userId,
+      reviewNote: "Activación automática en efectivo",
+    });
+    await upsertSubscription(ctx, userId, user.role, {
+      plan: plan.id,
+      price: plan.price,
+      activeSince: existing?.activeSince ?? requestNow,
+      activeUntil: expiryAt,
+    });
+    return { paymentId, expiryAt, price: plan.price, activeUntil: expiryAt };
+  },
+});
+
+/**
+ * Desactivar el plan de una cuenta desde el perfil administrador.
+ * Suspende el acceso de inmediato (también dentro del período de gracia).
+ */
+export const adminDeactivate = mutation({
+  args: {
+    ownerId: v.id("users"),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const user = await ctx.db.get(args.ownerId);
+    if (!user || (user.role !== "business" && user.role !== "courier")) {
+      throw new Error("Esa cuenta no es de negocio ni de repartidor");
+    }
+    const existing = await subscriptionDoc(ctx, args.ownerId);
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        activeUntil: undefined,
+        updatedAt: now,
+      });
+    }
+    await ctx.db.insert("subscriptionPayments", {
+      ownerId: args.ownerId,
+      role: user.role,
+      plan: (existing?.plan ?? "basico") as "basico" | "pro" | "elite",
+      price: 0,
+      method: "cash",
+      reference: "Desactivación del administrador",
+      note: args.note?.trim() || "Plan desactivado por el administrador",
+      expiryAt: now,
+      reportedAt: now,
+      status: "rejected",
+      reviewedAt: now,
+      reviewedBy: admin._id,
+    });
+    return { activeUntil: null as number | null };
   },
 });
 
@@ -1018,25 +1163,30 @@ export const adminOverview = query({
     const displayBusiness = (ownerId: Id<"users">) =>
       businessByOwner.get(ownerId)?.name ?? null;
 
-    const pending = payments
-      .filter((payment) => payment.status === "pending")
-      .sort((a, b) => a.reportedAt - b.reportedAt)
-      .map((payment) => ({
-        _id: payment._id,
-        ownerId: payment.ownerId,
-        name: displayName(payment.ownerId),
-        email: userById.get(payment.ownerId)?.email ?? null,
-        phone: userById.get(payment.ownerId)?.phone ?? null,
-        businessName: displayBusiness(payment.ownerId),
-        role: payment.role,
-        plan: payment.plan,
-        price: payment.price,
-        method: payment.method,
-        reference: payment.reference,
-        note: payment.note ?? null,
-        expiryAt: payment.expiryAt,
-        reportedAt: payment.reportedAt,
-      }));
+    const pending = await Promise.all(
+      payments
+        .filter((payment) => payment.status === "pending")
+        .sort((a, b) => a.reportedAt - b.reportedAt)
+        .map(async (payment) => ({
+          _id: payment._id,
+          ownerId: payment.ownerId,
+          name: displayName(payment.ownerId),
+          email: userById.get(payment.ownerId)?.email ?? null,
+          phone: userById.get(payment.ownerId)?.phone ?? null,
+          businessName: displayBusiness(payment.ownerId),
+          role: payment.role,
+          plan: payment.plan,
+          price: payment.price,
+          method: payment.method,
+          reference: payment.reference,
+          note: payment.note ?? null,
+          expiryAt: payment.expiryAt,
+          reportedAt: payment.reportedAt,
+          receiptUrl: payment.receiptStorageId
+            ? ((await ctx.storage.getUrl(payment.receiptStorageId)) ?? null)
+            : null,
+        })),
+    );
 
     const term = (args.search ?? "").trim().toLowerCase();
     const accounts = users
@@ -1080,24 +1230,33 @@ export const adminOverview = query({
         );
       });
 
-    const recent = payments
-      .filter((payment) => payment.status !== "pending")
-      .sort((a, b) => (b.reviewedAt ?? b.reportedAt) - (a.reviewedAt ?? a.reportedAt))
-      .slice(0, 8)
-      .map((payment) => ({
-        _id: payment._id,
-        ownerId: payment.ownerId,
-        name: displayName(payment.ownerId),
-        businessName: displayBusiness(payment.ownerId),
-        role: payment.role,
-        plan: payment.plan,
-        price: payment.price,
-        status: payment.status,
-        reference: payment.reference,
-        reportedAt: payment.reportedAt,
-        reviewedAt: payment.reviewedAt ?? null,
-        reviewNote: payment.reviewNote ?? null,
-      }));
+    const recent = await Promise.all(
+      payments
+        .filter((payment) => payment.status !== "pending")
+        .sort(
+          (a, b) =>
+            (b.reviewedAt ?? b.reportedAt) - (a.reviewedAt ?? a.reportedAt),
+        )
+        .slice(0, 12)
+        .map(async (payment) => ({
+          _id: payment._id,
+          ownerId: payment.ownerId,
+          name: displayName(payment.ownerId),
+          businessName: displayBusiness(payment.ownerId),
+          role: payment.role,
+          plan: payment.plan,
+          price: payment.price,
+          method: payment.method,
+          status: payment.status,
+          reference: payment.reference,
+          reportedAt: payment.reportedAt,
+          reviewedAt: payment.reviewedAt ?? null,
+          reviewNote: payment.reviewNote ?? null,
+          receiptUrl: payment.receiptStorageId
+            ? ((await ctx.storage.getUrl(payment.receiptStorageId)) ?? null)
+            : null,
+        })),
+    );
 
     return {
       settings,
