@@ -624,7 +624,7 @@ function BusinessCard({
   return (
     <article
       className={cn(
-        "surface-raised group relative w-[15rem] shrink-0 overflow-hidden rounded-2xl transition-colors hover:border-accent/35 sm:w-[17rem]",
+        "group relative w-[15rem] shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-card transition-colors hover:border-accent/35",
         business.elite && "border-amber-300/70",
       )}
     >

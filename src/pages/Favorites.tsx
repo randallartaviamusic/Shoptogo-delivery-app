@@ -81,7 +81,7 @@ export default function FavoritesPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {favoriteBusinesses.map((business) => (
-              <article key={business._id} className="surface-raised flex w-full max-w-full min-w-0 overflow-hidden rounded-2xl">
+              <article key={business._id} className="flex w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card">
                 <Link to={`/negocios/${business.slug}`} className="flex min-w-0 flex-1 items-center gap-3">
                   <DishImage src={business.image} alt={business.name} className="size-20 shrink-0" />
                   <div className="min-w-0 py-3">
