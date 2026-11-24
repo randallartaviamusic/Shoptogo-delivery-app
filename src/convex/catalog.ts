@@ -154,6 +154,7 @@ export const deck = query({
           promo: business.deliveryPromo ?? null,
           businessId: business._id,
           businessName: business.name,
+          businessSlug: business.slug,
           businessCategory: business.category,
           businessImage: business.image,
           elite,

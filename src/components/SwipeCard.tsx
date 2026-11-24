@@ -10,6 +10,7 @@ import { promoDiscount } from "@/lib/promo";
 import type { PromoKind } from "@/lib/promo";
 import type { ProductOptionGroup } from "@/lib/productOptions";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router";
 import {
   animate,
   motion,
@@ -41,6 +42,7 @@ export type Dish = {
   promo?: PromoKind | null;
   businessId: string;
   businessName: string;
+  businessSlug: string;
   businessCategory: string;
   businessImage: string;
   elite?: boolean;
@@ -88,14 +90,20 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
       {dish.elite && <EliteAura />}
 
       <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
-        <div className="flex items-center gap-2 rounded-full border border-white/15 bg-black/45 py-1 pl-1 pr-3 backdrop-blur-md">
+        <Link
+          to={`/negocios/${dish.businessSlug}`}
+          aria-label={`Ver el catálogo de ${dish.businessName}`}
+          title={`Ver el catálogo de ${dish.businessName}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          className="flex items-center gap-2 rounded-full border border-white/15 bg-black/45 py-1 pl-1 pr-3 backdrop-blur-md transition-colors hover:border-accent/60"
+        >
           <DishImage
             src={dish.businessImage}
             alt={dish.businessName}
             className="size-7 rounded-full"
           />
-          <div className="leading-none">
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-white">
+          <span className="leading-none">
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-white">
               {dish.businessName}
               {dish.elite && (
                 <span className="rounded bg-amber-300 px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-black">
@@ -103,13 +111,13 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
                 </span>
               )}
               {dish.eliteVerified && <EliteVerifiedSeal />}
-            </p>
-            <p className="mt-0.5 flex items-center gap-1 text-[10px] text-white/65">
+            </span>
+            <span className="mt-0.5 flex items-center gap-1 text-[10px] text-white/65">
               <Star className="size-2.5 fill-accent text-accent" />
               {dish.rating.toFixed(1)} · {dish.etaMinutes} min
-            </p>
-          </div>
-        </div>
+            </span>
+          </span>
+        </Link>
         <div className="flex flex-col items-end gap-1.5">
           <span className="rounded-full bg-accent px-3 py-1.5 font-display text-sm font-bold text-accent-foreground">
             {money(dish.price)}
