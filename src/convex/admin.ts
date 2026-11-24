@@ -8,6 +8,8 @@ import { isAdminEmail } from "./branding";
 import { ASSIGNMENT_RULES, deliveryQuote } from "../lib/delivery";
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, getDepartment } from "../lib/departments";
 import { hasSubscriptionAccess, subscriptionStatus } from "../lib/subscriptions";
+import { productOptionGroupValidator } from "./schema";
+import { normalizeOptionGroups } from "../lib/productOptions";
 
 /**
  * Gestión de cuentas para el perfil administrador: revisar, filtrar y borrar
@@ -358,6 +360,7 @@ export const deleteUser = mutation({
 const DEPARTMENT_SLUGS = new Set(DEPARTMENTS.map((department) => department.slug));
 
 const STORE_PRODUCT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const STORE_PRODUCT_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
 
 function cleanImage(value: string, label: string) {
   const trimmed = value.trim();
@@ -385,6 +388,22 @@ async function storeProductImageUrl(ctx: MutationCtx, storageId: string) {
   }
   const url = await ctx.storage.getUrl(storageId as never);
   if (!url) throw new ConvexError("No pudimos guardar la imagen");
+  return url;
+}
+
+async function storeProductVideoUrl(ctx: MutationCtx, storageId: string) {
+  const metadata = await ctx.storage.getMetadata(storageId as never);
+  if (!metadata) throw new ConvexError("No pudimos leer el video");
+  const contentType = (metadata as { contentType?: string }).contentType;
+  if (!contentType?.startsWith("video/")) {
+    throw new ConvexError("El archivo tiene que ser un video");
+  }
+  const size = (metadata as { size?: number }).size ?? 0;
+  if (size > STORE_PRODUCT_VIDEO_MAX_BYTES) {
+    throw new ConvexError("El video no puede pesar mas de 30 MB");
+  }
+  const url = await ctx.storage.getUrl(storageId as never);
+  if (!url) throw new ConvexError("No pudimos guardar el video");
   return url;
 }
 
@@ -860,7 +879,10 @@ export const storeCatalog = query({
             description: product.description,
             price: product.price,
             image: product.image,
+            video: product.video ?? null,
             category: product.category,
+            attributes: product.attributes ?? [],
+            optionGroups: product.optionGroups ?? [],
             tags: product.tags,
             isAvailable: product.isAvailable,
           })),
@@ -995,6 +1017,15 @@ export const generateStoreProductImageUploadUrl = mutation({
   },
 });
 
+/** URL temporal para que el admin suba el video de un producto desde la galeria. */
+export const generateStoreProductVideoUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 /** Publica un producto nuevo en una tienda real a solicitud del negocio. */
 export const createStoreProduct = mutation({
   args: {
@@ -1005,7 +1036,12 @@ export const createStoreProduct = mutation({
     category: v.string(),
     image: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")),
+    videoStorageId: v.optional(v.id("_storage")),
     tags: v.optional(v.array(v.string())),
+    attributes: v.optional(
+      v.array(v.object({ key: v.string(), value: v.string() })),
+    ),
+    optionGroups: v.optional(v.array(productOptionGroupValidator)),
     isAvailable: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -1044,6 +1080,10 @@ export const createStoreProduct = mutation({
     const image = uploadedImage ?? (args.image?.trim()
       ? cleanImage(args.image, "La foto del producto")
       : business.image);
+    const video = args.videoStorageId
+      ? await storeProductVideoUrl(ctx, args.videoStorageId)
+      : undefined;
+    const optionGroups = normalizeOptionGroups(args.optionGroups);
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
@@ -1052,8 +1092,10 @@ export const createStoreProduct = mutation({
       description,
       price: Math.round(args.price),
       image,
+      ...(video ? { video } : {}),
       category,
-      attributes: [],
+      attributes: args.attributes ?? [],
+      ...(optionGroups.length > 0 ? { optionGroups } : {}),
       tags,
       isAvailable: args.isAvailable ?? true,
       sortOrder: Date.now(),
@@ -1075,7 +1117,13 @@ export const updateStoreProduct = mutation({
     category: v.optional(v.string()),
     image: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")),
+    videoStorageId: v.optional(v.id("_storage")),
+    removeVideo: v.optional(v.boolean()),
     tags: v.optional(v.array(v.string())),
+    attributes: v.optional(
+      v.array(v.object({ key: v.string(), value: v.string() })),
+    ),
+    optionGroups: v.optional(v.array(productOptionGroupValidator)),
     isAvailable: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -1123,6 +1171,15 @@ export const updateStoreProduct = mutation({
       patch.image = await storeProductImageUrl(ctx, args.imageStorageId);
     } else if (args.image !== undefined) {
       patch.image = cleanImage(args.image, "La foto del producto");
+    }
+    if (args.removeVideo) patch.video = undefined;
+    if (args.videoStorageId) {
+      patch.video = await storeProductVideoUrl(ctx, args.videoStorageId);
+    }
+    if (args.attributes !== undefined) patch.attributes = args.attributes;
+    if (args.optionGroups !== undefined) {
+      const groups = normalizeOptionGroups(args.optionGroups);
+      patch.optionGroups = groups.length > 0 ? groups : undefined;
     }
     if (args.tags !== undefined) {
       const tags = Array.from(

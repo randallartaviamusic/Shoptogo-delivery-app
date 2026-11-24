@@ -30,7 +30,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { DEPARTMENTS, getDepartment } from "@/lib/departments";
+import { DEPARTMENTS, getDepartment, normalizeSubcategory } from "@/lib/departments";
+import type { ProductOptionGroup } from "@/lib/productOptions";
+import { ProductOptionsEditor } from "@/components/ProductOptionsEditor";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -45,6 +47,8 @@ import {
   ShieldCheck,
   Store,
   Trash2,
+  Video,
+  X,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -142,13 +146,18 @@ function AdminProductImagePicker({
   );
 }
 
+type StoreProductAttribute = { key: string; value: string };
+
 type StoreProduct = {
   _id: Id<"products">;
   name: string;
   description: string;
   price: number;
   image: string;
+  video: string | null;
   category: string;
+  attributes: StoreProductAttribute[];
+  optionGroups: ProductOptionGroup[];
   tags: string[];
   isAvailable: boolean;
 };
@@ -188,6 +197,9 @@ type ProductDraft = {
   price: string;
   category: string;
   image: string;
+  video: string;
+  attributes: Record<string, string>;
+  optionGroups: ProductOptionGroup[];
   tags: string;
   isAvailable: boolean;
 };
@@ -205,13 +217,133 @@ function businessDraftOf(business: StoreBusiness): BusinessDraft {
   };
 }
 
+function AdminProductVideoPicker({
+  preview,
+  onPicked,
+  onRemove,
+}: {
+  preview: string;
+  onPicked: (storageId: Id<"_storage">, localPreview: string) => void;
+  onRemove: () => void;
+}) {
+  const generateUploadUrl = useMutation(
+    api.admin.generateStoreProductVideoUploadUrl,
+  );
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("video/")) {
+      toast.error("Elegi un video (MP4, WebM o MOV)");
+      return;
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      toast.error("El video no puede pesar mas de 30 MB");
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir el video");
+      const { storageId } = (await response.json()) as { storageId: string };
+      onPicked(storageId as Id<"_storage">, URL.createObjectURL(file));
+      toast.success("Video cargado desde la galeria");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "No pudimos subir el video",
+      );
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-black/20 p-3">
+      {preview ? (
+        <video
+          src={preview}
+          aria-label="Video del producto"
+          autoPlay
+          muted
+          loop
+          playsInline
+          controls
+          className="aspect-[4/3] w-full rounded-xl border border-border/60 object-cover"
+        />
+      ) : (
+        <div className="flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-dashed border-border/70 text-muted-foreground">
+          <Video className="size-5" />
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="flex-1 gap-2 border-border/80"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Video className="size-3.5" />
+          )}
+          {uploading
+            ? "Subiendo..."
+            : preview
+              ? "Cambiar video desde galeria"
+              : "Subir video desde galeria"}
+        </Button>
+        {preview && !uploading && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="gap-1 text-primary hover:text-primary"
+            onClick={onRemove}
+          >
+            <X className="size-3.5" />
+            Quitar
+          </Button>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={(event) => void handleFile(event.target.files?.[0])}
+      />
+    </div>
+  );
+}
+
 function productDraftOf(product: StoreProduct): ProductDraft {
   return {
     name: product.name,
     description: product.description,
     price: String(product.price),
-    category: product.category,
+    category: normalizeSubcategory(product.category),
     image: product.image,
+    video: product.video ?? "",
+    attributes: Object.fromEntries(
+      (product.attributes ?? []).map((attribute) => [
+        attribute.key,
+        attribute.value,
+      ]),
+    ),
+    optionGroups: (product.optionGroups ?? []).map((group) => ({
+      ...group,
+      options: group.options.map((option) => ({ ...option })),
+    })),
     tags: product.tags.join(", "),
     isAvailable: product.isAvailable,
   };
@@ -222,11 +354,20 @@ function emptyProductDraft(category: string): ProductDraft {
     name: "",
     description: "",
     price: "",
-    category,
+    category: normalizeSubcategory(category),
     image: "",
+    video: "",
+    attributes: {},
+    optionGroups: [],
     tags: "",
     isAvailable: true,
   };
+}
+
+function categoryOptionsFor(departmentSlug: string, current: string) {
+  const subcategories = getDepartment(departmentSlug).subcategories;
+  if (current && !subcategories.includes(current)) return [current, ...subcategories];
+  return subcategories.length > 0 ? subcategories : [current || "General"];
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -249,12 +390,17 @@ export function StoreCatalogAdmin() {
   const [savingBusiness, setSavingBusiness] = useState(false);
 
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
+  const [editingProductBusiness, setEditingProductBusiness] =
+    useState<StoreBusiness | null>(null);
   const [productDraft, setProductDraft] = useState<ProductDraft | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState<StoreProduct | null>(null);
   const [editImageStorageId, setEditImageStorageId] =
     useState<Id<"_storage"> | null>(null);
   const [editImagePreview, setEditImagePreview] = useState("");
+  const [editVideoStorageId, setEditVideoStorageId] =
+    useState<Id<"_storage"> | null>(null);
+  const [removeEditVideo, setRemoveEditVideo] = useState(false);
 
   const [creatingFor, setCreatingFor] = useState<StoreBusiness | null>(null);
   const [newDraft, setNewDraft] = useState<ProductDraft | null>(null);
@@ -262,6 +408,8 @@ export function StoreCatalogAdmin() {
   const [newImageStorageId, setNewImageStorageId] =
     useState<Id<"_storage"> | null>(null);
   const [newImagePreview, setNewImagePreview] = useState("");
+  const [newVideoStorageId, setNewVideoStorageId] =
+    useState<Id<"_storage"> | null>(null);
 
   const [removing, setRemoving] = useState(false);
 
@@ -270,11 +418,14 @@ export function StoreCatalogAdmin() {
     setBusinessDraft(businessDraftOf(business));
   };
 
-  const openProductEditor = (product: StoreProduct) => {
+  const openProductEditor = (product: StoreProduct, business: StoreBusiness) => {
     setEditingProduct(product);
+    setEditingProductBusiness(business);
     setProductDraft(productDraftOf(product));
     setEditImageStorageId(null);
     setEditImagePreview("");
+    setEditVideoStorageId(null);
+    setRemoveEditVideo(false);
   };
 
   const openProductCreator = (business: StoreBusiness) => {
@@ -282,6 +433,23 @@ export function StoreCatalogAdmin() {
     setNewDraft(emptyProductDraft(business.category));
     setNewImageStorageId(null);
     setNewImagePreview("");
+    setNewVideoStorageId(null);
+  };
+
+  const validateOptionGroups = (groups: ProductOptionGroup[]) => {
+    const incomplete = groups.find(
+      (group) =>
+        !group.name.trim() ||
+        group.options.some((option) => !option.name.trim()),
+    );
+    if (incomplete) {
+      return "Completá el nombre del grupo y de cada opción, o quitá las opciones vacías";
+    }
+    const names = groups.map((group) => group.name.trim().toLowerCase());
+    if (new Set(names).size !== names.length) {
+      return "Cada grupo de opciones necesita un nombre distinto";
+    }
+    return null;
   };
 
   const handleSaveBusiness = async () => {
@@ -316,6 +484,11 @@ export function StoreCatalogAdmin() {
 
   const handleSaveProduct = async () => {
     if (!editingProduct || !productDraft) return;
+    const optionsError = validateOptionGroups(productDraft.optionGroups);
+    if (optionsError) {
+      toast.error(optionsError);
+      return;
+    }
     setSavingProduct(true);
     try {
       const price = Number(productDraft.price);
@@ -330,6 +503,12 @@ export function StoreCatalogAdmin() {
         category: productDraft.category,
         image: editImageStorageId ? undefined : productDraft.image,
         ...(editImageStorageId ? { imageStorageId: editImageStorageId } : {}),
+        ...(editVideoStorageId ? { videoStorageId: editVideoStorageId } : {}),
+        removeVideo: removeEditVideo || undefined,
+        attributes: Object.entries(productDraft.attributes)
+          .filter(([, value]) => value.length > 0)
+          .map(([key, value]) => ({ key, value })),
+        optionGroups: productDraft.optionGroups,
         tags: productDraft.tags
           .split(",")
           .map((tag) => tag.trim())
@@ -340,9 +519,12 @@ export function StoreCatalogAdmin() {
         description: productDraft.name,
       });
       setEditingProduct(null);
+      setEditingProductBusiness(null);
       setProductDraft(null);
       setEditImageStorageId(null);
       setEditImagePreview("");
+      setEditVideoStorageId(null);
+      setRemoveEditVideo(false);
     } catch (error) {
       toast.error(errorMessage(error, "No pudimos guardar el producto"));
     } finally {
@@ -352,6 +534,11 @@ export function StoreCatalogAdmin() {
 
   const handleCreateProduct = async () => {
     if (!creatingFor || !newDraft) return;
+    const optionsError = validateOptionGroups(newDraft.optionGroups);
+    if (optionsError) {
+      toast.error(optionsError);
+      return;
+    }
     setCreating(true);
     try {
       const name = newDraft.name.trim();
@@ -374,6 +561,11 @@ export function StoreCatalogAdmin() {
             ? newDraft.image
             : undefined,
         ...(newImageStorageId ? { imageStorageId: newImageStorageId } : {}),
+        ...(newVideoStorageId ? { videoStorageId: newVideoStorageId } : {}),
+        attributes: Object.entries(newDraft.attributes)
+          .filter(([, value]) => value.length > 0)
+          .map(([key, value]) => ({ key, value })),
+        optionGroups: newDraft.optionGroups,
         tags: newDraft.tags
           .split(",")
           .map((tag) => tag.trim())
@@ -387,6 +579,7 @@ export function StoreCatalogAdmin() {
       setNewDraft(null);
       setNewImageStorageId(null);
       setNewImagePreview("");
+      setNewVideoStorageId(null);
     } catch (error) {
       toast.error(errorMessage(error, "No pudimos publicar el producto"));
     } finally {
@@ -592,7 +785,7 @@ export function StoreCatalogAdmin() {
                               size="icon"
                               aria-label={`Editar ${product.name}`}
                               title="Editar producto"
-                              onClick={() => openProductEditor(product)}
+                              onClick={() => openProductEditor(product, business)}
                               className="size-7 text-muted-foreground hover:text-accent"
                             >
                               <Pencil className="size-3" />
@@ -824,6 +1017,7 @@ export function StoreCatalogAdmin() {
             setNewDraft(null);
             setNewImageStorageId(null);
             setNewImagePreview("");
+            setNewVideoStorageId(null);
           }
         }}
       >
@@ -883,15 +1077,24 @@ export function StoreCatalogAdmin() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="store-new-category">Categoría</Label>
-                <Input
-                  id="store-new-category"
+                <Label>Categoría</Label>
+                <Select
                   value={newDraft.category}
-                  maxLength={60}
-                  onChange={(event) =>
-                    setNewDraft({ ...newDraft, category: event.target.value })
+                  onValueChange={(value) =>
+                    setNewDraft({ ...newDraft, category: value })
                   }
-                />
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryOptionsFor(creatingFor?.department ?? "comida", newDraft.category).map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
@@ -908,6 +1111,61 @@ export function StoreCatalogAdmin() {
                 />
               </div>
 
+              {(() => {
+                const dept = getDepartment(creatingFor?.department ?? "comida");
+                if (dept.filters.length === 0) return null;
+                return (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-black/20 p-3 sm:col-span-2">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Filtros del producto
+                      </p>
+                      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                        Cuanto mejor los completes, más fácil es que aparezca en las búsquedas de {dept.label.toLowerCase()}.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {dept.filters.map((facet) => (
+                        <div key={facet.key} className="space-y-1.5">
+                          <Label>{facet.label}</Label>
+                          <Select
+                            value={newDraft.attributes[facet.key] ?? "__none"}
+                            onValueChange={(value) =>
+                              setNewDraft((prev) => {
+                                if (!prev) return prev;
+                                const attributes = { ...prev.attributes };
+                                if (value === "__none") delete attributes[facet.key];
+                                else attributes[facet.key] = value;
+                                return { ...prev, attributes };
+                              })
+                            }
+                          >
+                            <SelectTrigger className="w-full min-w-0">
+                              <SelectValue placeholder="Sin especificar" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none">Sin especificar</SelectItem>
+                              {facet.options.map((option) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div className="sm:col-span-2">
+                <ProductOptionsEditor
+                  groups={newDraft.optionGroups}
+                  onChange={(optionGroups) =>
+                    setNewDraft((prev) => (prev ? { ...prev, optionGroups } : prev))
+                  }
+                />
+              </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Foto del producto</Label>
                 <AdminProductImagePicker
@@ -937,6 +1195,21 @@ export function StoreCatalogAdmin() {
                     Sin foto se usa la foto de la tienda.
                   </p>
                 )}
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Video del producto</Label>
+                <AdminProductVideoPicker
+                  preview={newDraft.video}
+                  onPicked={(storageId, preview) => {
+                    setNewVideoStorageId(storageId);
+                    setNewDraft({ ...newDraft, video: preview });
+                  }}
+                  onRemove={() => {
+                    setNewVideoStorageId(null);
+                    setNewDraft({ ...newDraft, video: "" });
+                  }}
+                />
+                <p className="text-[11px] text-muted-foreground">Si subís un video, se reproduce en el mazo en vez de la imagen. MP4, WebM o MOV, hasta 30 MB.</p>
               </div>
 
               <label className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-black/20 px-3 py-2.5 sm:col-span-2">
@@ -968,6 +1241,7 @@ export function StoreCatalogAdmin() {
                 setNewDraft(null);
                 setNewImageStorageId(null);
                 setNewImagePreview("");
+                setNewVideoStorageId(null);
               }}
             >
               Cancelar
@@ -994,9 +1268,12 @@ export function StoreCatalogAdmin() {
         onOpenChange={(open) => {
           if (!open) {
             setEditingProduct(null);
+            setEditingProductBusiness(null);
             setProductDraft(null);
             setEditImageStorageId(null);
             setEditImagePreview("");
+            setEditVideoStorageId(null);
+            setRemoveEditVideo(false);
           }
         }}
       >
@@ -1059,18 +1336,27 @@ export function StoreCatalogAdmin() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="store-product-category">Categoría</Label>
-                <Input
-                  id="store-product-category"
+                <Label>Categoría</Label>
+                <Select
                   value={productDraft.category}
-                  maxLength={60}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setProductDraft({
                       ...productDraft,
-                      category: event.target.value,
+                      category: value,
                     })
                   }
-                />
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryOptionsFor(editingProductBusiness?.department ?? "comida", productDraft.category).map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
@@ -1090,6 +1376,61 @@ export function StoreCatalogAdmin() {
                 />
               </div>
 
+              {(() => {
+                const dept = getDepartment(editingProductBusiness?.department ?? "comida");
+                if (dept.filters.length === 0) return null;
+                return (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-black/20 p-3 sm:col-span-2">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Filtros del producto
+                      </p>
+                      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                        Cuanto mejor los completes, más fácil es que aparezca en las búsquedas de {dept.label.toLowerCase()}.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {dept.filters.map((facet) => (
+                        <div key={facet.key} className="space-y-1.5">
+                          <Label>{facet.label}</Label>
+                          <Select
+                            value={productDraft.attributes[facet.key] ?? "__none"}
+                            onValueChange={(value) =>
+                              setProductDraft((prev) => {
+                                if (!prev) return prev;
+                                const attributes = { ...prev.attributes };
+                                if (value === "__none") delete attributes[facet.key];
+                                else attributes[facet.key] = value;
+                                return { ...prev, attributes };
+                              })
+                            }
+                          >
+                            <SelectTrigger className="w-full min-w-0">
+                              <SelectValue placeholder="Sin especificar" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none">Sin especificar</SelectItem>
+                              {facet.options.map((option) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div className="sm:col-span-2">
+                <ProductOptionsEditor
+                  groups={productDraft.optionGroups}
+                  onChange={(optionGroups) =>
+                    setProductDraft((prev) => (prev ? { ...prev, optionGroups } : prev))
+                  }
+                />
+              </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Foto del producto</Label>
                 <AdminProductImagePicker
@@ -1117,6 +1458,25 @@ export function StoreCatalogAdmin() {
                     }
                   }}
                 />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Video del producto</Label>
+                <AdminProductVideoPicker
+                  preview={productDraft.video}
+                  onPicked={(storageId, preview) => {
+                    setEditVideoStorageId(storageId);
+                    setRemoveEditVideo(false);
+                    setProductDraft({ ...productDraft, video: preview });
+                  }}
+                  onRemove={() => {
+                    setEditVideoStorageId(null);
+                    setRemoveEditVideo(true);
+                    setProductDraft({ ...productDraft, video: "" });
+                  }}
+                />
+                {!productDraft.video && (
+                  <p className="text-[11px] text-muted-foreground">Sin video se muestra la foto. MP4, WebM o MOV, hasta 30 MB.</p>
+                )}
               </div>
 
               <label className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-black/20 px-3 py-2.5 sm:col-span-2">
@@ -1148,9 +1508,12 @@ export function StoreCatalogAdmin() {
               disabled={savingProduct}
               onClick={() => {
                 setEditingProduct(null);
+                setEditingProductBusiness(null);
                 setProductDraft(null);
                 setEditImageStorageId(null);
                 setEditImagePreview("");
+                setEditVideoStorageId(null);
+                setRemoveEditVideo(false);
               }}
             >
               Cancelar
