@@ -1128,12 +1128,12 @@ function Storefront({ slug }: { slug: string }) {
                         <p className="line-clamp-1 font-display text-sm font-bold text-white">
                           {product.name}
                         </p>
-                        <p className="line-clamp-1 text-[10px] text-white/65">
-                          {product.description || business.name}
-                        </p>
                       </div>
                     </div>
                     <div className="space-y-2 p-3">
+                      <p className="whitespace-pre-line break-words text-[11px] leading-snug text-muted-foreground">
+                        {product.description || "Sin descripción"}
+                      </p>
                       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Star className="size-3 fill-accent text-accent" />
@@ -1172,57 +1172,52 @@ function Storefront({ slug }: { slug: string }) {
                 {products.map((product) => (
                   <div
                     key={product._id}
-                    className="surface-raised flex w-full max-w-full min-w-0 gap-3 overflow-hidden rounded-2xl p-3"
+                    className="surface-raised w-full max-w-full min-w-0 gap-0 overflow-hidden rounded-2xl"
                   >
-                    <div className="relative w-28 shrink-0 sm:w-36">
+                    <div className="relative aspect-[4/3] w-full">
                       <ProductMedia
                         image={product.image}
                         video={product.video}
                         alt={product.name}
-                        className="aspect-[4/3] w-full rounded-xl"
+                        className="aspect-[4/3] w-full"
                       />
-                      <span className="absolute left-1.5 top-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-accent backdrop-blur">
-                        {money(product.price)}
-                      </span>
                       {!product.isAvailable && (
-                        <span className="absolute right-1.5 top-1.5 rounded-full border border-primary/50 bg-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                        <span className="absolute right-2 top-2 rounded-full border border-primary/50 bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
                           Agotado
                         </span>
                       )}
+                      <PromoBadge promo={product.promo} className="absolute left-2 top-2" />
                     </div>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <p className="truncate text-sm font-semibold text-shadow-dark">
+                    <div className="flex min-w-0 flex-col p-4">
+                      <p className="text-base font-bold text-shadow-dark">
                         {product.name}
                       </p>
-                      <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                      <p className="mt-1 whitespace-pre-line break-words text-[13px] leading-relaxed text-muted-foreground">
                         {product.description || "Sin descripción"}
                       </p>
-                      <p className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <Star className="size-3 fill-accent text-accent" />
+                          <Star className="size-3.5 fill-accent text-accent" />
                           {business.rating.toFixed(1)}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Clock className="size-3" />
+                          <Clock className="size-3.5" />
                           {business.etaMinutes + (delivery.minutes ?? 0)} min
                         </span>
-                        <PromoBadge
-                          promo={product.promo}
-                          withIcon={false}
-                          className="px-1.5 py-0 text-[9px]"
-                        />
+                        <span className="text-sm font-extrabold text-accent">
+                          {money(product.price)}
+                        </span>
                       </p>
-                      <div className="mt-auto pt-2">
+                      <div className="mt-3">
                         <Button
-                          size="sm"
                           className="w-full gap-1.5 bg-secondary text-foreground hover:bg-accent hover:text-accent-foreground"
                           disabled={!business.isOpen || !product.isAvailable || busy === product._id}
                           onClick={() => handleProductTap(product)}
                         >
                           {busy === product._id ? (
-                            <Loader2 className="size-3.5 animate-spin" />
+                            <Loader2 className="size-4 animate-spin" />
                           ) : (
-                            <Plus className="size-3.5" />
+                            <Plus className="size-4" />
                           )}
                           {!business.isOpen
                             ? "Cerrado"
