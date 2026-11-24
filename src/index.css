@@ -596,3 +596,39 @@
     max-width: calc(100% - 2rem);
   }
 }
+
+/* Tamaño de letra a gusto: el font-size raíz escala toda la plataforma
+   (los estilos usan rem) y estas reglas garantizan que nada se salga del
+   ancho del celular en ninguna ventana ni sección. */
+html[data-text-scale] body {
+  overflow-wrap: break-word;
+}
+
+html[data-text-scale] :where(p, h1, h2, h3, h4, h5, h6, li, span, a, label, td, th, legend) {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+html[data-text-scale] :where(.truncate) {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+html[data-text-scale] :where(table) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+html[data-text-scale] :where(pre, code) {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+html[data-text-scale="xl"] body,
+html[data-text-scale="xxl"] body {
+  hyphens: auto;
+}

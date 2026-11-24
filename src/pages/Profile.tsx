@@ -9,6 +9,7 @@ import { ShareSettingsAdmin } from "@/components/ShareSettingsAdmin";
 import { StoreCatalogAdmin } from "@/components/StoreCatalogAdmin";
 import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
 import { SupportAdmin } from "@/components/SupportAdmin";
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { TrustHistory } from "@/components/TrustHistory";
 import { VerificationAdmin } from "@/components/VerificationAdmin";
 import { VerificationCard } from "@/components/VerificationCard";
@@ -1335,6 +1336,10 @@ export default function ProfilePage() {
           )}
         </Button>
       </section>
+
+      <div className="mt-5">
+        <TextSizeControl />
+      </div>
 
       <TrustHistory />
 

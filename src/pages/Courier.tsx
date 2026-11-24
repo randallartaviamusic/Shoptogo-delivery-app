@@ -10,6 +10,7 @@ import {
 import { CourierProTools } from "@/components/CourierProTools";
 import { playOfferPing } from "@/lib/offerPing";
 import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { SubscriptionReminder } from "@/components/SubscriptionReminder";
 import { VerificationBanner } from "@/components/VerificationBanner";
 import { DishImage } from "@/components/DishImage";
@@ -503,6 +504,9 @@ export default function CourierPage() {
       <SubscriptionReminder />
       <VerificationBanner />
       <OrderAlertsSettings audience="courier" className="mb-5" />
+      <div className="mb-5">
+        <TextSizeControl contextLabel="Se aplica en toda la plataforma y se guarda en este teléfono, también para tu cuenta de repartidor." />
+      </div>
       <CourierProTools activeOrders={active} />
 
       {busyOrder && (
