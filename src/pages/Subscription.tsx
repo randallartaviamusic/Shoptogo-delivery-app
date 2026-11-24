@@ -186,8 +186,9 @@ export default function SubscriptionPage() {
   const pending = data.pendingPayment;
   const meta = SUBSCRIPTION_STATUS_META[data.status];
   const selected = SUBSCRIPTION_PLANS[plan];
+  const isPlanChange = Boolean(data.plan) && data.plan !== plan;
   const expiryAt = nextMonthlyExpiry(
-    renewalBase(data.activeUntil, now),
+    isPlanChange ? now : renewalBase(data.activeUntil, now),
     hour,
     minute,
   );
@@ -487,7 +488,7 @@ export default function SubscriptionPage() {
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Nada de porcentajes por pedido. Cambiás de plan cuando quieras y
-                aplica desde la próxima renovación.
+                si es el mismo plan se suma a tu vencimiento; si cambias de plan el mes nuevo corre desde hoy.
               </p>
             </div>
             <ShieldCheck className="size-5 text-accent" />
@@ -781,7 +782,7 @@ export default function SubscriptionPage() {
                   {formatExpiry(expiryAt)}
                 </span>{" "}
                 (hora de Costa Rica). Si todavía tenés tiempo activo, la renovación se
-                suma a partir de ese vencimiento.
+                se suma a ese vencimiento solo si renovas el mismo plan; si cambias de plan el mes nuevo corre desde hoy.
               </p>
 
               {method === "onvo" ? (

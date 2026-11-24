@@ -22,6 +22,7 @@ import {
   EXPIRING_DAYS,
   MAX_WHATSAPP_NUMBERS,
   REMINDER_SOUNDS,
+  costaRicaParts,
   hasSubscriptionAccess,
   nextMonthlyExpiry,
   planOf,
@@ -341,11 +342,14 @@ export const requestPayment = mutation({
 
     const existing = await subscriptionDoc(ctx, userId);
     const plan = planOf(args.plan);
+    const requestNow = Date.now();
+    const isPlanChange = Boolean(existing?.plan) && existing?.plan !== plan.id;
     const hour = Math.min(23, Math.max(0, Math.round(args.expiryHour)));
     const minute = Math.min(59, Math.max(0, Math.round(args.expiryMinute)));
-    // La fecha nunca se adelanta: si todavía está vigente, se renueva desde ahí.
+    // Renovación del mismo plan: se suma desde el vencimiento vigente.
+    // Cambio de plan: el mes nuevo corre desde hoy, no desde el próximo mes.
     const expiryAt = nextMonthlyExpiry(
-      renewalBase(existing?.activeUntil),
+      isPlanChange ? requestNow : renewalBase(existing?.activeUntil, requestNow),
       hour,
       minute,
     );
@@ -442,6 +446,7 @@ export const onvoRequestState = internalQuery({
       name: user.name ?? "Cuenta Shop To Go",
       email: user.email ?? undefined,
       activeUntil: subscription?.activeUntil ?? null,
+      plan: subscription?.plan ?? null,
       pending: Boolean(pending),
     };
   },
@@ -568,8 +573,10 @@ export const requestOnvoPayment = action({
     }
     const payerPhone = `+506${digits.slice(-8)}`;
     const plan = planOf(args.plan);
+    const onvoNow = Date.now();
+    const onvoPlanChange = Boolean(state.plan) && state.plan !== plan.id;
     const expiryAt = nextMonthlyExpiry(
-      renewalBase(state.activeUntil ?? undefined),
+      onvoPlanChange ? onvoNow : renewalBase(state.activeUntil ?? undefined, onvoNow),
       Math.min(23, Math.max(0, Math.round(args.expiryHour))),
       Math.min(59, Math.max(0, Math.round(args.expiryMinute))),
     );
@@ -1138,11 +1145,16 @@ export const adminReviewPayment = mutation({
 
     const existing = await subscriptionDoc(ctx, payment.ownerId);
     const plan = planOf(payment.plan);
-    const activeUntil = Math.max(
-      payment.expiryAt,
-      existing?.activeUntil ?? 0,
-      now + DAY_MS,
-    );
+    const planChanged = Boolean(existing?.plan) && existing?.plan !== plan.id;
+    const expiryParts = costaRicaParts(payment.expiryAt);
+    const freshExpiry = nextMonthlyExpiry(now, expiryParts.hour, expiryParts.minute);
+    const activeUntil = planChanged
+      ? Math.max(freshExpiry, now + DAY_MS)
+      : Math.max(
+          payment.expiryAt,
+          existing?.activeUntil ?? 0,
+          now + DAY_MS,
+        );
     await upsertSubscription(ctx, payment.ownerId, payment.role, {
       plan: plan.id,
       price: plan.price,
@@ -1179,11 +1191,16 @@ export const confirmOnvoPayment = internalMutation({
     });
     const existing = await subscriptionDoc(ctx, payment.ownerId);
     const plan = planOf(payment.plan);
-    const activeUntil = Math.max(
-      payment.expiryAt,
-      existing?.activeUntil ?? 0,
-      now + DAY_MS,
-    );
+    const planChanged = Boolean(existing?.plan) && existing?.plan !== plan.id;
+    const expiryParts = costaRicaParts(payment.expiryAt);
+    const freshExpiry = nextMonthlyExpiry(now, expiryParts.hour, expiryParts.minute);
+    const activeUntil = planChanged
+      ? Math.max(freshExpiry, now + DAY_MS)
+      : Math.max(
+          payment.expiryAt,
+          existing?.activeUntil ?? 0,
+          now + DAY_MS,
+        );
     await upsertSubscription(ctx, payment.ownerId, payment.role, {
       plan: plan.id,
       price: plan.price,
@@ -1211,7 +1228,8 @@ export const adminGrant = mutation({
     const months = Math.min(12, Math.max(1, Math.round(args.months ?? 1)));
     const existing = await subscriptionDoc(ctx, user._id);
     const now = Date.now();
-    let activeUntil = renewalBase(existing?.activeUntil, now);
+    const grantPlanChange = Boolean(existing?.plan) && existing?.plan !== plan.id;
+    let activeUntil = grantPlanChange ? now : renewalBase(existing?.activeUntil, now);
     for (let index = 0; index < months; index += 1) {
       activeUntil = nextMonthlyExpiry(activeUntil, 20, 0);
     }
