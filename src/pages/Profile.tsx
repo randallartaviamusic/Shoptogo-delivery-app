@@ -4,6 +4,7 @@ import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
 import { AdminMetrics } from "@/components/AdminMetrics";
 import { DemoCatalogAdmin } from "@/components/DemoCatalogAdmin";
+import { StoreCatalogAdmin } from "@/components/StoreCatalogAdmin";
 import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
 import { SupportAdmin } from "@/components/SupportAdmin";
 import { TrustHistory } from "@/components/TrustHistory";
@@ -127,6 +128,7 @@ const ADMIN_TABS = [
   { value: "ayuda", label: "Ayuda", icon: LifeBuoy },
   { value: "planes", label: "Planes", icon: Crown },
   { value: "demo", label: "Demo", icon: FlaskConical },
+  { value: "tiendas", label: "Tiendas", icon: Store },
   { value: "cuentas", label: "Cuentas", icon: Users },
 ] as const;
 
@@ -1072,6 +1074,7 @@ export default function ProfilePage() {
       {isAdmin && adminTab === "ayuda" && <SupportAdmin />}
       {isAdmin && adminTab === "planes" && <SubscriptionAdmin />}
       {isAdmin && adminTab === "demo" && <DemoCatalogAdmin />}
+      {isAdmin && adminTab === "tiendas" && <StoreCatalogAdmin />}
 
       {isAdmin && adminTab === "cuentas" && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
