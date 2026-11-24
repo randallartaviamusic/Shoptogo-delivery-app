@@ -170,6 +170,9 @@ export const deck = query({
           etaMinutes: business.etaMinutes,
           delivery: deliveryFor(business.location),
           address: business.address,
+          stockEnabled: product.stockEnabled ?? false,
+          stock: product.stockEnabled ? (product.stock ?? 0) : null,
+          reservable: product.reservable ?? false,
         };
       })
       .sort(
@@ -211,6 +214,9 @@ export const swipe = mutation({
     if (args.direction === "like") {
       if (!product.isAvailable) {
         throw new Error("Ese producto está agotado o ya no está disponible");
+      }
+      if (product.stockEnabled && (product.stock ?? 0) <= 0) {
+        throw new Error(`${product.name} ya se agotó. Probá con otro antojo.`);
       }
       const business = await ctx.db.get(product.businessId);
       if (!business?.isOpen) {
@@ -268,6 +274,17 @@ export const swipe = mutation({
       direction: args.direction,
       createdAt: Date.now(),
     });
+
+    if (args.direction === "like" && product.stockEnabled) {
+      const inCart = await ctx.db
+        .query("cartItems")
+        .withIndex("by_user_product", (q) => q.eq("userId", userId).eq("productId", args.productId))
+        .collect();
+      const current = inCart.reduce((sum, item) => sum + item.quantity, 0);
+      if (current + 1 > (product.stock ?? 0)) {
+        throw new Error(`Solo quedan ${product.stock ?? 0} de ${product.name} en stock`);
+      }
+    }
 
     if (args.direction === "like") {
       if (cartItem) {

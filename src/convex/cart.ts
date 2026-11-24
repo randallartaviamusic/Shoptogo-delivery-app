@@ -89,6 +89,10 @@ export type CartGroup = {
     image: string;
     options: SelectedProductOption[];
     isAvailable: boolean;
+    stockEnabled: boolean;
+    stock: number | null;
+    reservable: boolean;
+    blockedSlots: Array<{ start: number; end: number; note?: string }>;
   }>;
   subtotal: number;
 };
@@ -170,6 +174,10 @@ async function buildCart(
       image: product.image,
       options: item.options ?? [],
       isAvailable: product.isAvailable,
+      stockEnabled: product.stockEnabled ?? false,
+      stock: product.stockEnabled ? (product.stock ?? 0) : null,
+      reservable: product.reservable ?? false,
+      blockedSlots: product.blockedSlots ?? [],
     });
     group.subtotal += unitPrice * item.quantity;
   }
@@ -277,6 +285,53 @@ async function buildCart(
   };
 }
 
+/** Para reservación: dice por producto si la hora elegida está libre. */
+export const reservationCheck = query({
+  args: { productIds: v.array(v.id("products")), scheduledFor: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const at = args.scheduledFor ? Math.round(args.scheduledFor) : null;
+    const results: Array<{
+      productId: Id<"products">;
+      name: string;
+      reservable: boolean;
+      blocked: boolean;
+      booked: boolean;
+      stockLeft: number | null;
+    }> = [];
+    const bookedAt = new Map<string, number[]>();
+    if (at !== null) {
+      const orders = await ctx.db.query("orders").collect();
+      for (const order of orders) {
+        if (order.status === "cancelled" || order.status === "delivered") continue;
+        if (!order.scheduledFor) continue;
+        for (const item of order.items) {
+          const list = bookedAt.get(String(item.productId)) ?? [];
+          list.push(order.scheduledFor);
+          bookedAt.set(String(item.productId), list);
+        }
+      }
+    }
+    for (const productId of args.productIds) {
+      const product = await ctx.db.get(productId);
+      if (!product) continue;
+      const blocked =
+        at !== null && (product.blockedSlots ?? []).some((slot) => at >= slot.start && at < slot.end);
+      const booked =
+        at !== null &&
+        (bookedAt.get(String(productId)) ?? []).some((other) => Math.abs(other - at) < 60 * 60 * 1000);
+      results.push({
+        productId,
+        name: product.name,
+        reservable: product.reservable ?? false,
+        blocked,
+        booked,
+        stockLeft: product.stockEnabled ? (product.stock ?? 0) : null,
+      });
+    }
+    return results;
+  },
+});
+
 export const myCart = query({
   args: {
     couponCode: v.optional(v.string()),
@@ -339,6 +394,9 @@ export const add = mutation({
     if (!selection.ok) throw new Error(selection.error);
     const selectionKey = choiceKey(selection.choices);
 
+    if (product.stockEnabled && (product.stock ?? 0) <= 0) {
+      throw new Error(`${product.name} ya se agotó. El local debe reponer stock.`);
+    }
     const existing = await ctx.db
       .query("cartItems")
       .withIndex("by_user_selection", (q) =>
@@ -348,6 +406,16 @@ export const add = mutation({
           .eq("selectionKey", selectionKey),
       )
       .unique();
+    if (product.stockEnabled) {
+      const inCart = await ctx.db
+        .query("cartItems")
+        .withIndex("by_user_product", (q) => q.eq("userId", userId).eq("productId", args.productId))
+        .collect();
+      const current = inCart.reduce((sum, item) => sum + item.quantity, 0);
+      if (current + quantity > (product.stock ?? 0)) {
+        throw new Error(`Solo quedan ${product.stock ?? 0} de ${product.name} en stock`);
+      }
+    }
     if (existing) {
       await ctx.db.patch(existing._id, {
         quantity: Math.min(20, existing.quantity + quantity),
@@ -377,6 +445,17 @@ export const setQuantity = mutation({
     if (args.quantity <= 0) {
       await ctx.db.delete(existing._id);
       return null;
+    }
+    const product = await ctx.db.get(existing.productId);
+    if (product?.stockEnabled) {
+      const siblings = await ctx.db
+        .query("cartItems")
+        .withIndex("by_user_product", (q) => q.eq("userId", userId).eq("productId", existing.productId))
+        .collect();
+      const others = siblings.filter((item) => item._id !== existing._id).reduce((sum, item) => sum + item.quantity, 0);
+      if (others + Math.round(args.quantity) > (product.stock ?? 0)) {
+        throw new Error(`Solo quedan ${product.stock ?? 0} de ${product.name} en stock`);
+      }
     }
     await ctx.db.patch(existing._id, {
       quantity: Math.min(Math.round(args.quantity), 20),
@@ -502,10 +581,50 @@ export const checkout = mutation({
     const byBusiness = new Map<string, CheckoutLine[]>();
     const businessIds: Id<"businesses">[] = [];
 
+    // Cantidad pedida por producto (varias líneas pueden usar el mismo).
+    const wantedByProduct = new Map<string, number>();
+    for (const item of cartItems) {
+      wantedByProduct.set(String(item.productId), (wantedByProduct.get(String(item.productId)) ?? 0) + item.quantity);
+    }
+    // Reservas vigentes por producto (para no dar dos citas a la misma hora).
+    const activeBookedByProduct = new Map<string, number[]>();
+    if (fulfillment === "reservation" && scheduledFor !== null) {
+      const allOrders = await ctx.db.query("orders").collect();
+      for (const order of allOrders) {
+        if (order.status === "cancelled" || order.status === "delivered") continue;
+        if (!order.scheduledFor) continue;
+        for (const item of order.items) {
+          const list = activeBookedByProduct.get(String(item.productId)) ?? [];
+          list.push(order.scheduledFor);
+          activeBookedByProduct.set(String(item.productId), list);
+        }
+      }
+    }
+
     for (const item of cartItems) {
       const product = await ctx.db.get(item.productId);
       if (!product || !product.isAvailable) {
         throw new Error("Un producto de tu carrito está agotado o ya no disponible; quitalo para continuar");
+      }
+      if (product.stockEnabled && (product.stock ?? 0) < (wantedByProduct.get(String(product._id)) ?? item.quantity)) {
+        throw new Error(`Solo quedan ${product.stock ?? 0} de ${product.name} en stock; bajá la cantidad para continuar`);
+      }
+      if (fulfillment === "reservation") {
+        if (!(product.reservable ?? false)) {
+          throw new Error(`${product.name} no aplica para reservación o cita; quitalo o cambiá a retiro/entrega`);
+        }
+        if (scheduledFor !== null) {
+          const blocked = (product.blockedSlots ?? []).some((slot) => scheduledFor >= slot.start && scheduledFor < slot.end);
+          if (blocked) {
+            throw new Error(`${product.name} no está disponible en la fecha y hora elegida; elegí otro horario`);
+          }
+          const overlap = (activeBookedByProduct.get(String(product._id)) ?? []).some(
+            (at) => Math.abs(at - scheduledFor) < 60 * 60 * 1000,
+          );
+          if (overlap) {
+            throw new Error(`${product.name} ya tiene esa hora reservada; elegí otro horario`);
+          }
+        }
       }
       const business = await ctx.db.get(item.businessId);
       if (!business) throw new Error("Un negocio de tu carrito ya no existe");
@@ -861,6 +980,13 @@ export const checkout = mutation({
           updatedAt: now,
         });
       }
+    }
+    // Descuenta el stock sólo al confirmar la compra (una vez por producto).
+    for (const [productId, qty] of wantedByProduct) {
+      const product = await ctx.db.get(productId as Id<"products">);
+      if (!product?.stockEnabled) continue;
+      const next = Math.max(0, (product.stock ?? 0) - qty);
+      await ctx.db.patch(product._id, { stock: next });
     }
     for (const item of cartItems) await ctx.db.delete(item._id);
     // La dirección y el punto se guardan sólo con entrega a domicilio: en

@@ -7,6 +7,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import {
   businessHourValidator,
   geoPointValidator,
+  productBlockedSlotValidator,
   productOptionGroupValidator,
   promoKindValidator,
 } from "./schema";
@@ -32,6 +33,40 @@ import {
 import type { GeoPoint } from "../lib/delivery";
 
 type DbCtx = QueryCtx | MutationCtx;
+
+/** Limpia los bloqueos de agenda: inicio < fin, con tope de 50 tramos. */
+function normalizeBlockedSlots(
+  slots:
+    | Array<{ start: number; end: number; note?: string }>
+    | undefined,
+) {
+  if (!slots) return [];
+  return slots
+    .filter(
+      (slot) =>
+        Number.isFinite(slot.start) &&
+        Number.isFinite(slot.end) &&
+        slot.end > slot.start,
+    )
+    .slice(0, 50)
+    .map((slot) => ({
+      start: Math.round(slot.start),
+      end: Math.round(slot.end),
+      ...(slot.note?.trim() ? { note: slot.note.trim().slice(0, 80) } : {}),
+    }))
+    .sort((a, b) => a.start - b.start);
+}
+
+/** True si la hora cae dentro de un tramo bloqueado por el local. */
+export function isSlotBlocked(
+  slots:
+    | Array<{ start: number; end: number }>
+    | undefined,
+  at: number,
+) {
+  if (!slots) return false;
+  return slots.some((slot) => at >= slot.start && at < slot.end);
+}
 
 const DEFAULT_DEPARTMENT = "comida";
 const PRODUCT_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
@@ -889,6 +924,10 @@ export const addProduct = mutation({
       v.array(v.object({ key: v.string(), value: v.string() })),
     ),
     optionGroups: v.optional(v.array(productOptionGroupValidator)),
+    stockEnabled: v.optional(v.boolean()),
+    stock: v.optional(v.number()),
+    reservable: v.optional(v.boolean()),
+    blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -906,6 +945,9 @@ export const addProduct = mutation({
       ? await productVideoUrl(ctx, args.videoStorageId)
       : undefined;
     const optionGroups = normalizeOptionGroups(args.optionGroups);
+    const stockEnabled = args.stockEnabled ?? false;
+    const stock = stockEnabled ? Math.max(0, Math.floor(args.stock ?? 0)) : undefined;
+    const blockedSlots = normalizeBlockedSlots(args.blockedSlots);
 
     const productId = await ctx.db.insert("products", {
       businessId: business._id,
@@ -925,6 +967,9 @@ export const addProduct = mutation({
       tags: args.tags ?? [],
       isAvailable: true,
       sortOrder: Date.now(),
+      ...(stockEnabled ? { stockEnabled: true, stock: stock ?? 0 } : {}),
+      ...(args.reservable ? { reservable: true } : {}),
+      ...(blockedSlots.length > 0 ? { blockedSlots } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.marketing.announceNewProduct, {
       productId,
@@ -949,6 +994,10 @@ export const updateProduct = mutation({
       v.array(v.object({ key: v.string(), value: v.string() })),
     ),
     optionGroups: v.optional(v.array(productOptionGroupValidator)),
+    stockEnabled: v.optional(v.boolean()),
+    stock: v.optional(v.number()),
+    reservable: v.optional(v.boolean()),
+    blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -965,6 +1014,12 @@ export const updateProduct = mutation({
       patch.description = args.description.trim();
     if (args.price !== undefined) patch.price = Math.round(args.price);
     if (args.category !== undefined) patch.category = args.category.trim();
+    if (args.stockEnabled !== undefined) patch.stockEnabled = args.stockEnabled;
+    if (args.stock !== undefined)
+      patch.stock = Math.max(0, Math.floor(args.stock));
+    if (args.reservable !== undefined) patch.reservable = args.reservable;
+    if (args.blockedSlots !== undefined)
+      patch.blockedSlots = normalizeBlockedSlots(args.blockedSlots);
     if (args.imageStorageId) {
       patch.image = await productImageUrl(ctx, args.imageStorageId);
     } else if (args.image !== undefined && args.image.trim().length > 0) {
@@ -1023,6 +1078,9 @@ export const duplicateProduct = mutation({
       tags: product.tags,
       isAvailable: product.isAvailable,
       sortOrder: Date.now(),
+      ...(product.stockEnabled ? { stockEnabled: true, stock: product.stock ?? 0 } : {}),
+      ...(product.reservable ? { reservable: true } : {}),
+      ...(product.blockedSlots?.length ? { blockedSlots: product.blockedSlots } : {}),
     });
     return await ctx.db.get(productId);
   },
@@ -1073,5 +1131,39 @@ export const removeProduct = mutation({
     }
     await ctx.db.delete(args.productId);
     return { deleted: true };
+  },
+});
+
+/** Agenda de un producto reservable: bloqueos manuales + reservas vigentes.
+ * La usa el local para editar qué días/horas no están disponibles y el
+ * comprador para elegir sólo horarios libres. */
+export const productAvailability = query({
+  args: { productId: v.id("products") },
+  handler: async (ctx, args) => {
+    const product = await ctx.db.get(args.productId);
+    if (!product) return null;
+    const blocked = (product.blockedSlots ?? []).slice().sort((a, b) => a.start - b.start);
+    const booked: Array<{ at: number; code: string; quantity: number }> = [];
+    const orders = await ctx.db.query("orders").collect();
+    for (const order of orders) {
+      if (order.status === "cancelled" || order.status === "delivered") continue;
+      if (!order.scheduledFor) continue;
+      if (!order.items.some((item) => item.productId === product._id)) continue;
+      booked.push({
+        at: order.scheduledFor,
+        code: order.code,
+        quantity: order.items
+          .filter((item) => item.productId === product._id)
+          .reduce((sum, item) => sum + item.quantity, 0),
+      });
+    }
+    booked.sort((a, b) => a.at - b.at);
+    return {
+      stockEnabled: product.stockEnabled ?? false,
+      stock: product.stock ?? null,
+      reservable: product.reservable ?? false,
+      blocked,
+      booked: booked.slice(0, 50),
+    };
   },
 });

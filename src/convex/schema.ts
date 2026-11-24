@@ -207,6 +207,15 @@ export const deliveryConfirmationValidator = v.object({
   courierId: v.id("users"),
 });
 
+/** Bloqueo manual de agenda de un producto reservable (cita, mesa, servicio).
+ * start/end son timestamps en ms. El cliente no puede reservar dentro. */
+export const productBlockedSlotValidator = v.object({
+  start: v.number(),
+  end: v.number(),
+  note: v.optional(v.string()),
+});
+export type ProductBlockedSlot = Infer<typeof productBlockedSlotValidator>;
+
 export const orderStatusValidator = v.union(
   v.literal("pending"),
   v.literal("accepted"),
@@ -407,6 +416,14 @@ const schema = defineSchema(
       // productos anteriores se ordenan por fecha de creación.
       sortOrder: v.optional(v.number()),
       isDemo: v.optional(v.boolean()),
+      // Stock opcional: sólo se controla si stockEnabled es true. Se descuenta
+      // solo al confirmar la compra y se devuelve si el pedido se cancela.
+      stockEnabled: v.optional(v.boolean()),
+      stock: v.optional(v.number()),
+      // Si es true el producto se puede pedir como reservación/cita en fecha
+      // y hora exacta. El local bloquea los tramos ocupados en blockedSlots.
+      reservable: v.optional(v.boolean()),
+      blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
     })
       .index("by_business", ["businessId"])
       .index("by_department", ["department"]),

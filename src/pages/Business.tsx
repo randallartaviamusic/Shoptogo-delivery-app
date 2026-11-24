@@ -12,6 +12,7 @@ import { DishImage } from "@/components/DishImage";
 import { LocationField } from "@/components/LocationField";
 import { ProductImageUpload } from "@/components/ProductImageUpload";
 import { ProductOptionsEditor } from "@/components/ProductOptionsEditor";
+import { ProductInventoryFields } from "@/components/ProductInventoryFields";
 import { ProductMedia } from "@/components/ProductMedia";
 import { ProductVideoUpload } from "@/components/ProductVideoUpload";
 import { SwipeCard, type Dish } from "@/components/SwipeCard";
@@ -257,6 +258,10 @@ export default function BusinessPage() {
   });
   const [couponBusy, setCouponBusy] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
+  const availability = useQuery(
+    api.businesses.productAvailability,
+    editing ? { productId: editing._id } : "skip",
+  );
   const [deleting, setDeleting] = useState<Doc<"products"> | null>(null);
   const [previewing, setPreviewing] = useState<Doc<"products"> | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
@@ -283,6 +288,10 @@ export default function BusinessPage() {
     video: "",
     attributes: {} as Record<string, string>,
     optionGroups: [] as ProductOptionGroup[],
+    stockEnabled: false,
+    stock: "",
+    reservable: false,
+    blockedSlots: [] as Array<{ start: number; end: number; note?: string }>,
   });
   const [productVideoStorageId, setProductVideoStorageId] =
     useState<Id<"_storage"> | null>(null);
@@ -510,6 +519,10 @@ export default function BusinessPage() {
       video: "",
       attributes: {},
       optionGroups: [],
+      stockEnabled: false,
+      stock: "",
+      reservable: false,
+      blockedSlots: [],
     });
     setProductVideoStorageId(null);
     setRemoveProductVideo(false);
@@ -537,6 +550,10 @@ export default function BusinessPage() {
         ...group,
         options: group.options.map((option) => ({ ...option })),
       })),
+      stockEnabled: product.stockEnabled ?? false,
+      stock: product.stockEnabled ? String(product.stock ?? 0) : "",
+      reservable: product.reservable ?? false,
+      blockedSlots: (product.blockedSlots ?? []).map((s) => ({ ...s })),
     });
     setProductVideoStorageId(null);
     setRemoveProductVideo(false);
@@ -668,6 +685,14 @@ export default function BusinessPage() {
       toast.error("Cada grupo de opciones necesita un nombre distinto");
       return;
     }
+    if (productForm.stockEnabled) {
+      const qty = Number(productForm.stock);
+      if (!Number.isFinite(qty) || qty < 0 || Math.floor(qty) !== qty) {
+        toast.error("El stock tiene que ser un número entero de 0 en adelante");
+        setSavingProduct(false);
+        return;
+      }
+    }
     setSavingProduct(true);
     const payload = {
       name: productForm.name,
@@ -675,6 +700,10 @@ export default function BusinessPage() {
       price: Number(productForm.price),
       category: productForm.category,
       image: productForm.image,
+      stockEnabled: productForm.stockEnabled,
+      stock: productForm.stockEnabled ? Math.max(0, Math.floor(Number(productForm.stock) || 0)) : undefined,
+      reservable: productForm.reservable,
+      blockedSlots: productForm.blockedSlots,
       attributes: Object.entries(productForm.attributes)
         .filter(([, value]) => value.length > 0)
         .map(([key, value]) => ({ key, value })),
@@ -2178,6 +2207,8 @@ export default function BusinessPage() {
                     </p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {normalizeSubcategory(product.category)} · {money(product.price)}
+                      {product.stockEnabled ? ` · Stock: ${product.stock ?? 0}` : ""}
+                      {product.reservable ? " · Con cita" : ""}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:justify-end max-sm:border-t max-sm:border-border/40 max-sm:pt-2">
@@ -2435,6 +2466,14 @@ export default function BusinessPage() {
               onChange={(optionGroups) =>
                 setProductForm((prev) => ({ ...prev, optionGroups }))
               }
+            />
+            <ProductInventoryFields
+              stockEnabled={productForm.stockEnabled}
+              stock={productForm.stock}
+              reservable={productForm.reservable}
+              blockedSlots={productForm.blockedSlots}
+              booked={editing?._id ? (availability?.booked ?? []) : []}
+              onChange={(patch) => setProductForm((prev) => ({ ...prev, ...patch }))}
             />
             <ProductImageUpload
               preview={productImagePreview || undefined}

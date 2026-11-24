@@ -45,6 +45,21 @@ type OrderViewer = "buyer" | "business" | "courier";
 
 type DbCtx = QueryCtx | MutationCtx;
 
+/** Devuelve el stock cuando un pedido se cancela (solo si aplica). */
+async function restoreStock(ctx: MutationCtx, orders: Array<Pick<Doc<"orders">, "items">>) {
+  const back = new Map<string, number>();
+  for (const order of orders) {
+    for (const item of order.items) {
+      back.set(String(item.productId), (back.get(String(item.productId)) ?? 0) + item.quantity);
+    }
+  }
+  for (const [productId, qty] of back) {
+    const product = await ctx.db.get(productId as Id<"products">);
+    if (!product?.stockEnabled) continue;
+    await ctx.db.patch(product._id, { stock: (product.stock ?? 0) + qty });
+  }
+}
+
 async function myBusiness(ctx: DbCtx, userId: Id<"users">) {
   return await ctx.db
     .query("businesses")
@@ -1462,6 +1477,10 @@ export const businessUpdateStatus = mutation({
           : "El local canceló el pedido.");
     }
     await ctx.db.patch(args.orderId, patch);
+    if (args.status === "cancelled") {
+      const cancelled = await ctx.db.get(args.orderId);
+      if (cancelled) await restoreStock(ctx, [cancelled]);
+    }
 
     // Recién cuando la entrega está completa se ofrece: antes nadie podría
     // retirarla. Se lee el pedido ya actualizado para no ofrecer algo viejo.
@@ -2999,6 +3018,7 @@ export const cancel = mutation({
         cancellationReason: "Cancelaste la compra antes de que los locales la confirmaran.",
       });
     }
+    await restoreStock(ctx, trip);
     return { cancelled: true, orders: trip.length };
   },
 });
@@ -3029,6 +3049,7 @@ export const autoCancelStaleReady = internalMutation({
       // Se cancela el viaje completo y sólo si nadie lo tomó: si una parada ya
       // salió del local, el resto no se puede abandonar.
       const targets = new Set(autoCancelTargets(trip));
+      const cancelledMembers: Array<Pick<Doc<"orders">, "items">> = [];
       for (const member of trip) {
         if (!targets.has(member._id)) continue;
         await ctx.db.patch(member._id, {
@@ -3037,8 +3058,10 @@ export const autoCancelStaleReady = internalMutation({
           cancelledBy: "system",
           cancellationReason: `Nadie tomó la entrega en ${ASSIGNMENT_RULES.autoCancelAfterMinutes} minutos. Se canceló automáticamente y no se cobra nada.`,
         });
+        cancelledMembers.push(member);
         cancelled += 1;
       }
+      if (cancelledMembers.length > 0) await restoreStock(ctx, cancelledMembers);
     }
     return { cancelled };
   },

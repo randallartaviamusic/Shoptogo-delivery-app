@@ -207,6 +207,27 @@ export default function CartPage() {
   const maxScheduledLocal = new Date(
     Date.now() + SCHEDULE_RULES.maxDaysAhead * 86_400_000 - 6 * 60 * 60 * 1000,
   ).toISOString().slice(0, 16);
+  const reservationProductIds = useMemo(
+    () => groups.flatMap((g) => g.items.map((i) => i.productId as Id<"products">)),
+    [groups],
+  );
+  const reservationStatus = useQuery(
+    api.cart.reservationCheck,
+    needsSchedule && reservationProductIds.length > 0
+      ? { productIds: reservationProductIds, scheduledFor: scheduledFor ?? undefined }
+      : "skip",
+  );
+  const reservationError = needsSchedule
+    ? reservationStatus?.find((r) => !r.reservable)
+      ? `${reservationStatus.find((r) => !r.reservable)?.name} no aplica para reservación; quitalo o cambiá a retiro/entrega`
+      : scheduledFor
+        ? reservationStatus?.find((r) => r.blocked)
+          ? `${reservationStatus.find((r) => r.blocked)?.name} no está disponible en esa fecha y hora; elegí otro horario`
+          : reservationStatus?.find((r) => r.booked)
+            ? `${reservationStatus.find((r) => r.booked)?.name} ya tiene esa hora reservada; elegí otro horario`
+            : null
+        : null
+    : null;
 
   // Clave del intento de compra. Se mantiene si la solicitud falla (reintentar
   // no duplica el pedido) y se renueva cuando cambia el carrito.
@@ -731,6 +752,15 @@ export default function CartPage() {
                             {!item.isAvailable && (
                               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">Agotado</span>
                             )}
+                            {item.stockEnabled && item.stock !== null && item.quantity >= item.stock && item.stock > 0 && (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">¡Solo quedan {item.stock}!</span>
+                            )}
+                            {item.stockEnabled && item.stock === 0 && (
+                              <span className="rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">Sin stock</span>
+                            )}
+                            {item.reservable && (
+                              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent">Con cita</span>
+                            )}
                           </p>
                           <button
                             aria-label={`Quitar ${item.name}`}
@@ -774,12 +804,14 @@ export default function CartPage() {
                               size="icon"
                               aria-label="Sumar uno"
                               className="size-7 rounded-full text-muted-foreground"
-                              onClick={() =>
-                                setQuantity({
+                              onClick={() => {
+                                void setQuantity({
                                   cartItemId: item.cartItemId,
                                   quantity: item.quantity + 1,
-                                })
-                              }
+                                }).catch((error: unknown) =>
+                                  toast.error(error instanceof Error ? error.message : "No hay suficiente stock"),
+                                );
+                              }}
                             >
                               <Plus className="size-3.5" />
                             </Button>
@@ -951,10 +983,13 @@ export default function CartPage() {
                       className="h-9 text-xs"
                     />
                     <p className="text-[10px] text-muted-foreground">
-                      El local confirma tu reserva para esa fecha y hora.
+                      El local confirma tu reserva para esa fecha y hora. Solo se muestran horarios libres: lo bloqueado o ya reservado no se puede elegir.
                     </p>
                     {scheduleError && (
                       <p className="text-[10px] text-primary">{scheduleError}</p>
+                    )}
+                    {reservationError && (
+                      <p className="text-[10px] font-semibold text-primary">{reservationError}</p>
                     )}
                   </div>
                 </div>
@@ -1465,10 +1500,15 @@ export default function CartPage() {
                 más cercano o quitá sus productos.
               </p>
             )}
+            {groups.some((group) => group.items.some((item) => item.stockEnabled && (item.stock ?? 0) < item.quantity)) && (
+              <p className="mt-3 rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-[11px] leading-relaxed text-primary">
+                Un producto no tiene suficiente stock para la cantidad elegida. Bajá la cantidad para continuar.
+              </p>
+            )}
 
             <Button
               className="mt-5 w-full gap-2 bg-ember-gradient text-black hover:opacity-95"
-              disabled={placing || !canConfirm || Boolean(scheduleError) || hasClosed || (paymentMethod === "sinpe" && !sinpeReady) || Boolean(sinpeBlockedReason) || groups.some((group) => group.items.some((item) => !item.isAvailable))}
+              disabled={placing || !canConfirm || Boolean(scheduleError) || Boolean(reservationError) || hasClosed || (paymentMethod === "sinpe" && !sinpeReady) || Boolean(sinpeBlockedReason) || groups.some((group) => group.items.some((item) => !item.isAvailable || (item.stockEnabled && (item.stock ?? 0) < item.quantity)))}
               onClick={handleCheckout}
             >
               {placing ? (

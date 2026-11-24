@@ -8,7 +8,7 @@ import { isAdminEmail } from "./branding";
 import { ASSIGNMENT_RULES, deliveryQuote } from "../lib/delivery";
 import { DEFAULT_DEPARTMENT, DEPARTMENTS, getDepartment } from "../lib/departments";
 import { hasSubscriptionAccess, subscriptionStatus } from "../lib/subscriptions";
-import { productOptionGroupValidator } from "./schema";
+import { productBlockedSlotValidator, productOptionGroupValidator } from "./schema";
 import { normalizeOptionGroups } from "../lib/productOptions";
 
 /**
@@ -24,6 +24,20 @@ async function requireAdmin(ctx: QueryCtx | MutationCtx) {
     throw new Error("Sólo el perfil administrador puede gestionar cuentas");
   }
   return user;
+}
+
+/** Limpia los bloqueos de agenda de un producto (tope 50 tramos). */
+function normalizeBlockedSlots(slots: Array<{ start: number; end: number; note?: string }> | undefined) {
+  if (!slots) return [];
+  return slots
+    .filter((slot) => Number.isFinite(slot.start) && Number.isFinite(slot.end) && slot.end > slot.start)
+    .slice(0, 50)
+    .map((slot) => ({
+      start: Math.round(slot.start),
+      end: Math.round(slot.end),
+      ...(slot.note?.trim() ? { note: slot.note.trim().slice(0, 80) } : {}),
+    }))
+    .sort((a, b) => a.start - b.start);
 }
 
 const OPEN_ORDER_STATUSES = [
@@ -470,6 +484,10 @@ export const demoCatalog = query({
             category: product.category,
             tags: product.tags,
             isAvailable: product.isAvailable,
+            stockEnabled: product.stockEnabled ?? false,
+            stock: product.stock ?? null,
+            reservable: product.reservable ?? false,
+            blockedSlots: product.blockedSlots ?? [],
           })),
         };
       })
@@ -885,6 +903,10 @@ export const storeCatalog = query({
             optionGroups: product.optionGroups ?? [],
             tags: product.tags,
             isAvailable: product.isAvailable,
+            stockEnabled: product.stockEnabled ?? false,
+            stock: product.stock ?? null,
+            reservable: product.reservable ?? false,
+            blockedSlots: product.blockedSlots ?? [],
           })),
         };
       })
@@ -1043,6 +1065,10 @@ export const createStoreProduct = mutation({
     ),
     optionGroups: v.optional(v.array(productOptionGroupValidator)),
     isAvailable: v.optional(v.boolean()),
+    stockEnabled: v.optional(v.boolean()),
+    stock: v.optional(v.number()),
+    reservable: v.optional(v.boolean()),
+    blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -1099,6 +1125,9 @@ export const createStoreProduct = mutation({
       tags,
       isAvailable: args.isAvailable ?? true,
       sortOrder: Date.now(),
+      ...((args.stockEnabled ?? false) ? { stockEnabled: true, stock: Math.max(0, Math.floor(args.stock ?? 0)) } : {}),
+      ...(args.reservable ? { reservable: true } : {}),
+      ...((args.blockedSlots?.length ?? 0) > 0 ? { blockedSlots: normalizeBlockedSlots(args.blockedSlots) } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.marketing.announceNewProduct, {
       productId,
@@ -1125,6 +1154,10 @@ export const updateStoreProduct = mutation({
     ),
     optionGroups: v.optional(v.array(productOptionGroupValidator)),
     isAvailable: v.optional(v.boolean()),
+    stockEnabled: v.optional(v.boolean()),
+    stock: v.optional(v.number()),
+    reservable: v.optional(v.boolean()),
+    blockedSlots: v.optional(v.array(productBlockedSlotValidator)),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -1176,6 +1209,10 @@ export const updateStoreProduct = mutation({
     if (args.videoStorageId) {
       patch.video = await storeProductVideoUrl(ctx, args.videoStorageId);
     }
+    if (args.stockEnabled !== undefined) patch.stockEnabled = args.stockEnabled;
+    if (args.stock !== undefined) patch.stock = Math.max(0, Math.floor(args.stock));
+    if (args.reservable !== undefined) patch.reservable = args.reservable;
+    if (args.blockedSlots !== undefined) patch.blockedSlots = normalizeBlockedSlots(args.blockedSlots);
     if (args.attributes !== undefined) patch.attributes = args.attributes;
     if (args.optionGroups !== undefined) {
       const groups = normalizeOptionGroups(args.optionGroups);

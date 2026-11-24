@@ -56,6 +56,9 @@ export type Dish = {
     available: boolean;
   };
   address: string;
+  stockEnabled?: boolean;
+  stock?: number | null;
+  reservable?: boolean;
 };
 
 export type SwipeDirection = "like" | "pass" | "save";
@@ -135,6 +138,21 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
             <span className="flex items-center gap-1 rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/90">
               <SlidersHorizontal className="size-2.5" />
               Personalizable
+            </span>
+          )}
+          {dish.stockEnabled && dish.stock !== null && dish.stock !== undefined && dish.stock <= 5 && dish.stock > 0 && (
+            <span className="rounded-full border border-primary/50 bg-primary/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+              ¡Solo quedan {dish.stock}!
+            </span>
+          )}
+          {dish.stockEnabled && dish.stock === 0 && (
+            <span className="rounded-full border border-primary/50 bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+              Agotado
+            </span>
+          )}
+          {dish.reservable && (
+            <span className="rounded-full border border-accent/50 bg-accent/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+              Se reserva con cita
             </span>
           )}
         </div>

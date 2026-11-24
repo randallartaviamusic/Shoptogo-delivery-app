@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ProductInventoryFields } from "@/components/ProductInventoryFields";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DEPARTMENTS, getDepartment, normalizeSubcategory } from "@/lib/departments";
@@ -160,6 +161,10 @@ type StoreProduct = {
   optionGroups: ProductOptionGroup[];
   tags: string[];
   isAvailable: boolean;
+  stockEnabled?: boolean;
+  stock?: number | null;
+  reservable?: boolean;
+  blockedSlots?: Array<{ start: number; end: number; note?: string }>;
 };
 
 type StoreBusiness = {
@@ -202,6 +207,10 @@ type ProductDraft = {
   optionGroups: ProductOptionGroup[];
   tags: string;
   isAvailable: boolean;
+  stockEnabled: boolean;
+  stock: string;
+  reservable: boolean;
+  blockedSlots: Array<{ start: number; end: number; note?: string }>;
 };
 
 function businessDraftOf(business: StoreBusiness): BusinessDraft {
@@ -346,6 +355,10 @@ function productDraftOf(product: StoreProduct): ProductDraft {
     })),
     tags: product.tags.join(", "),
     isAvailable: product.isAvailable,
+    stockEnabled: product.stockEnabled ?? false,
+    stock: product.stockEnabled ? String(product.stock ?? 0) : "",
+    reservable: product.reservable ?? false,
+    blockedSlots: (product.blockedSlots ?? []).map((s) => ({ ...s })),
   };
 }
 
@@ -361,6 +374,10 @@ function emptyProductDraft(category: string): ProductDraft {
     optionGroups: [],
     tags: "",
     isAvailable: true,
+    stockEnabled: false,
+    stock: "",
+    reservable: false,
+    blockedSlots: [],
   };
 }
 
@@ -390,6 +407,10 @@ export function StoreCatalogAdmin() {
   const [savingBusiness, setSavingBusiness] = useState(false);
 
   const [editingProduct, setEditingProduct] = useState<StoreProduct | null>(null);
+  const editAvailability = useQuery(
+    api.businesses.productAvailability,
+    editingProduct ? { productId: editingProduct._id } : "skip",
+  );
   const [editingProductBusiness, setEditingProductBusiness] =
     useState<StoreBusiness | null>(null);
   const [productDraft, setProductDraft] = useState<ProductDraft | null>(null);
@@ -495,12 +516,22 @@ export function StoreCatalogAdmin() {
       if (!Number.isFinite(price) || price <= 0) {
         throw new Error("El precio tiene que ser mayor a 0");
       }
+      if (productDraft.stockEnabled) {
+        const qty = Number(productDraft.stock);
+        if (!Number.isFinite(qty) || qty < 0 || Math.floor(qty) !== qty) {
+          throw new Error("El stock tiene que ser un número entero de 0 en adelante");
+        }
+      }
       await updateProduct({
         productId: editingProduct._id,
         name: productDraft.name,
         description: productDraft.description,
         price,
         category: productDraft.category,
+        stockEnabled: productDraft.stockEnabled,
+        stock: productDraft.stockEnabled ? Math.max(0, Math.floor(Number(productDraft.stock) || 0)) : undefined,
+        reservable: productDraft.reservable,
+        blockedSlots: productDraft.blockedSlots,
         image: editImageStorageId ? undefined : productDraft.image,
         ...(editImageStorageId ? { imageStorageId: editImageStorageId } : {}),
         ...(editVideoStorageId ? { videoStorageId: editVideoStorageId } : {}),
@@ -549,12 +580,22 @@ export function StoreCatalogAdmin() {
       if (!Number.isFinite(price) || price <= 0) {
         throw new Error("El precio tiene que ser mayor a 0");
       }
+      if (newDraft.stockEnabled) {
+        const qty = Number(newDraft.stock);
+        if (!Number.isFinite(qty) || qty < 0 || Math.floor(qty) !== qty) {
+          throw new Error("El stock tiene que ser un número entero de 0 en adelante");
+        }
+      }
       await createProduct({
         businessId: creatingFor._id,
         name,
         description: newDraft.description,
         price,
         category: newDraft.category,
+        stockEnabled: newDraft.stockEnabled,
+        stock: newDraft.stockEnabled ? Math.max(0, Math.floor(Number(newDraft.stock) || 0)) : undefined,
+        reservable: newDraft.reservable,
+        blockedSlots: newDraft.blockedSlots,
         image: newImageStorageId
           ? undefined
           : newDraft.image.trim()
@@ -1166,6 +1207,15 @@ export function StoreCatalogAdmin() {
                   }
                 />
               </div>
+              <div className="sm:col-span-2">
+                <ProductInventoryFields
+                  stockEnabled={newDraft.stockEnabled}
+                  stock={newDraft.stock}
+                  reservable={newDraft.reservable}
+                  blockedSlots={newDraft.blockedSlots}
+                  onChange={(patch) => setNewDraft((prev) => (prev ? { ...prev, ...patch } : prev))}
+                />
+              </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Foto del producto</Label>
                 <AdminProductImagePicker
@@ -1429,6 +1479,16 @@ export function StoreCatalogAdmin() {
                   onChange={(optionGroups) =>
                     setProductDraft((prev) => (prev ? { ...prev, optionGroups } : prev))
                   }
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <ProductInventoryFields
+                  stockEnabled={productDraft.stockEnabled}
+                  stock={productDraft.stock}
+                  reservable={productDraft.reservable}
+                  blockedSlots={productDraft.blockedSlots}
+                  booked={editAvailability?.booked ?? []}
+                  onChange={(patch) => setProductDraft((prev) => (prev ? { ...prev, ...patch } : prev))}
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
