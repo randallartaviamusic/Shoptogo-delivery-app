@@ -24,6 +24,7 @@ import {
   DEFAULT_DEPARTMENT,
   DEPARTMENTS,
   getDepartment,
+  type CatalogFilter,
 } from "@/lib/departments";
 import { money } from "@/lib/format";
 import type { ProductOptionChoice } from "@/lib/productOptions";
@@ -68,7 +69,8 @@ const TIPS = [
 export default function SwipePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [departmentSlug, setDepartmentSlug] = useState(DEFAULT_DEPARTMENT);
+  // "Todo" es la etiqueta predeterminada: mezcla todos los rubros en un solo mazo.
+  const [departmentSlug, setDepartmentSlug] = useState("todos");
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Una semilla nueva por visita: el servidor baraja el mazo distinto cada vez.
@@ -84,7 +86,35 @@ export default function SwipePage() {
   const [pendingLike, setPendingLike] = useState<Dish | null>(null);
   const [optionBusy, setOptionBusy] = useState(false);
 
-  const department = getDepartment(departmentSlug);
+  // Filtros combinados para "Todo": une por clave los filtros de cada rubro.
+  const todosFilters = useMemo(() => {
+    const byKey = new Map<string, CatalogFilter>();
+    for (const item of DEPARTMENTS) {
+      for (const facet of item.filters) {
+        const existing = byKey.get(facet.key);
+        if (!existing) {
+          byKey.set(facet.key, { ...facet, options: [...facet.options] });
+        } else {
+          for (const option of facet.options) {
+            if (!existing.options.includes(option)) existing.options.push(option);
+          }
+        }
+      }
+    }
+    return [...byKey.values()];
+  }, []);
+  const department =
+    departmentSlug === "todos"
+      ? {
+          slug: "todos",
+          label: "Todo",
+          short: "Todo",
+          headline: "Todo el antojo junto",
+          blurb:
+            "Platos de todos los rubros mezclados. Deslizá sin límites.",
+          filters: todosFilters,
+        }
+      : getDepartment(departmentSlug);
   const deck = useQuery(api.catalog.deck, {
     department: departmentSlug,
     filters,
@@ -113,6 +143,10 @@ export default function SwipePage() {
         (deck?.departments ?? []).map((entry) => [entry.slug, entry.count]),
       ),
     [deck?.departments],
+  );
+  const allCount = useMemo(
+    () => Array.from(departmentCounts.values()).reduce((a, b) => a + b, 0),
+    [departmentCounts],
   );
 
   const selectedCount = Object.values(filters).reduce(
@@ -326,7 +360,10 @@ export default function SwipePage() {
   const isLoading = deck === undefined;
   const noResults = visible.length === 0;
   const emptyDepartment =
-    deck?.total === 0 && departmentSlug !== DEFAULT_DEPARTMENT;
+    deck?.total === 0 &&
+    departmentSlug !== DEFAULT_DEPARTMENT &&
+    departmentSlug !== "todos";
+  const emptyAll = deck?.total === 0 && departmentSlug === "todos";
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-x-clip">
@@ -377,6 +414,30 @@ export default function SwipePage() {
       </div>
 
       <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-2 no-scrollbar sm:mx-0 sm:px-0">
+        <button
+          onClick={() => chooseDepartment("todos")}
+          className={cn(
+            "glass-sheen flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors",
+            departmentSlug === "todos"
+              ? "border-transparent bg-accent text-accent-foreground"
+              : "border-border/80 bg-secondary/40 text-muted-foreground hover:border-accent/30 hover:text-foreground",
+          )}
+        >
+          <Sparkles className="size-4" />
+          Todo
+          {allCount > 0 && (
+            <span
+              className={cn(
+                "text-[10px] font-medium",
+                departmentSlug === "todos"
+                  ? "text-accent-foreground/70"
+                  : "text-muted-foreground/60",
+              )}
+            >
+              {allCount}
+            </span>
+          )}
+        </button>
         {DEPARTMENTS.map((item) => {
           const active = item.slug === departmentSlug;
           const count = departmentCounts.get(item.slug) ?? 0;
@@ -484,14 +545,18 @@ export default function SwipePage() {
                       ? "Nada con esos filtros"
                       : emptyDepartment
                         ? "Este rubro está vacío"
-                        : "Viste todos los productos"}
+                        : emptyAll
+                          ? "Todavía no hay productos"
+                          : "Viste todos los productos"}
                   </h3>
                   <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
                     {selectedCount > 0
                       ? "Probá quitar alguno de los filtros para ver más opciones."
                       : emptyDepartment
                         ? "Todavía no hay locales en este rubro. Mientras tanto, mirá lo que hay en Comida."
-                        : "Recargá el mazo para volver a ver lo que pasaste."}
+                        : emptyAll
+                          ? "Cuando los locales publiquen, sus platos van a aparecer acá."
+                          : "Recargá el mazo para volver a ver lo que pasaste."}
                   </p>
                   <Button
                     size="sm"
@@ -638,6 +703,18 @@ export default function SwipePage() {
               </span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => chooseDepartment("todos")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+                  departmentSlug === "todos"
+                    ? "border-accent/40 bg-accent/10 text-accent"
+                    : "border-border/70 text-muted-foreground hover:border-accent/30 hover:text-foreground",
+                )}
+              >
+                <Sparkles className="size-3.5" />
+                Todo
+              </button>
               {DEPARTMENTS.map((item) => (
                 <button
                   key={item.slug}

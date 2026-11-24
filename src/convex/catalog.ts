@@ -104,9 +104,11 @@ export const deck = query({
       departmentCounts.set(slug, (departmentCounts.get(slug) ?? 0) + 1);
     }
 
-    const inDepartment = available.filter(
-      (product) => departmentOf(product) === department,
-    );
+    // "todos" mezcla todos los rubros en un solo mazo.
+    const inDepartment =
+      department === "todos"
+        ? available
+        : available.filter((product) => departmentOf(product) === department);
 
     // Facet values can contain accents, so they are returned as a flat list
     // instead of an object (Convex object keys must be ASCII).
