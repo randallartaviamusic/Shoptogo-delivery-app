@@ -11,6 +11,7 @@ import { ProductImageUpload } from "@/components/ProductImageUpload";
 import { ProductOptionsEditor } from "@/components/ProductOptionsEditor";
 import { ProductMedia } from "@/components/ProductMedia";
 import { ProductVideoUpload } from "@/components/ProductVideoUpload";
+import { SwipeCard, type Dish } from "@/components/SwipeCard";
 import { StoryUpload } from "@/components/StoryUpload";
 import { PromoBadge } from "@/components/PromoBadge";
 import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
@@ -81,6 +82,7 @@ import {
   Clock,
   Copy,
   Crown,
+  Eye,
   GripVertical,
   Heart,
   Loader2,
@@ -236,6 +238,7 @@ export default function BusinessPage() {
   const [couponBusy, setCouponBusy] = useState(false);
   const [editing, setEditing] = useState<Doc<"products"> | null>(null);
   const [deleting, setDeleting] = useState<Doc<"products"> | null>(null);
+  const [previewing, setPreviewing] = useState<Doc<"products"> | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
   const [duplicatingProductId, setDuplicatingProductId] =
     useState<Id<"products"> | null>(null);
@@ -2127,6 +2130,16 @@ export default function BusinessPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      aria-label={`Vista previa de ${product.name} en el mazo`}
+                      title="Vista previa en el mazo"
+                      className="size-8 text-muted-foreground"
+                      onClick={() => setPreviewing(product)}
+                    >
+                      <Eye className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       aria-label="Editar"
                       className="size-8 text-muted-foreground"
                       onClick={() => openEditProduct(product)}
@@ -3117,6 +3130,87 @@ export default function BusinessPage() {
               Guardar local
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={previewing !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreviewing(null);
+        }}
+      >
+        <DialogContent className="border-border/80 bg-card sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Vista previa en el mazo
+            </DialogTitle>
+            <DialogDescription>
+              Así se ve {previewing?.name ?? "el producto"} en el mazo de
+              swipe de los compradores.
+            </DialogDescription>
+          </DialogHeader>
+          {previewing &&
+            (() => {
+              const isElitePreview =
+                subscription?.plan === "elite" &&
+                subscription?.hasAccess === true;
+              const flashTitle = business.flashTitle?.trim() ?? "";
+              const flashEndsAt = business.flashEndsAt ?? 0;
+              const previewDish: Dish = {
+                _id: previewing._id,
+                name: previewing.name,
+                description: previewing.description,
+                price: previewing.price,
+                image: previewing.image,
+                video: previewing.video ?? null,
+                category: normalizeSubcategory(previewing.category),
+                department: departmentInfo.slug,
+                attributes: previewing.attributes ?? [],
+                optionGroups: (previewing.optionGroups ?? []) as ProductOptionGroup[],
+                tags: previewing.tags,
+                promo: business.deliveryPromo ?? null,
+                businessId: business._id,
+                businessName: business.name,
+                businessCategory: business.category,
+                businessImage: business.image,
+                elite: isElitePreview,
+                eliteVerified:
+                  isElitePreview && Boolean(business.verifiedAt),
+                flash:
+                  isElitePreview && flashTitle && flashEndsAt > now
+                    ? {
+                        title: flashTitle,
+                        detail: business.flashDetail?.trim() ?? "",
+                        endsAt: flashEndsAt,
+                      }
+                    : null,
+                rating: business.rating,
+                reviews: business.reviews,
+                etaMinutes: business.etaMinutes,
+                delivery: {
+                  feeFrom: business.deliveryFee,
+                  fee: null,
+                  distanceKm: null,
+                  available: true,
+                },
+                address: business.address,
+              };
+              return (
+                <div className="mx-auto w-full max-w-[300px]">
+                  <div className="relative h-[480px] overflow-hidden rounded-[30px] border border-white/10">
+                    <SwipeCard
+                      dish={previewDish}
+                      isTop={false}
+                      onDecide={() => {}}
+                    />
+                  </div>
+                  <p className="mt-3 text-center text-[11px] text-muted-foreground">
+                    Vista previa sin botones: en el mazo real el comprador la
+                    desliza para pedirla, pasarla o guardarla.
+                  </p>
+                </div>
+              );
+            })()}
         </DialogContent>
       </Dialog>
 
