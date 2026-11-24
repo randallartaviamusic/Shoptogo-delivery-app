@@ -3217,7 +3217,7 @@ export default function BusinessPage() {
           if (!open) setPreviewing(null);
         }}
       >
-        <DialogContent className="border-border/80 bg-card sm:max-w-sm">
+        <DialogContent className="border-border/80 bg-card sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display">
               Vista previa en el mazo
@@ -3274,8 +3274,8 @@ export default function BusinessPage() {
                 address: business.address,
               };
               return (
-                <div className="mx-auto w-full max-w-[300px]">
-                  <div className="relative h-[480px] overflow-hidden rounded-[30px] border border-white/10">
+                <div className="mx-auto w-full max-w-[420px]">
+                  <div className="relative aspect-[4/3] w-full">
                     <SwipeCard
                       dish={previewDish}
                       isTop={false}
