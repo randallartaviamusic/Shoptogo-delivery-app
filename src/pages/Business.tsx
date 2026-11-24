@@ -1,4 +1,5 @@
 import AccountWelcomeModal from "@/components/AccountWelcomeModal";
+import BusinessServices from "@/components/BusinessServices";
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import { StarPicker } from "@/components/StarPicker";
@@ -67,6 +68,7 @@ import {
 import { clockTime, money, ORDER_STATUS, relativeTime, ROLE_HOME } from "@/lib/format";
 import { ASSIGNMENT_RULES } from "@/lib/delivery";
 import { formatSinpeNumber, normalizeSinpeNumber } from "@/lib/sinpe";
+import { DEFAULT_WHATSAPP_NUMBERS } from "@/lib/subscriptions";
 import { FlashCountdown } from "@/components/EliteBusiness";
 import { fulfillmentLabel } from "@/lib/fulfillment";
 import { PROMO_OPTIONS, promoLabel } from "@/lib/promo";
@@ -114,6 +116,7 @@ const TABS = [
   { key: "couriers", label: "Repartidores", to: "/business?tab=couriers" },
   { key: "menu", label: "Productos", to: "/business?tab=menu" },
   { key: "stories", label: "Historias", to: "/business?tab=stories" },
+  { key: "servicios", label: "Servicios", to: "/business?tab=servicios" },
 ];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -2058,6 +2061,18 @@ export default function BusinessPage() {
             </p>
           </div>
           <StoryUpload enabled={proStoriesEnabled} />
+        </motion.div>
+      )}
+
+      {tab === "servicios" && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <BusinessServices
+            businessName={business.name}
+            whatsappNumber={
+              subscription?.settings?.whatsappNumbers?.[0] ??
+              DEFAULT_WHATSAPP_NUMBERS[0]
+            }
+          />
         </motion.div>
       )}
 
