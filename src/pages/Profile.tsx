@@ -52,14 +52,21 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
   ArrowLeftRight,
+  BadgeCheck,
+  BarChart3,
+  BellRing,
   Bike,
   Camera,
   Check,
+  Crown,
+  FlaskConical,
   Flame,
   ImageUp,
+  LifeBuoy,
   Loader2,
   LogOut,
   Music,
+  Palette,
   Play,
   RotateCcw,
   Save,
@@ -70,8 +77,10 @@ import {
   Star,
   Store,
   Trash2,
+  Type,
   Upload,
   UserRound,
+  Users,
   Wallet,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -108,6 +117,21 @@ const ACCOUNT_ROLE_LABEL: Record<string, string> = {
   courier: "Repartidor",
 };
 
+const ADMIN_TABS = [
+  { value: "logo", label: "Logo", icon: ImageUp },
+  { value: "marca", label: "Marca", icon: Palette },
+  { value: "sonido", label: "Sonido", icon: BellRing },
+  { value: "titulo", label: "Título", icon: Type },
+  { value: "metricas", label: "Métricas", icon: BarChart3 },
+  { value: "verificacion", label: "Verificación", icon: BadgeCheck },
+  { value: "ayuda", label: "Ayuda", icon: LifeBuoy },
+  { value: "planes", label: "Planes", icon: Crown },
+  { value: "demo", label: "Demo", icon: FlaskConical },
+  { value: "cuentas", label: "Cuentas", icon: Users },
+] as const;
+
+type AdminTab = (typeof ADMIN_TABS)[number]["value"];
+
 const ROLES = [
   {
     value: "buyer" as const,
@@ -141,6 +165,7 @@ export default function ProfilePage() {
 
   // Administración de la marca (sólo para el perfil administrador).
   const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
+  const [adminTab, setAdminTab] = useState<AdminTab>("logo");
   const brand = useQuery(api.branding.brand);
   const generateLogoUploadUrl = useMutation(api.branding.generateLogoUploadUrl);
   const setLogo = useMutation(api.branding.setLogo);
@@ -678,6 +703,47 @@ export default function ProfilePage() {
                 <ShieldCheck className="size-3.5" />
                 Perfil administrador
               </p>
+              <h2 className="font-display text-lg font-bold">Panel del administrador</h2>
+              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+                Elegí una pestaña para abrir cada ventana sin bajar por toda la página.
+              </p>
+            </div>
+          </div>
+          <div className="-mx-5 mt-4 overflow-x-auto px-5 pb-1 no-scrollbar sm:-mx-6 sm:px-6">
+            <div role="tablist" aria-label="Opciones del administrador" className="flex min-w-max gap-2">
+              {ADMIN_TABS.map((tab) => {
+                const active = adminTab === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={(event) => {
+                      setAdminTab(tab.value);
+                      event.currentTarget.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+                    }}
+                    className={active
+                      ? "flex shrink-0 items-center gap-1.5 rounded-full border border-transparent bg-accent px-3.5 py-2 text-xs font-semibold text-accent-foreground"
+                      : "flex shrink-0 items-center gap-1.5 rounded-full border border-border/80 bg-secondary/40 px-3.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:border-accent/30 hover:text-foreground"}
+                  >
+                    <tab.icon className="size-3.5" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {isAdmin && adminTab === "logo" && (
+        <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+                <ShieldCheck className="size-3.5" />
+                Perfil administrador · Logo
+              </p>
               <h2 className="font-display text-lg font-bold">Logo de la plataforma</h2>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
                 Subí tu imagen y ajustá el tamaño a gusto. Se aplica en toda la
@@ -778,9 +844,9 @@ export default function ProfilePage() {
         </section>
       )}
 
-      {isAdmin && <AppBrandingAdmin />}
+      {isAdmin && adminTab === "marca" && <AppBrandingAdmin />}
 
-      {isAdmin && (
+      {isAdmin && adminTab === "sonido" && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
           <div>
             <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
@@ -871,7 +937,7 @@ export default function ProfilePage() {
         </section>
       )}
 
-      {isAdmin && (
+      {isAdmin && adminTab === "titulo" && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
           <div>
             <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
@@ -1001,13 +1067,13 @@ export default function ProfilePage() {
 
       <VerificationCard />
 
-      {isAdmin && <AdminMetrics />}
-      {isAdmin && <VerificationAdmin />}
-      {isAdmin && <SupportAdmin />}
-      {isAdmin && <SubscriptionAdmin />}
-      {isAdmin && <DemoCatalogAdmin />}
+      {isAdmin && adminTab === "metricas" && <AdminMetrics />}
+      {isAdmin && adminTab === "verificacion" && <VerificationAdmin />}
+      {isAdmin && adminTab === "ayuda" && <SupportAdmin />}
+      {isAdmin && adminTab === "planes" && <SubscriptionAdmin />}
+      {isAdmin && adminTab === "demo" && <DemoCatalogAdmin />}
 
-      {isAdmin && (
+      {isAdmin && adminTab === "cuentas" && (
         <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
