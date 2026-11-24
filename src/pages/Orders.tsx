@@ -1243,6 +1243,22 @@ export default function OrdersPage() {
   const [quickRepeating, setQuickRepeating] = useState(false);
   const [tab, setTab] = useState<"active" | "history">("active");
   const [selected, setSelected] = useState<OrderView | null>(null);
+  // Los hooks van antes del retorno de carga: si no, al llegar los pedidos
+  // se agregan hooks y React lanza el error #310.
+  const deepLinked = useRef<string | null>(null);
+  // Al tocar la notificación de seguimiento se abre la app directo en el
+  // pedido, con el mapa en vivo adentro del detalle.
+  useEffect(() => {
+    if (orders === undefined) return;
+    const id = searchParams.get("order");
+    if (!id || deepLinked.current === id) return;
+    const match = (orders as unknown as OrderView[]).find((order) => order._id === id);
+    if (match) {
+      deepLinked.current = id;
+      if (!ACTIVE_STATUSES.includes(match.status)) setTab("history");
+      setSelected(match);
+    }
+  }, [orders, searchParams]);
 
   if (orders === undefined) {
     return (
@@ -1253,20 +1269,6 @@ export default function OrdersPage() {
   }
 
   const typed = orders as unknown as OrderView[];
-  // Al tocar la notificación de seguimiento se abre la app directo en el
-  // pedido, con el mapa en vivo adentro del detalle.
-  const deepLinked = useRef<string | null>(null);
-  useEffect(() => {
-    if (orders === undefined) return;
-    const id = searchParams.get("order");
-    if (!id || deepLinked.current === id) return;
-    const match = typed.find((order) => order._id === id);
-    if (match) {
-      deepLinked.current = id;
-      if (!ACTIVE_STATUSES.includes(match.status)) setTab("history");
-      setSelected(match);
-    }
-  }, [orders, searchParams, typed]);
   const active = typed.filter((order) => ACTIVE_STATUSES.includes(order.status));
   const history = typed.filter((order) => !ACTIVE_STATUSES.includes(order.status));
   const list = tab === "active" ? active : history;
