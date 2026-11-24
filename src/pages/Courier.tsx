@@ -81,6 +81,20 @@ const TABS = [
   { key: "cash", label: "Caja", to: "/courier?tab=cash" },
 ];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Períodos del selector del historial de entregas del repartidor. */
+const HISTORY_RANGES = [
+  { label: "Último día", ms: DAY_MS },
+  { label: "Últimos 3 días", ms: 3 * DAY_MS },
+  { label: "Últimos 7 días", ms: 7 * DAY_MS },
+  { label: "Últimos 15 días", ms: 15 * DAY_MS },
+  { label: "Últimos 30 días", ms: 30 * DAY_MS },
+  { label: "Últimos 3 meses", ms: 90 * DAY_MS },
+  { label: "Últimos 6 meses", ms: 180 * DAY_MS },
+  { label: "Último año", ms: 365 * DAY_MS },
+];
+
 function StatCard({
   label,
   value,
@@ -126,6 +140,7 @@ export default function CourierPage() {
   const [confirming, setConfirming] = useState<OrderView | null>(null);
   // Pedido del que quiere bajarse después de la primera entrega.
   const [renouncing, setRenouncing] = useState<OrderView | null>(null);
+  const [historyRange, setHistoryRange] = useState(7 * DAY_MS);
   // Custodia del pedido: código del local y PIN del comprador.
   const [pickupOrder, setPickupOrder] = useState<OrderView | null>(null);
   const [pickupCode, setPickupCode] = useState("");
@@ -239,6 +254,9 @@ export default function CourierPage() {
   const available = (board?.available ?? []) as unknown as OrderView[];
   const active = (board?.active ?? []) as unknown as OrderView[];
   const history = (board?.history ?? []) as unknown as OrderView[];
+  const filteredHistory = history.filter(
+    (order) => (order.deliveredAt ?? order.createdAt) >= Date.now() - historyRange,
+  );
   const stats = board?.stats;
   const canAccept = board?.canAccept ?? true;
   const activeCount = board?.activeCount ?? active.length;
@@ -1186,15 +1204,44 @@ export default function CourierPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-3"
         >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {history.length === 0
+                ? "Cada entrega terminada queda acá con lo que ganaste por el envío."
+                : `${filteredHistory.length} ${filteredHistory.length === 1 ? "entrega" : "entregas"} en el período elegido.`}
+            </p>
+            <Select
+              value={String(historyRange)}
+              onValueChange={(value) => setHistoryRange(Number(value))}
+            >
+              <SelectTrigger
+                aria-label="Filtrar historial de entregas por período"
+                className="h-8 w-40 text-xs"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HISTORY_RANGES.map((range) => (
+                  <SelectItem key={range.ms} value={String(range.ms)}>
+                    {range.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {history.length === 0 ? (
             <EmptyState
               icon={History}
               title="Todavía no entregaste pedidos"
               description="Cada entrega terminada queda acá con lo que ganaste por el envío."
             />
+          ) : filteredHistory.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
+              Sin entregas en este período. Elegí un período más amplio en el selector.
+            </p>
           ) : (
             <div className="surface-raised overflow-hidden rounded-3xl">
-              {history.map((order, index) => (
+              {filteredHistory.map((order, index) => (
                 <div
                   key={order._id}
                   className={cn(
