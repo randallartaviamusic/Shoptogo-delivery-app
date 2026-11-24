@@ -345,6 +345,61 @@ export function formatReminderDate(timestamp: number) {
 export const EXPIRY_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 export const EXPIRY_MINUTES = [0, 15, 30, 45];
 
+/** Duraciones disponibles al suscribirse o cambiar de plan. */
+export const SUBSCRIPTION_DURATIONS = [1, 3, 6, 12] as const;
+export type SubscriptionDuration = (typeof SUBSCRIPTION_DURATIONS)[number];
+
+/** Descuento aplicado al pagar 3, 6 o 12 meses juntos (10%). */
+export const SUBSCRIPTION_MULTI_MONTH_DISCOUNT = 0.1;
+
+export function normalizeDurationMonths(value: unknown): SubscriptionDuration {
+  const months = Math.round(Number(value));
+  if (months === 3 || months === 6 || months === 12) return months;
+  return 1;
+}
+
+/** Total a pagar: 1 mes a precio lleno; 3, 6 o 12 meses con 10% de descuento. */
+export function priceForSubscriptionMonths(
+  plan: SubscriptionPlan,
+  months: number,
+) {
+  const count = normalizeDurationMonths(months);
+  if (count === 1) return plan.price;
+  return Math.round(plan.price * count * (1 - SUBSCRIPTION_MULTI_MONTH_DISCOUNT));
+}
+
+/** Cuánto se ahorra la cuenta al pagar varios meses juntos. */
+export function savingsForSubscriptionMonths(
+  plan: SubscriptionPlan,
+  months: number,
+) {
+  const count = normalizeDurationMonths(months);
+  if (count === 1) return 0;
+  return plan.price * count - priceForSubscriptionMonths(plan, count);
+}
+
+export function durationLabel(months: number) {
+  const count = normalizeDurationMonths(months);
+  if (count === 1) return "1 mes";
+  if (count === 12) return "12 meses (1 año)";
+  return `${count} meses`;
+}
+
+/** Vencimiento sumando N meses exactos desde la base, con la hora elegida. */
+export function expiryForSubscriptionMonths(
+  baseTimestamp: number,
+  months: number,
+  hour: number,
+  minute: number,
+) {
+  const count = normalizeDurationMonths(months);
+  let expiry = baseTimestamp;
+  for (let index = 0; index < count; index += 1) {
+    expiry = nextMonthlyExpiry(expiry, hour, minute);
+  }
+  return expiry;
+}
+
 /** Sonidos de recordatorio (la síntesis vive en `lib/reminderSounds`). */
 export const REMINDER_SOUNDS = [
   { id: "campana", label: "Campana" },
@@ -411,12 +466,13 @@ export function paymentWhatsappMessage(input: {
   method: PaymentMethod;
   reference: string;
   expiryAt: number;
+  months?: number | null;
 }) {
   const plan = planOf(input.plan);
   return [
     `Hola, soy ${input.name || "una cuenta de Shop To Go"}.`,
     `Reporto el pago de mi suscripción de ${input.audience === "business" ? "negocio" : "repartidor"}.`,
-    `Plan: ${plan.name} (${money(input.amount)} por mes).`,
+    `Plan: ${plan.name} (${money(input.amount)} por ${durationLabel(input.months ?? 1)}).`,
     `Método: ${METHOD_LABEL[input.method]}.`,
     `Referencia: ${input.reference}.`,
     `Vencimiento solicitado: ${formatExpiry(input.expiryAt)}.`,
@@ -437,6 +493,7 @@ export function cashPickupWhatsappMessage(input: {
   address: string;
   expiryAt: number;
   businessName?: string | null;
+  months?: number | null;
 }) {
   const plan = planOf(input.plan);
   const audience = input.audience === "business" ? "negocio" : "repartidor";
@@ -445,7 +502,7 @@ export function cashPickupWhatsappMessage(input: {
   return [
     `Hola, soy ${account || "una cuenta de Shop To Go"}.`,
     `Quiero suscribirme con pago en efectivo como ${audience}.`,
-    `Suscripción: Plan ${plan.name} (${money(input.amount)} por mes).`,
+    `Suscripción: Plan ${plan.name} (${money(input.amount)} por ${durationLabel(input.months ?? 1)}).`,
     `Mi número de WhatsApp es ${normalizeCostaRicaPhone(input.phone)}.`,
     `Quiero que pasen a retirar el pago a la dirección de ${place}: ${input.address.trim()}.`,
     `Vencimiento deseado: ${formatExpiry(input.expiryAt)}`,

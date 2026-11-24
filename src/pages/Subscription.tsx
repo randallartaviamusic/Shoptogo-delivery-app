@@ -29,21 +29,29 @@ import {
   EXPIRY_MINUTES,
   PAYMENT_METHODS,
   REMINDER_SOUNDS,
+  SUBSCRIPTION_DURATIONS,
   SUBSCRIPTION_PLANS,
   SUBSCRIPTION_PLAN_IDS,
   SUBSCRIPTION_STATUS_META,
   SUSPENDED_CAPABILITIES,
   cashPickupWhatsappMessage,
   countdownText,
+  durationLabel,
+  expiryForSubscriptionMonths,
   formatExpiry,
   formatExpiryDate,
-  nextMonthlyExpiry,
   paymentWhatsappMessage,
   planOf,
+  priceForSubscriptionMonths,
   renewalBase,
+  savingsForSubscriptionMonths,
   whatsappHref,
 } from "@/lib/subscriptions";
-import type { PaymentMethod, SubscriptionPlanId } from "@/lib/subscriptions";
+import type {
+  PaymentMethod,
+  SubscriptionDuration,
+  SubscriptionPlanId,
+} from "@/lib/subscriptions";
 import { money } from "@/lib/format";
 import { displayPhone } from "@/lib/notify";
 import { playReminderSound } from "@/lib/reminderSounds";
@@ -129,6 +137,7 @@ export default function SubscriptionPage() {
 
   const [plan, setPlan] = useState<SubscriptionPlanId>("basico");
   const [method, setMethod] = useState<PaymentMethod>("sinpe");
+  const [months, setMonths] = useState<SubscriptionDuration>(1);
   const [hour, setHour] = useState(20);
   const [minute, setMinute] = useState(0);
   const [reference, setReference] = useState("");
@@ -198,8 +207,11 @@ export default function SubscriptionPage() {
   const meta = SUBSCRIPTION_STATUS_META[data.status];
   const selected = SUBSCRIPTION_PLANS[plan];
   const isPlanChange = Boolean(data.plan) && data.plan !== plan;
-  const expiryAt = nextMonthlyExpiry(
+  const totalPrice = priceForSubscriptionMonths(selected, months);
+  const savings = savingsForSubscriptionMonths(selected, months);
+  const expiryAt = expiryForSubscriptionMonths(
     isPlanChange ? now : renewalBase(data.activeUntil, now),
+    months,
     hour,
     minute,
   );
@@ -212,11 +224,12 @@ export default function SubscriptionPage() {
     name: user?.name ?? "",
     audience: data.role,
     plan,
-    amount: selected.price,
+    amount: totalPrice,
     phone: cashPhone,
     address: cashAddress,
     expiryAt,
     businessName: data.businessName,
+    months,
   });
   const cashHref = whatsappHref(CASH_PICKUP_WHATSAPP, cashMessage);
 
@@ -287,6 +300,7 @@ export default function SubscriptionPage() {
           note: note.trim() || undefined,
           expiryHour: hour,
           expiryMinute: minute,
+          months,
         });
         toast.success("Intención SINPE creada", {
           description: `Transferí ${money(result.price)} al número ONVO indicado. Tu suscripción se activará al confirmarse.`,
@@ -302,9 +316,10 @@ export default function SubscriptionPage() {
           expiryHour: hour,
           expiryMinute: minute,
           receiptStorageId: receiptStorageId as never,
+          months,
         });
         toast.success("Tu nuevo plan ya está activo", {
-          description: `Vence ${formatExpiry(result.expiryAt)}. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días.`,
+          description: `${durationLabel(result.months ?? months)} por ${money(result.price)}. Vence ${formatExpiry(result.expiryAt)}. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días.`,
         });
         setReference("");
         setReceiptStorageId(null);
@@ -330,9 +345,10 @@ export default function SubscriptionPage() {
         cashPhone,
         cashAddress,
         note: note.trim() || undefined,
+        months,
       });
       toast.success("Tu nuevo plan ya está activo", {
-        description: `Vence ${formatExpiry(result.expiryAt)}. Un administrador evaluará que el pago en efectivo se concrete; si hubo un error o no se realizó, el plan será desactivado en 3 días.`,
+        description: `${durationLabel(result.months ?? months)} por ${money(result.price)}. Vence ${formatExpiry(result.expiryAt)}. Un administrador evaluará que el pago en efectivo se concrete; si hubo un error o no se realizó, el plan será desactivado en 3 días.`,
       });
       window.open(cashHref, "_blank", "noopener,noreferrer");
     } catch (error) {
@@ -359,7 +375,7 @@ export default function SubscriptionPage() {
     if (pendingPlan) {
       setPlan(pendingPlan);
       toast.info(`Elegiste el plan ${planOf(pendingPlan).name}`, {
-        description: `Reportá el pago de ${money(planOf(pendingPlan).price)} abajo y tu plan nuevo se activa al instante.`,
+        description: `Reportá el pago de ${money(priceForSubscriptionMonths(planOf(pendingPlan), months))} por ${durationLabel(months)} abajo y tu plan nuevo se activa al instante.`,
       });
     }
     setPendingPlan(null);
@@ -410,6 +426,7 @@ export default function SubscriptionPage() {
         method: pending.method,
         reference: pending.reference,
         expiryAt: pending.expiryAt,
+        months: pending.months ?? 1,
       })
     : "";
 
@@ -560,7 +577,7 @@ export default function SubscriptionPage() {
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Nada de porcentajes por pedido. Cambiás de plan cuando quieras y
-                si es el mismo plan se suma a tu vencimiento; si cambias de plan el mes nuevo corre desde hoy.
+                elegís pagar 1, 3, 6 o 12 meses: de 3 meses en adelante con 10% de descuento y vencimiento automático. Si es el mismo plan se suma a tu vencimiento; si cambias de plan los meses nuevos corren desde hoy.
               </p>
             </div>
             <ShieldCheck className="size-5 text-accent" />
@@ -650,6 +667,12 @@ export default function SubscriptionPage() {
               </div>
               <div className="rounded-xl border border-border/70 bg-black/20 p-3">
                 <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Duración pagada
+                </dt>
+                <dd className="mt-1 font-semibold">{durationLabel(pending.months ?? 1)} · {money(pending.price)}</dd>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-black/20 p-3">
+                <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Vencimiento solicitado
                 </dt>
                 <dd className="mt-1 font-semibold">{formatExpiry(pending.expiryAt)}</dd>
@@ -718,11 +741,14 @@ export default function SubscriptionPage() {
                   Pago manual
                 </p>
                 <h2 className="mt-1 font-display text-lg font-bold">
-                  {money(selected.price)} al mes
+                  {money(totalPrice)} por {durationLabel(months)}
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Pagás por SINPE Móvil, efectivo o depósito. En efectivo
                   coordinamos el retiro en tu dirección por WhatsApp.
+                  {months === 1
+                    ? ` Plan ${selected.name}: ${money(selected.price)}/mes.`
+                    : ` Incluye 10% de descuento por pagar ${durationLabel(months)} juntos (ahorrás ${money(savings)}).`}
                 </p>
               </div>
               <p className="rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground">
@@ -749,6 +775,52 @@ export default function SubscriptionPage() {
                 </Button>
               </div>
             )}
+
+            <div className="mt-4 space-y-1.5">
+              <Label>Duración de la suscripción</Label>
+              <div className="grid gap-2 sm:grid-cols-4">
+                {SUBSCRIPTION_DURATIONS.map((option) => {
+                  const optionTotal = priceForSubscriptionMonths(selected, option);
+                  const optionSavings = savingsForSubscriptionMonths(selected, option);
+                  const isActive = months === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setMonths(option)}
+                      className={cn(
+                        "rounded-xl border px-3 py-2.5 text-left transition-colors",
+                        isActive
+                          ? "border-accent/60 bg-accent/[0.08]"
+                          : "border-border/70 hover:border-accent/30",
+                      )}
+                    >
+                      <span className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-bold">
+                          {option === 12 ? "1 año" : option === 1 ? "1 mes" : `${option} meses`}
+                        </span>
+                        {option > 1 && (
+                          <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-accent-foreground">
+                            -10%
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-1 block font-display text-base font-extrabold">
+                        {money(optionTotal)}
+                      </span>
+                      <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+                        {option === 1
+                          ? "Precio lleno del mes"
+                          : `Ahorrás ${money(optionSavings)}`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] leading-relaxed text-muted-foreground">
+                El vencimiento y la cuenta regresiva se calculan solos: {durationLabel(months)} terminan el {formatExpiryDate(expiryAt)}.
+              </p>
+            </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-border/70 bg-black/20 p-3.5">
@@ -867,8 +939,7 @@ export default function SubscriptionPage() {
                 <span className="font-semibold text-foreground">
                   {formatExpiry(expiryAt)}
                 </span>{" "}
-                (hora de Costa Rica). Si todavía tenés tiempo activo, la renovación se
-                se suma a ese vencimiento solo si renovas el mismo plan; si cambias de plan el mes nuevo corre desde hoy.
+                (hora de Costa Rica) por {durationLabel(months)}. Si todavía tenés tiempo activo, la renovación se suma a ese vencimiento solo si renovas el mismo plan; si cambias de plan los meses nuevos corren desde hoy.
               </p>
 
               {method === "onvo" ? (
@@ -1063,11 +1134,11 @@ export default function SubscriptionPage() {
                 ) : (
                   <CheckCircle2 className="size-4" />
                 )}
-                {method === "onvo" ? "Crear pago SINPE automático" : "Ya pagué · reportar para verificación"}
+                {method === "onvo" ? `Crear pago SINPE automático · ${money(totalPrice)}` : `Ya pagué · activar ${durationLabel(months)} · ${money(totalPrice)}`}
               </Button>
               <p className="text-center text-[10px] leading-relaxed text-muted-foreground">
                 {method === "onvo"
-                  ? "Se activa automáticamente sólo después de la confirmación de pago firmada por ONVO."
+                  ? `Se activa automáticamente sólo después de la confirmación de pago firmada por ONVO (${money(totalPrice)} por ${durationLabel(months)}).`
                   : "Tu plan se activa al instante al darle al botón. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días."}
               </p>
                 </>
@@ -1154,7 +1225,7 @@ export default function SubscriptionPage() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs font-semibold">
-                      {planOf(payment.plan).name} · {money(payment.price)}
+                      {planOf(payment.plan).name} · {durationLabel(payment.months ?? 1)} · {money(payment.price)}
                     </p>
                     <span
                       className={cn(
@@ -1212,7 +1283,7 @@ export default function SubscriptionPage() {
             <AlertDialogTitle>Cambiar de plan?</AlertDialogTitle>
             <AlertDialogDescription>Estás por cambiar de plan. Si aceptás, elegís el plan nuevo y debés reportar el pago nuevo abajo con su comprobante. El cambio se activa al instante con la fecha correcta del mes que inicia; la administración lo revisa después y lo desactiva en 3 días si el pago no aparece.</AlertDialogDescription>
           </AlertDialogHeader>
-          {currentPlanDetail && pendingPlanDetail ? <div className="rounded-xl border border-border/70 bg-black/20 p-3 text-[11px]"><p>De {currentPlanDetail.name} a {pendingPlanDetail.name}</p><p>Precio nuevo: {money(pendingPlanDetail.price)} al mes.</p><p>Tu plan nuevo se activa al instante con la fecha correcta del mes que inicia.</p></div> : null}
+          {currentPlanDetail && pendingPlanDetail ? <div className="rounded-xl border border-border/70 bg-black/20 p-3 text-[11px]"><p>De {currentPlanDetail.name} a {pendingPlanDetail.name}</p><p>Precio nuevo: {money(priceForSubscriptionMonths(pendingPlanDetail, months))} por {durationLabel(months)}.</p><p>Tu plan nuevo se activa al instante con la fecha correcta de los meses que inician.</p></div> : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmPlanChange}>Aceptar</AlertDialogAction>

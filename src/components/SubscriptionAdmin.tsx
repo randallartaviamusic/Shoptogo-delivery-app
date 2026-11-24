@@ -13,11 +13,14 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
+  SUBSCRIPTION_DURATIONS,
   SUBSCRIPTION_PLANS,
   SUBSCRIPTION_PLAN_IDS,
   SUBSCRIPTION_STATUS_META,
+  durationLabel,
   formatExpiry,
   planOf,
+  priceForSubscriptionMonths,
 } from "@/lib/subscriptions";
 import type { SubscriptionPlanId, SubscriptionStatus } from "@/lib/subscriptions";
 import { money } from "@/lib/format";
@@ -50,6 +53,8 @@ type AdminAccount = {
   status: SubscriptionStatus;
   hasAccess: boolean;
   pending: boolean;
+  lastMonths: number | null;
+  lastPrice: number | null;
 };
 
 const STATUS_PILL: Record<SubscriptionStatus, string> = {
@@ -68,12 +73,13 @@ function AccountRow({
 }: {
   account: AdminAccount;
   busy: boolean;
-  onGrant: (ownerId: string, plan: SubscriptionPlanId) => void;
+  onGrant: (ownerId: string, plan: SubscriptionPlanId, months: number) => void;
   onDeactivate: (ownerId: string) => void;
 }) {
   const [plan, setPlan] = useState<SubscriptionPlanId>(
     (account.plan as SubscriptionPlanId | null) ?? "basico",
   );
+  const [duration, setDuration] = useState<number>(1);
   const meta = SUBSCRIPTION_STATUS_META[account.status];
 
   return (
@@ -97,6 +103,12 @@ function AccountRow({
               ? `vence ${formatExpiry(account.activeUntil)}`
               : "sin vencimiento"}
           </p>
+          {account.lastMonths != null && account.lastPrice != null && (
+            <p className="mt-0.5 text-[11px] font-semibold text-accent">
+              Suscribió {durationLabel(account.lastMonths)} por {money(account.lastPrice)}
+              {account.lastMonths > 1 ? " (con 10% de descuento)" : ""}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {account.pending && (
@@ -131,6 +143,22 @@ function AccountRow({
             ))}
           </SelectContent>
         </Select>
+        <Select
+          value={String(duration)}
+          onValueChange={(value) => setDuration(Number(value))}
+        >
+          <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SUBSCRIPTION_DURATIONS.map((option) => (
+              <SelectItem key={option} value={String(option)}>
+                {durationLabel(option)}
+                {option > 1 ? " · -10%" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {account.hasAccess && (
           <Button
             size="sm"
@@ -152,14 +180,14 @@ function AccountRow({
           variant="outline"
           className="h-8 gap-1.5 border-accent/40 text-xs text-accent"
           disabled={busy}
-          onClick={() => onGrant(account.ownerId, plan)}
+          onClick={() => onGrant(account.ownerId, plan, duration)}
         >
           {busy ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <Check className="size-3.5" />
           )}
-          Activar 1 mes
+          Activar {durationLabel(duration)} · {money(priceForSubscriptionMonths(SUBSCRIPTION_PLANS[plan], duration))}
         </Button>
       </div>
     </li>
@@ -273,16 +301,16 @@ export function SubscriptionAdmin() {
     }
   };
 
-  const handleGrant = async (ownerId: string, plan: SubscriptionPlanId) => {
+  const handleGrant = async (ownerId: string, plan: SubscriptionPlanId, months: number) => {
     setBusyAccount(ownerId);
     try {
       const result = await grant({
         ownerId: ownerId as Id<"users">,
         plan,
-        months: 1,
+        months,
       });
       toast.success("Suscripción activada", {
-        description: `Vence ${formatExpiry(result.activeUntil)}.`,
+        description: `${durationLabel(result.months ?? months)} · vence ${formatExpiry(result.activeUntil)}.`,
       });
     } catch (error) {
       toast.error(
@@ -321,7 +349,7 @@ export function SubscriptionAdmin() {
           </p>
           <h2 className="font-display text-lg font-bold">Suscripciones</h2>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Los pagos manuales y en efectivo se activan solos al instante. Revisá los comprobantes, desactivá el plan si el pago no aparece (hasta 3 días) y editá los datos de cobro. Las tarifas son fijas: nunca un porcentaje de los pedidos.
+            Las cuentas pueden pagar 1, 3, 6 o 12 meses juntos: de 3 meses en adelante llevan 10% de descuento y el vencimiento se calcula solo. Los pagos manuales y en efectivo se activan solos al instante. Revisá los comprobantes con sus meses y montos, desactivá el plan si el pago no aparece (hasta 3 días) y editá los datos de cobro. Las tarifas son fijas: nunca un porcentaje de los pedidos.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px]">
@@ -554,7 +582,7 @@ export function SubscriptionAdmin() {
                         .join(" · ")}
                     </p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      Plan {planOf(payment.plan).name} · {money(payment.price)} ·{" "}
+                      Plan {planOf(payment.plan).name} · {durationLabel(payment.months ?? 1)} · {money(payment.price)} ·{" "}
                       {payment.method.toUpperCase()} · ref. {payment.reference}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
@@ -652,7 +680,7 @@ export function SubscriptionAdmin() {
                 key={account.ownerId}
                 account={account as AdminAccount}
                 busy={busyAccount === account.ownerId}
-                onGrant={(ownerId, plan) => void handleGrant(ownerId, plan)}
+                onGrant={(ownerId, plan, months) => void handleGrant(ownerId, plan, months)}
                 onDeactivate={(ownerId) => void handleDeactivate(ownerId)}
               />
             ))}
@@ -671,7 +699,7 @@ export function SubscriptionAdmin() {
               >
                 <span className="min-w-0 flex-1 truncate">
                   {payment.businessName ?? payment.name} ·{" "}
-                  {planOf(payment.plan).name} · {money(payment.price)}
+                  {planOf(payment.plan).name} · {durationLabel(payment.months ?? 1)} · {money(payment.price)}
                   {payment.receiptUrl && (
                     <a
                       href={payment.receiptUrl}

@@ -698,6 +698,8 @@ const schema = defineSchema(
       reviewNote: v.optional(v.string()),
       // Captura del comprobante subida por el negocio o repartidor.
       receiptStorageId: v.optional(v.id("_storage")),
+      // Cantidad de meses pagados juntos (1, 3, 6 o 12). Los pagos viejos no lo traen: se leen como 1.
+      months: v.optional(v.number()),
       // ONVO SINPE Móvil confirma transferencias por webhook sin revisión
       // manual. Las instrucciones quedan asociadas a la intención específica.
       onvoPaymentIntentId: v.optional(v.string()),

@@ -23,9 +23,12 @@ import {
   MAX_WHATSAPP_NUMBERS,
   REMINDER_SOUNDS,
   costaRicaParts,
+  expiryForSubscriptionMonths,
   hasSubscriptionAccess,
   nextMonthlyExpiry,
+  normalizeDurationMonths,
   planOf,
+  priceForSubscriptionMonths,
   renewalBase,
   subscriptionReminderMessage,
   subscriptionStatus,
@@ -274,6 +277,7 @@ export const mine = query({
             receiptUrl: pending.receiptStorageId
               ? ((await ctx.storage.getUrl(pending.receiptStorageId)) ?? null)
               : null,
+            months: pending.months ?? 1,
           }
         : null,
       onvoConfigured: Boolean(process.env.ONVO_SECRET_KEY?.trim()),
@@ -292,6 +296,7 @@ export const mine = query({
           receiptUrl: payment.receiptStorageId
             ? ((await ctx.storage.getUrl(payment.receiptStorageId)) ?? null)
             : null,
+          months: payment.months ?? 1,
         })),
       ),
       settings,
@@ -333,6 +338,7 @@ export const requestPayment = mutation({
     expiryHour: v.number(),
     expiryMinute: v.number(),
     receiptStorageId: v.optional(v.id("_storage")),
+    months: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -343,6 +349,7 @@ export const requestPayment = mutation({
     if (args.method === "onvo") {
       throw new Error("Usá el flujo ONVO directo para iniciar el pago automático");
     }
+    const months = normalizeDurationMonths(args.months ?? 1);
     const reference = args.reference.trim();
     if (reference.length < 3) {
       throw new Error("Escribí la referencia o el número de comprobante");
@@ -374,19 +381,21 @@ export const requestPayment = mutation({
     const hour = Math.min(23, Math.max(0, Math.round(args.expiryHour)));
     const minute = Math.min(59, Math.max(0, Math.round(args.expiryMinute)));
     // Renovación del mismo plan: se suma desde el vencimiento vigente.
-    // Cambio de plan: el mes nuevo corre desde hoy, no desde el próximo mes.
-    const expiryAt = nextMonthlyExpiry(
+    // Cambio de plan: los meses nuevos corren desde hoy, no desde el próximo mes.
+    const expiryAt = expiryForSubscriptionMonths(
       isPlanChange ? requestNow : renewalBase(existing?.activeUntil, requestNow),
+      months,
       hour,
       minute,
     );
+    const totalPrice = priceForSubscriptionMonths(plan, months);
 
     const now = Date.now();
     const paymentId = await ctx.db.insert("subscriptionPayments", {
       ownerId: userId,
       role: user.role,
       plan: plan.id,
-      price: plan.price,
+      price: totalPrice,
       method: args.method,
       reference,
       note: args.note?.trim() || undefined,
@@ -397,6 +406,7 @@ export const requestPayment = mutation({
       reviewedBy: userId,
       reviewNote: "Activación automática al reportar el pago",
       receiptStorageId: args.receiptStorageId,
+      months,
     });
     // Activación automática: el plan queda activo al instante con la fecha
     // correcta. Un administrador revisa después el comprobante y desactiva
@@ -407,7 +417,7 @@ export const requestPayment = mutation({
       activeSince: existing?.activeSince ?? now,
       activeUntil: expiryAt,
     });
-    return { paymentId, expiryAt, price: plan.price, activeUntil: expiryAt };
+    return { paymentId, expiryAt, price: totalPrice, activeUntil: expiryAt, months };
   },
 });
 
@@ -423,6 +433,7 @@ export const requestCashActivation = mutation({
     cashPhone: v.string(),
     cashAddress: v.string(),
     note: v.optional(v.string()),
+    months: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await requireUserId(ctx);
@@ -442,18 +453,21 @@ export const requestCashActivation = mutation({
     const plan = planOf(args.plan);
     const requestNow = Date.now();
     const isPlanChange = Boolean(existing?.plan) && existing?.plan !== plan.id;
+    const months = normalizeDurationMonths((args as { months?: unknown }).months ?? 1);
     const hour = Math.min(23, Math.max(0, Math.round(args.expiryHour)));
     const minute = Math.min(59, Math.max(0, Math.round(args.expiryMinute)));
-    const expiryAt = nextMonthlyExpiry(
+    const expiryAt = expiryForSubscriptionMonths(
       isPlanChange ? requestNow : renewalBase(existing?.activeUntil, requestNow),
+      months,
       hour,
       minute,
     );
+    const totalPrice = priceForSubscriptionMonths(plan, months);
     const paymentId = await ctx.db.insert("subscriptionPayments", {
       ownerId: userId,
       role: user.role,
       plan: plan.id,
-      price: plan.price,
+      price: totalPrice,
       method: "cash",
       reference: `Efectivo por retirar (${phone})`,
       note:
@@ -465,6 +479,7 @@ export const requestCashActivation = mutation({
       reviewedAt: requestNow,
       reviewedBy: userId,
       reviewNote: "Activación automática en efectivo",
+      months,
     });
     await upsertSubscription(ctx, userId, user.role, {
       plan: plan.id,
@@ -472,7 +487,7 @@ export const requestCashActivation = mutation({
       activeSince: existing?.activeSince ?? requestNow,
       activeUntil: expiryAt,
     });
-    return { paymentId, expiryAt, price: plan.price, activeUntil: expiryAt };
+    return { paymentId, expiryAt, price: totalPrice, activeUntil: expiryAt, months };
   },
 });
 
@@ -608,6 +623,7 @@ export const reserveOnvoPayment = internalMutation({
     note: v.optional(v.string()),
     expiryAt: v.number(),
     payerPhone: v.string(),
+    months: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     if (await pendingPaymentFor(ctx, args.ownerId)) {
@@ -625,6 +641,7 @@ export const reserveOnvoPayment = internalMutation({
       reportedAt: Date.now(),
       status: "pending",
       onvoPayerPhone: args.payerPhone,
+      months: normalizeDurationMonths(args.months ?? 1),
     });
   },
 });
@@ -676,6 +693,7 @@ export const requestOnvoPayment = action({
     note: v.optional(v.string()),
     expiryHour: v.number(),
     expiryMinute: v.number(),
+    months: v.optional(v.number()),
   },
   handler: async (
     ctx: ActionCtx,
@@ -687,6 +705,7 @@ export const requestOnvoPayment = action({
     price: number;
     expiryAt: number;
     destinationPhone: string;
+    months: number;
   }> => {
     const ownerId = await getAuthUserId(ctx);
     if (!ownerId) throw new Error("Necesitás iniciar sesión");
@@ -718,10 +737,13 @@ export const requestOnvoPayment = action({
     }
     const payerPhone = `+506${digits.slice(-8)}`;
     const plan = planOf(args.plan);
+    const onvoMonths = normalizeDurationMonths((args as { months?: unknown }).months ?? 1);
+    const onvoPrice = priceForSubscriptionMonths(plan, onvoMonths);
     const onvoNow = Date.now();
     const onvoPlanChange = Boolean(state.plan) && state.plan !== plan.id;
-    const expiryAt = nextMonthlyExpiry(
+    const expiryAt = expiryForSubscriptionMonths(
       onvoPlanChange ? onvoNow : renewalBase(state.activeUntil ?? undefined, onvoNow),
+      onvoMonths,
       Math.min(23, Math.max(0, Math.round(args.expiryHour))),
       Math.min(59, Math.max(0, Math.round(args.expiryMinute))),
     );
@@ -730,11 +752,12 @@ export const requestOnvoPayment = action({
       ownerId,
       role: state.role,
       plan: plan.id,
-      price: plan.price,
+      price: onvoPrice,
       reference,
       note: args.note?.trim() || undefined,
       expiryAt,
       payerPhone,
+      months: onvoMonths,
     });
 
     try {
@@ -746,9 +769,9 @@ export const requestOnvoPayment = action({
         method: "POST",
         headers,
         body: JSON.stringify({
-          amount: plan.price * 100,
+          amount: onvoPrice * 100,
           currency: "CRC",
-          description: `Suscripción Shop To Go ${plan.name} ${reference}`,
+          description: `Suscripción Shop To Go ${plan.name} ${onvoMonths}m ${reference}`,
           metadata: { paymentReference: reference, accountId: String(ownerId) },
         }),
       });
@@ -842,9 +865,10 @@ export const requestOnvoPayment = action({
         paymentId,
         intentId,
         reference,
-        price: plan.price,
+        price: onvoPrice,
         expiryAt,
         destinationPhone,
+        months: onvoMonths,
       };
     } catch (error) {
       await ctx.runMutation(internal.subscriptions.failOnvoPayment, {
@@ -1182,6 +1206,7 @@ export const adminOverview = query({
           note: payment.note ?? null,
           expiryAt: payment.expiryAt,
           reportedAt: payment.reportedAt,
+          months: payment.months ?? 1,
           receiptUrl: payment.receiptStorageId
             ? ((await ctx.storage.getUrl(payment.receiptStorageId)) ?? null)
             : null,
@@ -1211,6 +1236,12 @@ export const adminOverview = query({
           status,
           hasAccess: hasSubscriptionAccess(status),
           pending: pending.some((payment) => payment.ownerId === user._id),
+          lastMonths: payments
+            .filter((payment) => payment.ownerId === user._id)
+            .sort((a, b) => b.reportedAt - a.reportedAt)[0]?.months ?? null,
+          lastPrice: payments
+            .filter((payment) => payment.ownerId === user._id)
+            .sort((a, b) => b.reportedAt - a.reportedAt)[0]?.price ?? null,
         };
       })
       .filter((account) => {
@@ -1252,6 +1283,7 @@ export const adminOverview = query({
           reportedAt: payment.reportedAt,
           reviewedAt: payment.reviewedAt ?? null,
           reviewNote: payment.reviewNote ?? null,
+          months: payment.months ?? 1,
           receiptUrl: payment.receiptStorageId
             ? ((await ctx.storage.getUrl(payment.receiptStorageId)) ?? null)
             : null,
@@ -1305,8 +1337,14 @@ export const adminReviewPayment = mutation({
     const existing = await subscriptionDoc(ctx, payment.ownerId);
     const plan = planOf(payment.plan);
     const planChanged = Boolean(existing?.plan) && existing?.plan !== plan.id;
+    const paymentMonths = normalizeDurationMonths(payment.months ?? 1);
     const expiryParts = costaRicaParts(payment.expiryAt);
-    const freshExpiry = nextMonthlyExpiry(now, expiryParts.hour, expiryParts.minute);
+    const freshExpiry = expiryForSubscriptionMonths(
+      now,
+      paymentMonths,
+      expiryParts.hour,
+      expiryParts.minute,
+    );
     const activeUntil = planChanged
       ? Math.max(freshExpiry, now + DAY_MS)
       : Math.max(
@@ -1351,8 +1389,14 @@ export const confirmOnvoPayment = internalMutation({
     const existing = await subscriptionDoc(ctx, payment.ownerId);
     const plan = planOf(payment.plan);
     const planChanged = Boolean(existing?.plan) && existing?.plan !== plan.id;
+    const confirmedMonths = normalizeDurationMonths(payment.months ?? 1);
     const expiryParts = costaRicaParts(payment.expiryAt);
-    const freshExpiry = nextMonthlyExpiry(now, expiryParts.hour, expiryParts.minute);
+    const freshExpiry = expiryForSubscriptionMonths(
+      now,
+      confirmedMonths,
+      expiryParts.hour,
+      expiryParts.minute,
+    );
     const activeUntil = planChanged
       ? Math.max(freshExpiry, now + DAY_MS)
       : Math.max(
@@ -1384,23 +1428,23 @@ export const adminGrant = mutation({
       throw new Error("Esa cuenta no es de negocio ni de repartidor");
     }
     const plan = planOf(args.plan);
-    const months = Math.min(12, Math.max(1, Math.round(args.months ?? 1)));
+    const months = normalizeDurationMonths(args.months ?? 1);
     const existing = await subscriptionDoc(ctx, user._id);
     const now = Date.now();
     const grantPlanChange = Boolean(existing?.plan) && existing?.plan !== plan.id;
-    let activeUntil = grantPlanChange ? now : renewalBase(existing?.activeUntil, now);
-    for (let index = 0; index < months; index += 1) {
-      activeUntil = nextMonthlyExpiry(activeUntil, 20, 0);
-    }
+    const grantBase = grantPlanChange ? now : renewalBase(existing?.activeUntil, now);
+    const activeUntil = expiryForSubscriptionMonths(grantBase, months, 20, 0);
+    const grantPrice = priceForSubscriptionMonths(plan, months);
 
     await ctx.db.insert("subscriptionPayments", {
       ownerId: user._id,
       role: user.role,
       plan: plan.id,
-      price: plan.price * months,
+      price: grantPrice,
       method: "cash",
       reference: "Activación manual del administrador",
       note: `Activación de ${months} ${months === 1 ? "mes" : "meses"}`,
+      months,
       expiryAt: activeUntil,
       reportedAt: now,
       status: "approved",
