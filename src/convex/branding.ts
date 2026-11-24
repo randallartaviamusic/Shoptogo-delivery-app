@@ -16,6 +16,9 @@ export const MAX_LOGO_SIZE = 88;
 const APP_ICON_MAX_BYTES = 8 * 1024 * 1024;
 const APP_SPLASH_MAX_BYTES = 30 * 1024 * 1024;
 const NOTIFICATION_SOUND_MAX_BYTES = 2 * 1024 * 1024;
+const SHARE_QR_MAX_BYTES = 5 * 1024 * 1024;
+
+export const DEFAULT_SHARE_APP_URL = "https://shoptogo.freebuff.app";
 
 export const DEFAULT_BRAND_TITLE = "Shop To Go";
 export const DEFAULT_BRAND_TITLE_COLOR = "#f7f5f0";
@@ -93,6 +96,98 @@ export const appBranding = query({
       splashKind: doc?.splashKind ?? null,
       updatedAt: doc?.updatedAt ?? null,
     };
+  },
+});
+
+/**
+ * Configuración de las tarjetas para compartir fuera de la app: imagen del
+ * QR que sube el administrador y link de descarga de la app. Es pública
+ * porque cada tarjeta la dibuja el teléfono de quien comparte.
+ */
+export const shareConfig = query({
+  args: {},
+  handler: async (ctx) => {
+    const doc = await brandDoc(ctx);
+    return {
+      qrUrl: doc?.shareQrUrl ?? null,
+      appUrl: doc?.shareAppUrl?.trim() || DEFAULT_SHARE_APP_URL,
+    };
+  },
+});
+
+export const generateShareQrUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Guarda la imagen del QR y borra la anterior para no acumular archivos. */
+export const setShareQr = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, { storageId }) => {
+    await requireAdmin(ctx);
+    const metadata = await ctx.storage.getMetadata(storageId);
+    if (!metadata) throw new Error("No pudimos leer el QR");
+    if (!metadata.contentType?.startsWith("image/")) {
+      throw new Error("El QR tiene que ser una imagen");
+    }
+    if (metadata.size > SHARE_QR_MAX_BYTES) {
+      throw new Error("El QR no puede pesar más de 5 MB");
+    }
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("No pudimos guardar el QR");
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      const previous = doc.shareQrStorageId;
+      await ctx.db.patch(doc._id, {
+        shareQrUrl: url,
+        shareQrStorageId: storageId,
+        updatedAt: Date.now(),
+      });
+      if (previous && previous !== storageId) {
+        try {
+          await ctx.storage.delete(previous);
+        } catch {
+          // El archivo anterior ya no estaba: no impide guardar el nuevo.
+        }
+      }
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        shareQrUrl: url,
+        shareQrStorageId: storageId,
+        updatedAt: Date.now(),
+      });
+    }
+    return url;
+  },
+});
+
+/** Link de descarga que llevan las tarjetas compartidas. */
+export const setShareAppUrl = mutation({
+  args: { url: v.string() },
+  handler: async (ctx, { url }) => {
+    await requireAdmin(ctx);
+    const clean = url.trim().slice(0, 300);
+    if (!/^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(clean)) {
+      throw new Error("Escribí un link válido que empiece con https://");
+    }
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, {
+        shareAppUrl: clean,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        shareAppUrl: clean,
+        updatedAt: Date.now(),
+      });
+    }
+    return clean;
   },
 });
 

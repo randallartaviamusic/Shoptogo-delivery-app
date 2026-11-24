@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/AppShell";
 import { ProductOptionsDialog } from "@/components/ProductOptionsDialog";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
+import { ShareProductButton } from "@/components/ShareButtons";
 import {
   DeckActions,
   SwipeCard,
@@ -537,6 +538,17 @@ export default function SwipePage() {
             onPass={() => void topCard.current?.decide("pass")}
             onSave={() => void topCard.current?.decide("save")}
             onLike={() => void topCard.current?.decide("like")}
+            shareSlot={
+              visible.length > 0 ? (
+                <span className="flex size-12 items-center justify-center">
+                  <ShareProductButton
+                    dish={visible[0]}
+                    className="size-12 border border-accent/40 bg-accent/10 text-accent hover:scale-105 hover:bg-accent/20 hover:text-accent"
+                    iconClassName="size-5"
+                  />
+                </span>
+              ) : undefined
+            }
           />
 
           <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/60">

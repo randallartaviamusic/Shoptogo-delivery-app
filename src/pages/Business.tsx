@@ -3,6 +3,7 @@ import BusinessServices from "@/components/BusinessServices";
 import { EmptyState } from "@/components/AppShell";
 import { CashIssueNote } from "@/components/CashIssueNote";
 import { StarPicker } from "@/components/StarPicker";
+import { ShareStoreButton } from "@/components/ShareButtons";
 import { CoverUpload } from "@/components/CoverUpload";
 import { DeliveryTrackingMap } from "@/components/DeliveryTracking";
 import { SubscriptionReminder } from "@/components/SubscriptionReminder";
@@ -983,6 +984,14 @@ export default function BusinessPage() {
             <Settings2 className="size-4" />
             Editar local
           </Button>
+          <ShareStoreButton
+            businessName={business.name}
+            tagline={business.tagline}
+            image={business.image}
+            productPhotos={products
+              .map((product) => product.image)
+              .filter((image): image is string => Boolean(image))}
+          />
           <div className="flex flex-col items-end gap-1">
             <div
               className={cn(

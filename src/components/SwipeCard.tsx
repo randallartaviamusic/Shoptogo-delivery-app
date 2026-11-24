@@ -18,7 +18,13 @@ import {
   useTransform,
 } from "framer-motion";
 import { Clock, MapPin, SlidersHorizontal, Star } from "lucide-react";
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type Dish = {
   _id: string;
@@ -267,6 +273,7 @@ export function DeckActions({
   onUndo,
   disabled,
   canUndo,
+  shareSlot,
 }: {
   onPass: () => void;
   onSave: () => void;
@@ -274,6 +281,7 @@ export function DeckActions({
   onUndo: () => void;
   disabled: boolean;
   canUndo: boolean;
+  shareSlot?: ReactNode;
 }) {
   return (
     <div className="mt-5 flex items-center justify-center gap-3 sm:gap-4">
@@ -320,6 +328,7 @@ export function DeckActions({
       >
         <Star className="size-5" />
       </Button>
+      {shareSlot}
       <Button
         size="icon"
         aria-label="Lo quiero"

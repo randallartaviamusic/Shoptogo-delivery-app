@@ -964,6 +964,11 @@ const schema = defineSchema(
       welcomeOfferDays: v.optional(v.number()),
       welcomeOfferTitle: v.optional(v.string()),
       welcomeOfferDescription: v.optional(v.string()),
+      // Tarjetas para compartir fuera de la app: QR que sube el admin y link
+      // de descarga que configura desde su panel.
+      shareQrUrl: v.optional(v.string()),
+      shareQrStorageId: v.optional(v.id("_storage")),
+      shareAppUrl: v.optional(v.string()),
       updatedAt: v.optional(v.number()),
     }).index("by_key", ["key"]),
   },
