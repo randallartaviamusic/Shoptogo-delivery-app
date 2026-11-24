@@ -19,6 +19,7 @@ import type * as catalog from "../catalog.js";
 import type * as coupons from "../coupons.js";
 import type * as couriers from "../couriers.js";
 import type * as crons from "../crons.js";
+import type * as extraServices from "../extraServices.js";
 import type * as http from "../http.js";
 import type * as maps from "../maps.js";
 import type * as marketing from "../marketing.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   coupons: typeof coupons;
   couriers: typeof couriers;
   crons: typeof crons;
+  extraServices: typeof extraServices;
   http: typeof http;
   maps: typeof maps;
   marketing: typeof marketing;

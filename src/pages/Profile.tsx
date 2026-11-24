@@ -4,6 +4,7 @@ import { BRAND_FONT_OPTIONS, fontStack } from "@/components/Brand";
 import { PageHeader } from "@/components/AppShell";
 import { AdminMetrics } from "@/components/AdminMetrics";
 import { DemoCatalogAdmin } from "@/components/DemoCatalogAdmin";
+import { ExtraServicesAdmin } from "@/components/ExtraServicesAdmin";
 import { StoreCatalogAdmin } from "@/components/StoreCatalogAdmin";
 import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
 import { SupportAdmin } from "@/components/SupportAdmin";
@@ -83,6 +84,7 @@ import {
   UserRound,
   Users,
   Wallet,
+  Wrench,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -128,6 +130,7 @@ const ADMIN_TABS = [
   { value: "ayuda", label: "Ayuda", icon: LifeBuoy },
   { value: "planes", label: "Planes", icon: Crown },
   { value: "demo", label: "Demo", icon: FlaskConical },
+  { value: "servicios", label: "Servicios", icon: Wrench },
   { value: "tiendas", label: "Tiendas", icon: Store },
   { value: "cuentas", label: "Cuentas", icon: Users },
 ] as const;
@@ -1074,6 +1077,7 @@ export default function ProfilePage() {
       {isAdmin && adminTab === "ayuda" && <SupportAdmin />}
       {isAdmin && adminTab === "planes" && <SubscriptionAdmin />}
       {isAdmin && adminTab === "demo" && <DemoCatalogAdmin />}
+      {isAdmin && adminTab === "servicios" && <ExtraServicesAdmin />}
       {isAdmin && adminTab === "tiendas" && <StoreCatalogAdmin />}
 
       {isAdmin && adminTab === "cuentas" && (

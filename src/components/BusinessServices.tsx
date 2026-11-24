@@ -1,67 +1,32 @@
 import { Button } from "@/components/ui/button";
+import { api } from "@/convex/_generated/api";
 import { money } from "@/lib/format";
+import { DEFAULT_EXTRA_SERVICES } from "@/lib/extraServices";
 import { whatsappHref } from "@/lib/subscriptions";
+import { useQuery } from "convex/react";
 import {
+  Bike,
   Camera,
+  Gift,
   Images,
+  Loader2,
   Megaphone,
   MessageCircle,
   Printer,
   Sparkles,
+  Store,
 } from "lucide-react";
 
-type ExtraService = {
-  icon: typeof Camera;
-  name: string;
-  price: number;
-  headline: string;
-  details: string[];
-};
-
-const EXTRA_SERVICES: ExtraService[] = [
-  {
-    icon: Camera,
-    name: "Tienda lista con 10 productos",
-    price: 10000,
-    headline: "Ideal si no tenés tiempo",
-    details: [
-      "Un colaborador de Shop To Go configura el perfil de tu tienda.",
-      "Publica 10 productos de tu tienda en la plataforma.",
-      "Incluye tomar las fotos de los productos en tu local.",
-    ],
-  },
-  {
-    icon: Images,
-    name: "Tienda lista con hasta 40 productos",
-    price: 25000,
-    headline: "Para catálogos grandes",
-    details: [
-      "Un colaborador de Shop To Go configura el perfil de tu tienda.",
-      "Publica desde 11 hasta 40 productos de tu tienda en la plataforma.",
-      "Incluye tomar las fotos de los productos en tu local.",
-    ],
-  },
-  {
-    icon: Megaphone,
-    name: "Publicidad en redes por 1 día",
-    price: 10000,
-    headline: "Que todos se enteren",
-    details: [
-      "Promoción paga (ads) de 1 día en las redes sociales de Shop To Go.",
-      "Anunciamos tu tienda para que las personas sepan que pueden comprar por medio de la app.",
-    ],
-  },
-  {
-    icon: Printer,
-    name: "Material publicitario para tu local",
-    price: 10000,
-    headline: "Tu tienda física también vende",
-    details: [
-      "1 afiche grande para pegar en tu tienda física.",
-      "18 stickers con el código QR de la plataforma.",
-    ],
-  },
-];
+const SERVICE_ICONS = {
+  camera: Camera,
+  images: Images,
+  megaphone: Megaphone,
+  printer: Printer,
+  sparkles: Sparkles,
+  store: Store,
+  bike: Bike,
+  gift: Gift,
+} as const;
 
 export default function BusinessServices({
   businessName,
@@ -70,6 +35,9 @@ export default function BusinessServices({
   businessName: string;
   whatsappNumber: string;
 }) {
+  const remote = useQuery(api.extraServices.active);
+  const services = remote ?? DEFAULT_EXTRA_SERVICES;
+
   return (
     <div className="space-y-4">
       <div className="surface-raised overflow-hidden rounded-3xl">
@@ -88,60 +56,72 @@ export default function BusinessServices({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {EXTRA_SERVICES.map((service) => (
-          <div
-            key={service.name}
-            className="surface-raised flex flex-col rounded-3xl p-5"
-          >
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-ember-gradient">
-              <service.icon className="size-5 text-black" />
-            </div>
-            <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-accent">
-              {service.headline}
-            </p>
-            <h3 className="mt-1 font-display text-lg font-extrabold leading-tight">
-              {service.name}
-            </h3>
-            <p className="mt-1 font-display text-xl font-extrabold text-accent">
-              {money(service.price)}
-              <span className="ml-1 text-[11px] font-semibold text-muted-foreground">
-                pago único
-              </span>
-            </p>
-            <ul className="mt-3 flex-1 space-y-1.5">
-              {service.details.map((detail) => (
-                <li
-                  key={detail}
-                  className="flex items-start gap-2 text-[12px] leading-relaxed text-muted-foreground"
-                >
-                  <span
-                    aria-hidden
-                    className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent"
-                  />
-                  <span>{detail}</span>
-                </li>
-              ))}
-            </ul>
-            <Button
-              asChild
-              className="mt-4 w-full gap-2 bg-ember-gradient text-black"
-            >
-              <a
-                href={whatsappHref(
-                  whatsappNumber,
-                  `Hola Shop To Go, soy de la tienda ${businessName} y quiero contratar el servicio adicional: ${service.name} (${money(service.price)} pago único).`,
-                )}
-                target="_blank"
-                rel="noreferrer"
+      {remote === undefined ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="size-6 animate-spin text-primary" />
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {services.map((service) => {
+            const Icon =
+              SERVICE_ICONS[
+                service.icon as keyof typeof SERVICE_ICONS
+              ] ?? Sparkles;
+            return (
+              <div
+                key={`${service.name}-${service.price}`}
+                className="surface-raised flex flex-col rounded-3xl p-5"
               >
-                <MessageCircle className="size-4" />
-                Solicitar por WhatsApp
-              </a>
-            </Button>
-          </div>
-        ))}
-      </div>
+                <div className="flex size-11 items-center justify-center rounded-2xl bg-ember-gradient">
+                  <Icon className="size-5 text-black" />
+                </div>
+                <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.16em] text-accent">
+                  {service.headline}
+                </p>
+                <h3 className="mt-1 font-display text-lg font-extrabold leading-tight">
+                  {service.name}
+                </h3>
+                <p className="mt-1 font-display text-xl font-extrabold text-accent">
+                  {money(service.price)}
+                  <span className="ml-1 text-[11px] font-semibold text-muted-foreground">
+                    pago único
+                  </span>
+                </p>
+                <ul className="mt-3 flex-1 space-y-1.5">
+                  {service.details.map((detail) => (
+                    <li
+                      key={detail}
+                      className="flex items-start gap-2 text-[12px] leading-relaxed text-muted-foreground"
+                    >
+                      <span
+                        aria-hidden
+                        className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent"
+                      />
+                      <span>{detail}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  asChild
+                  className="mt-4 w-full gap-2 bg-ember-gradient text-black"
+                >
+                  <a
+                    href={whatsappHref(
+                      whatsappNumber,
+                      `Hola Shop To Go, soy de la tienda ${businessName} y quiero contratar el servicio adicional: ${service.name} (${money(service.price)} pago único).`,
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <MessageCircle className="size-4" />
+                    Solicitar por WhatsApp
+                  </a>
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
         Al solicitar, se abre tu WhatsApp con el mensaje listo. Coordinamos el

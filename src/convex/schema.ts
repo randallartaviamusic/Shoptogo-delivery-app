@@ -897,6 +897,19 @@ const schema = defineSchema(
       .index("by_business", ["businessId"])
       .index("by_code", ["code"]),
 
+    // Servicios adicionales de pago único que el admin ofrece a los negocios
+    // (configuración de tienda, publicidad, material impreso). El admin los
+    // crea, edita, activa o elimina desde su panel.
+    extraServices: defineTable({
+      name: v.string(),
+      headline: v.string(),
+      price: v.number(),
+      details: v.array(v.string()),
+      icon: v.string(),
+      isActive: v.boolean(),
+      sortOrder: v.number(),
+    }).index("by_active", ["isActive"]),
+
     // Caché de rutas y geocodificación. Evita repetir consultas al proveedor y
     // respeta los límites de uso de los servicios públicos.
     routeCache: defineTable({
