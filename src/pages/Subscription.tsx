@@ -650,7 +650,7 @@ export default function SubscriptionPage() {
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                   {pending.method === "onvo"
                     ? `Esperando la confirmación automática de ONVO por ${money(pending.price)}. No necesitás enviar un comprobante.`
-                    : `Reportaste ${money(pending.price)} del plan ${planOf(pending.plan).name} por ${PAYMENT_METHODS.find((option) => option.id === pending.method)?.label}. Tu plan ya está activo y un administrador lo revisará; si el pago no aparece, se desactiva en 3 días.`}
+                    : `Reportaste ${money(pending.price)} del plan ${planOf(pending.plan).name} por ${PAYMENT_METHODS.find((option) => option.id === pending.method)?.label ?? pending.method}. Tu plan ya está activo y un administrador lo revisará; si el pago no aparece, se desactiva en 3 días.`}
                 </p>
               </div>
               <span className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-[11px] font-semibold text-accent">
@@ -875,9 +875,7 @@ export default function SubscriptionPage() {
                     >
                       <span className="block text-xs font-semibold">{option.label}</span>
                       <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
-                        {option.id === "onvo" && !data.onvoConfigured
-                          ? "Automático no disponible hasta configurar el proveedor."
-                          : option.hint}
+                        {option.hint}
                       </span>
                     </button>
                   ))}
@@ -942,34 +940,7 @@ export default function SubscriptionPage() {
                 (hora de Costa Rica) por {durationLabel(months)}. Si todavía tenés tiempo activo, la renovación se suma a ese vencimiento solo si renovas el mismo plan; si cambias de plan los meses nuevos corren desde hoy.
               </p>
 
-              {method === "onvo" ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="onvo-identification-type">Tipo de identificación de la cuenta SINPE</Label>
-                    <Select value={identificationType} onValueChange={setIdentificationType}>
-                      <SelectTrigger id="onvo-identification-type"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">Persona física nacional</SelectItem>
-                        <SelectItem value="1">Persona física residente</SelectItem>
-                        <SelectItem value="2">Entidad estatal</SelectItem>
-                        <SelectItem value="3">Persona jurídica</SelectItem>
-                        <SelectItem value="4">Institución autónoma</SelectItem>
-                        <SelectItem value="5">Diplomático</SelectItem>
-                        <SelectItem value="9">Persona extranjera</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="onvo-identification">Identificación del titular</Label>
-                    <Input id="onvo-identification" value={payerIdentification} onChange={(event) => setPayerIdentification(event.target.value)} placeholder="Como aparece en el banco" autoComplete="off" />
-                  </div>
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label htmlFor="onvo-phone">Número SINPE de quien transfiere</Label>
-                    <Input id="onvo-phone" value={payerPhone} onChange={(event) => setPayerPhone(event.target.value)} placeholder="8 dígitos, por ejemplo 8888-8888" inputMode="tel" autoComplete="tel" />
-                    <p className="text-[10px] text-muted-foreground">ONVO empareja la transferencia con el monto exacto y la identificación de esta cuenta. No guardamos la cédula en el historial de pago.</p>
-                  </div>
-                </div>
-              ) : method === "cash" ? (
+              {method === "cash" ? (
                 <div className="space-y-3 rounded-2xl border border-accent/30 bg-accent/[0.05] p-3.5">
                   <div>
                     <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
@@ -1123,9 +1094,8 @@ export default function SubscriptionPage() {
                 disabled={
                   submitting ||
                   uploadingReceipt ||
-                  (method === "onvo"
-                    ? !data.onvoConfigured || !payerIdentification.trim() || !payerPhone.trim()
-                    : reference.trim().length < 3 || !receiptStorageId)
+                  reference.trim().length < 3 ||
+                  !receiptStorageId
                 }
                 onClick={() => void handleSubmit()}
               >
@@ -1134,12 +1104,10 @@ export default function SubscriptionPage() {
                 ) : (
                   <CheckCircle2 className="size-4" />
                 )}
-                {method === "onvo" ? `Crear pago SINPE automático · ${money(totalPrice)}` : `Ya pagué · activar ${durationLabel(months)} · ${money(totalPrice)}`}
+                {`Ya pagué · activar ${durationLabel(months)} · ${money(totalPrice)}`}
               </Button>
               <p className="text-center text-[10px] leading-relaxed text-muted-foreground">
-                {method === "onvo"
-                  ? `Se activa automáticamente sólo después de la confirmación de pago firmada por ONVO (${money(totalPrice)} por ${durationLabel(months)}).`
-                  : "Tu plan se activa al instante al darle al botón. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días."}
+                Tu plan se activa al instante al darle al botón. Un administrador evaluará que el pago se efectúe correctamente; si hubo un error o no se realizó, el plan será desactivado en 3 días.
               </p>
                 </>
               )}
@@ -1241,7 +1209,7 @@ export default function SubscriptionPage() {
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    {PAYMENT_METHODS.find((option) => option.id === payment.method)?.label}{" "}
+                    {PAYMENT_METHODS.find((option) => option.id === payment.method)?.label ?? payment.method}{" "}
                     · ref. {payment.reference} · reportado{" "}
                     {new Intl.DateTimeFormat("es-CR", {
                       dateStyle: "medium",

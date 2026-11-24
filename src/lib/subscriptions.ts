@@ -429,11 +429,6 @@ export const PAYMENT_METHODS: Array<{
     hint: "Transferí al número indicado y guardá el comprobante.",
   },
   {
-    id: "onvo",
-    label: "SINPE automático",
-    hint: "ONVO confirma la transferencia con identidad y monto exactos.",
-  },
-  {
     id: "cash",
     label: "Efectivo",
     hint: "Coordinamos el retiro del pago en tu dirección por WhatsApp.",
