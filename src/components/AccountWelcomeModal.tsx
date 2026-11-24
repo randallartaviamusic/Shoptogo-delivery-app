@@ -86,9 +86,9 @@ const COPY: Record<SubscriptionAudience, AudienceCopy> = {
     eyebrow: "Cuenta de repartidor",
     title: "Tus entregas, tus ganancias",
     subtitle:
-      "Shop To Go te manda ofertas de entrega cerca de vos. Aceptás las que querás, retirás con código, entregás con PIN y cobrás por cada envío. Sin jefes ni horarios fijos: vos decidís cuándo salir a ganar.",
+      "Shop To Go te manda ofertas de entrega cerca de vos. Aceptás las que querás, retirás con código, entregás con PIN y cobrás por cada envío. Ganás el 100% de lo que cobrás por cada entrega. Sin jefes ni horarios fijos: vos decidís cuándo salir a ganar.",
     what: [
-      "Ofertas de entrega cercanas con la ganancia clara antes de aceptar.",
+      "Ofertas de entrega cercanas con la ganancia clara antes de aceptar. Ganás el 100% de lo que cobrás por cada entrega.",
       "Retiro con código del local y entrega con PIN del comprador: todo queda registrado.",
       "Seguimiento en vivo, historial y control de efectivo desde tu panel.",
     ],
