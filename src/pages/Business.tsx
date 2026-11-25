@@ -1120,7 +1120,7 @@ export default function BusinessPage() {
                     ASSIGNMENT_RULES.cancelAfterMinutes * 60_000;
               return (
                                 <div key={order._id} className="surface-raised rounded-3xl p-4 sm:p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="flex flex-wrap items-center gap-2 font-display text-sm font-bold">
                       {order.code}
