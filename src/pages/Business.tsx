@@ -183,7 +183,7 @@ export default function BusinessPage() {
   // La pestaña predeterminada del perfil es la de la portada y el nombre de la
   // tienda. Cuando el negocio no ha tocado esa sección, se abre directo ahí.
   const navigate = useNavigate();
-  const tab = params.get("tab") ?? "portada";
+  const tab = params.get("tab") ?? "orders";
 
   const mine = useQuery(api.businesses.mine);
   const board = useQuery(api.orders.businessBoard);
@@ -1069,6 +1069,19 @@ export default function BusinessPage() {
       <SubscriptionReminder />
       <VerificationBanner />
 
+      {tab === "orders" && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
+          <OrderAlertsSettings
+            audience="business"
+            whatsappPhone={business.whatsappPhone}
+          />
+        </motion.div>
+      )}
+
       {tab === "couriers" && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -1339,11 +1352,6 @@ export default function BusinessPage() {
               </Button>
             </div>
           )}
-
-          <OrderAlertsSettings
-            audience="business"
-            whatsappPhone={business.whatsappPhone}
-          />
 
           <TextSizeControl contextLabel="Se aplica en toda la plataforma y se guarda en este teléfono, también para tu cuenta de negocio." />
 
