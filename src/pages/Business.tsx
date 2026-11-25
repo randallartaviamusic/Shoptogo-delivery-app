@@ -175,7 +175,6 @@ function HeaderTabPicker({
           </button>
         ))}
       </div>
-    </div>
   )
 }
 
