@@ -53,11 +53,12 @@ function foodTipo(category: string) {
 const CUISINE_BY_CATEGORY: Record<string, string> = {
   "Comida rápida": "Comida rápida",
   Pollo: "Comida rápida",
-  Pizza: "Comida italiana",
-  Pastas: "Comida italiana",
-  Sushi: "Comida japonesa",
-  "Comida japonesa": "Comida japonesa",
-  "Comida asiática": "Comida japonesa",
+  "Pollo Frito": "Pollo Frito",
+  Pizza: "Pizza",
+  Sushi: "Sushi",
+  "Comida japonesa": "Sushi",
+  "Comida asiática": "Comida China",
+  "Comida china": "Comida China",
   "Comida mexicana": "Comida mexicana",
   "Comida peruana": "Comida peruana",
   "Comida caribeña": "Comida caribeña",
@@ -65,10 +66,14 @@ const CUISINE_BY_CATEGORY: Record<string, string> = {
   "Comida tradicional": "Comida casera o tradicional",
   "Comida casera": "Comida casera o tradicional",
   "Comida gourmet": "Comida gourmet",
-  "Comida saludable": "Comida casera o tradicional",
-  Postres: "Otra",
-  Café: "Otra",
+  "Comida saludable": "Saludable",
+  "Mariscos": "Mariscos",
+  Pastas: "Otra",
+  Postres: "Postres",
+  Café: "Café",
+  "Comida italiana": "Comida italiana",
 };
+
 
 function cuisineFor(category: string) {
   return CUISINE_BY_CATEGORY[category] ?? "Otra";
