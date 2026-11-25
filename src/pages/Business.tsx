@@ -1079,633 +1079,7 @@ export default function BusinessPage() {
             audience="business"
             whatsappPhone={business.whatsappPhone}
           />
-        </motion.div>
-      )}
 
-      {tab === "couriers" && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-5"
-        >
-          <div className="surface-raised rounded-3xl p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <Heart className="size-5 fill-current" />
-                </span>
-                <div>
-                  <p className="font-display text-lg font-bold">
-                    Tus repartidores favoritos
-                  </p>
-                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
-                    Marcá con un corazón a los repartidores que preferís. Cuando
-                    un pedido de tu local esté listo, primero se les ofrece a
-                    ellos si están disponibles. Si ninguno lo toma en{" "}
-                    {ASSIGNMENT_RULES.favoritePriorityMinutes} minutos, la
-                    entrega se libera a cualquier otro repartidor.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[10px] font-semibold text-primary">
-                  {couriersDirectory?.favorites ?? 0} favoritos
-                </span>
-                <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[10px] font-semibold text-accent">
-                  {couriersDirectory?.couriers.filter((courier) => courier.available)
-                    .length ?? 0}{" "}
-                  disponibles ahora
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <section>
-            <div className="mb-3">
-              <h2 className="font-display text-lg font-bold">
-                Repartidores de Shop To Go
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Todos los repartidores registrados en la plataforma. Los
-                favoritos de tu local aparecen primero.
-              </p>
-            </div>
-
-            {couriersDirectory === undefined ? (
-              <div className="flex h-32 items-center justify-center">
-                <Loader2 className="size-5 animate-spin text-primary" />
-              </div>
-            ) : !couriersDirectory || couriersDirectory.couriers.length === 0 ? (
-              <EmptyState
-                icon={Users}
-                title="Todavía no hay repartidores registrados"
-                description="Cuando se sumen repartidores a la plataforma, van a aparecer acá para que los marques como favoritos."
-              />
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {couriersDirectory.couriers.map((courier) => (
-                  <article
-                    key={courier._id}
-                    className={cn(
-                      "surface-raised rounded-2xl p-4",
-                      courier.favorite && "border-primary/40",
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <DishImage
-                        src={courier.image}
-                        alt={courier.name}
-                        className="size-12 shrink-0 rounded-full"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="flex flex-wrap items-center gap-1.5 font-display text-sm font-bold">
-                          <span className="truncate">{courier.name}</span>
-                          {courier.verified && (
-                            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-accent/35 bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent">
-                              <BadgeCheck className="size-3" /> Verificado
-                            </span>
-                          )}
-                        </p>
-                        <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-                          <Bike className="size-3 shrink-0" /> {courier.vehicle}
-                        </p>
-                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-                          <span className="inline-flex items-center gap-0.5 text-accent">
-                            <Star className="size-3 fill-current" />
-                            {courier.rating !== null
-                              ? courier.rating.toFixed(1)
-                              : "Sin nota"}
-                            {courier.reviews > 0 && ` (${courier.reviews})`}
-                          </span>
-                          <span>
-                            · {courier.deliveries}{" "}
-                            {courier.deliveries === 1 ? "entrega" : "entregas"}
-                          </span>
-                        </p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={
-                          courier.favorite
-                            ? `Quitar a ${courier.name} de favoritos`
-                            : `Marcar a ${courier.name} como favorito`
-                        }
-                        aria-pressed={courier.favorite}
-                        disabled={favoriteBusy !== null}
-                        onClick={() =>
-                          void handleToggleFavoriteCourier(courier._id)
-                        }
-                        className={cn(
-                          "size-9 shrink-0 rounded-full border",
-                          courier.favorite
-                            ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
-                            : "border-border/70 text-muted-foreground hover:text-primary",
-                        )}
-                      >
-                        {favoriteBusy === courier._id ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Heart
-                            className={cn(
-                              "size-5",
-                              courier.favorite && "fill-current",
-                            )}
-                          />
-                        )}
-                      </Button>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px]">
-                      <span
-                        className={cn(
-                          "rounded-full border px-2 py-0.5 font-semibold",
-                          courier.available
-                            ? "border-accent/40 bg-accent/10 text-accent"
-                            : courier.online
-                              ? "border-border/70 bg-secondary/30 text-muted-foreground"
-                              : "border-border/60 text-muted-foreground/70",
-                        )}
-                      >
-                        {courier.available
-                          ? "Disponible ahora"
-                          : courier.online
-                            ? "En línea"
-                            : "Desconectado"}
-                      </span>
-                      {courier.favorite && (
-                        <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 font-semibold text-primary">
-                          Favorito de tu local
-                        </span>
-                      )}
-                      {courier.activeDeliveries > 0 && (
-                        <span className="rounded-full border border-border/70 bg-secondary/30 px-2 py-0.5 text-muted-foreground">
-                          {courier.activeDeliveries}{" "}
-                          {courier.activeDeliveries === 1
-                            ? "entrega en curso"
-                            : "entregas en curso"}
-                        </span>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section>
-            <div className="mb-3">
-              <h2 className="font-display text-lg font-bold">
-                Calificá a tus repartidores
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Cada entrega completada se puede reseñar una vez. Tu
-                calificación se suma al promedio del repartidor.
-              </p>
-            </div>
-
-            {pendingCourierReviews === undefined ? (
-              <div className="flex h-24 items-center justify-center">
-                <Loader2 className="size-5 animate-spin text-primary" />
-              </div>
-            ) : pendingCourierReviews.length === 0 ? (
-              <p className="rounded-2xl border border-border/70 bg-secondary/20 px-4 py-3 text-xs text-muted-foreground">
-                No tenés entregas completadas pendientes de calificar.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {pendingCourierReviews.map((row) => (
-                  <div
-                    key={row.orderId}
-                    className="surface-raised flex flex-wrap items-center gap-3 rounded-2xl p-3"
-                  >
-                    <DishImage
-                      src={row.courierImage}
-                      alt={row.courierName}
-                      className="size-10 shrink-0 rounded-full"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">
-                        {row.courierName}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Pedido {row.code} · entregado {relativeTime(row.deliveredAt)}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 border-accent/40 text-accent"
-                      onClick={() => openCourierReview(row)}
-                    >
-                      <Star className="size-3.5" /> Calificar
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </motion.div>
-      )}
-
-      {tab === "portada" && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-4"
-        >
-          <div className="relative overflow-hidden rounded-3xl border border-border/70">
-            <CoverUpload
-              preview={business.image}
-              onChange={(id, localPreview) => {
-                if (!headerBusy) {
-                  setHeaderBusy(true);
-                  void Promise.resolve().then(() => setHeaderBusy(false));
-                }
-              }}
-              hint="Si no subís una, usamos la portada por defecto de tu departamento."
-            />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.1)_0%,rgba(6,6,7,0.92)_100%)]" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-                  {departmentInfo.label} · {business.category}
-                </p>
-                <p className="mt-1 font-display text-2xl font-extrabold text-white">
-                  {business.name}
-                </p>
-                <p className="mt-1 flex items-center gap-2 text-xs text-white/60">
-                  <span className="flex items-center gap-1">
-                    ⭐ {business.rating.toFixed(1)} ({business.reviews})
-                  </span>
-                  · {products.length} productos · ETA {business.etaMinutes} min
-                </p>
-              </div>
-              <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
-                <Link to="/business?tab=menu">
-                  Ver productos
-                  <ArrowRight className="size-3.5" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-
-          {!business.location && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
-              <p className="text-xs leading-relaxed text-primary">
-                Tu local todavía no tiene un punto en el mapa, así que no podemos
-                calcular los envíos ni recibir pedidos.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-primary/40 text-primary"
-                onClick={openSettings}
-              >
-                Fijar ubicación
-              </Button>
-            </div>
-          )}
-
-          {(!business.sinpePhone || !business.whatsappPhone) && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
-              <div className="min-w-0">
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                  <Wallet className="size-3.5" /> Falta tu cobro por SINPE Móvil
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  Agregá el número de SINPE y el WhatsApp de la tienda en los
-                  ajustes. Son obligatorios para que los compradores que no pagan
-                  en efectivo puedan transferirte y mandarte el comprobante.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-primary/40 text-primary"
-                onClick={openSettings}
-              >
-                Completar cobro
-              </Button>
-            </div>
-          )}
-
-          <TextSizeControl contextLabel="Se aplica en toda la plataforma y se guarda en este teléfono, también para tu cuenta de negocio." />
-
-          {business.deliveryPromo && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-accent">
-                  <TicketPercent className="size-3.5" />
-                  {promoLabel(business.deliveryPromo)} activo en toda la tienda
-                </p>
-                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
-                  Cubrís{" "}
-                  {business.deliveryPromo === "free_delivery"
-                    ? "el 100%"
-                    : "la mitad"}{" "}
-                  de la parte de envío de tu tienda en cada entrega. Hoy sumás{" "}
-                  {money(stats?.promoSpendToday ?? 0)} de gasto promocional. Tus
-                  productos se te pagan completos: no es una comisión de Shop To Go.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-accent/40 text-accent"
-                onClick={openSettings}
-              >
-                Cambiar promoción
-              </Button>
-            </div>
-          )}
-
-          {(stats?.cashPending ?? 0) > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/[0.07] p-3.5">
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                  <Wallet className="size-3.5" />
-                  Efectivo pendiente de confirmar
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  Los repartidores tienen {money(stats?.cashPending ?? 0)} de tus
-                  ventas sin confirmar. Confirmá el monto recibido en cada pedido
-                  entregado para cerrar la diferencia.
-                </p>
-              </div>
-              <Button asChild size="sm" variant="outline" className="border-primary/40 text-primary">
-                <Link to="/business?tab=orders">Revisar entregas</Link>
-              </Button>
-            </div>
-          )
-
-          <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip lg:grid-cols-4">
-            <StatCard
-              label="Ingresos hoy"
-              value={money(stats?.revenueToday ?? 0)}
-              hint={`${stats?.deliveredToday ?? 0} entregados · productos ${money(stats?.productSalesToday ?? 0)}`}
-              accent="ember"
-            />
-            <StatCard
-              label="Pedidos activos"
-              value={String(stats?.active ?? 0)}
-              hint={`${stats?.waiting ?? 0} esperando confirmación`}
-              accent="chili"
-            />
-            <StatCard
-              label="Productos"
-              value={String(products.length)}
-              hint={`${products.filter((p) => p.isAvailable).length} visibles`}
-            />
-            <StatCard
-              label="Total histórico"
-              value={String(stats?.totalOrders ?? 0)}
-              hint="pedidos recibidos"
-            />
-          </div>
-
-          {!business.location && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
-              <p className="text-xs leading-relaxed text-primary">
-                Tu local todavía no tiene un punto en el mapa, así que no podemos
-                calcular los envíos ni recibir pedidos.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-primary/40 text-primary"
-                onClick={openSettings}
-              >
-                Fijar ubicación
-              </Button>
-            </div>
-          )
-
-          {(!business.sinpePhone || !business.whatsappPhone) && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
-              <div className="min-w-0">
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                  <Wallet className="size-3.5" /> Falta tu cobro por SINPE Móvil
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  Agregá el número de SINPE y el WhatsApp de la tienda en los
-                  ajustes. Son obligatorios para que los compradores que no pagan
-                  en efectivo puedan transferirte y mandarte el comprobante.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-primary/40 text-primary"
-                onClick={openSettings}
-              >
-                Completar cobro
-              </Button>
-            </div>
-          )
-
-          <TextSizeControl contextLabel="Se aplica en toda la plataforma y se guarda en este teléfono, también para tu cuenta de negocio." />
-
-          {business.deliveryPromo && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-accent">
-                  <TicketPercent className="size-3.5" />
-                  {promoLabel(business.deliveryPromo)} activo en toda la tienda
-                </p>
-                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
-                  Cubrís{" "}
-                  {business.deliveryPromo === "free_delivery"
-                    ? "el 100%"
-                    : "la mitad"}{" "}
-                  de la parte de envío de tu tienda en cada entrega. Hoy sumás{" "}
-                  {money(stats?.promoSpendToday ?? 0)} de gasto promocional. Tus
-                  productos se te pagan completos: no es una comisión de Shop To Go.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-accent/40 text-accent"
-                onClick={openSettings}
-              >
-                Cambiar promoción
-              </Button>
-            </div>
-          )
-
-          {(stats?.cashPending ?? 0) > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/[0.07] p-3.5">
-              <div>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                  <Wallet className="size-3.5" />
-                  Efectivo pendiente de confirmar
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  Los repartidores tienen {money(stats?.cashPending ?? 0)} de tus
-                  ventas sin confirmar. Confirmá el monto recibido en cada pedido
-                  entregado para cerrar la diferencia.
-                </p>
-              </div>
-              <Button asChild size="sm" variant="outline" className="border-primary/40 text-primary">
-                <Link to="/business?tab=orders">Revisar entregas</Link>
-              </Button>
-            </div>
-          )}
-
-          <section className="surface-raised rounded-3xl p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-                  Cierre diario · Costa Rica
-                </p>
-                <h2 className="mt-1 font-display text-lg font-bold">Ventas y caja de hoy</h2>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  El efectivo esperado corresponde a productos entregados, menos las promociones de envío y los cupones financiados por el local.
-                </p>
-              </div>
-              <Button asChild size="sm" variant="outline" className="border-border/80">
-                <Link to="/business?tab=orders">Ver pedidos del día</Link>
-              </Button>
-            </div>
-            <div className="mt-4 grid w-full max-w-full min-w-0 grid-cols-2 gap-2 overflow-x-clip sm:grid-cols-3 lg:grid-cols-4">
-              <StatCard label="Pedidos creados" value={String(stats?.ordersToday ?? 0)} hint={`${stats?.deliveredToday ?? 0} entregados`} />
-              <StatCard label="Ventas de productos" value={money(stats?.productSalesToday ?? 0)} hint="pedidos entregados" />
-              <StatCard label="Promos de envío" value={money(stats?.promoSpendToday ?? 0)} hint={`${board?.dailyReport.promoOrders.length ?? 0} pedidos con promo`} />
-              <StatCard label="Cupones del local" value={money(stats?.couponSpendToday ?? 0)} hint={`${board?.dailyReport.couponOrders.length ?? 0} pedidos con cupón`} />
-              <StatCard label="Efectivo esperado" value={money(stats?.cashDueToday ?? 0)} hint="a recibir por productos" accent="ember" />
-              <StatCard label="Efectivo recibido" value={money(stats?.cashReceivedToday ?? 0)} hint={stats?.cashPendingToday ? `pendiente ${money(stats.cashPendingToday)}` : "cuentas al día"} />
-              <StatCard label="Cancelados" value={String(stats?.cancelledToday ?? 0)} hint="hoy" accent="chili" />
-              <StatCard label="Diferencias de caja" value={String(stats?.cashDifferenceCountToday ?? 0)} hint={`total ${money(stats?.cashDifferenceAmountToday ?? 0)}`} accent={stats?.cashDifferenceCountToday ? "chili" : undefined} />
-            </div>
-
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Cancelaciones ({board?.dailyReport.cancelled.length ?? 0})</p>
-                {(board?.dailyReport.cancelled.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin cancelaciones hoy.</p> : <ul className="mt-2 space-y-2">{board?.dailyReport.cancelled.map((order) => <li key={order.code} className="text-[10px] leading-relaxed"><span className="font-semibold">{order.code} · {order.buyerName} · {money(order.total)}</span><p className="text-muted-foreground">{order.reason}</p></li>)}</ul>}
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Descuentos promocionales ({board?.dailyReport.promoOrders.length ?? 0})</p>
-                {(board?.dailyReport.promoOrders.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin descuentos de envío hoy.</p> : <ul className="mt-2 space-y-1">{board?.dailyReport.promoOrders.map((order) => <li key={order.code} className="flex justify-between gap-2 text-[10px]"><span>{order.code}</span><span className="font-semibold">−{money(order.amount)}</span></li>)}</ul>}
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Cupones aplicados ({board?.dailyReport.couponOrders.length ?? 0})</p>
-                {(board?.dailyReport.couponOrders.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin cupones usados hoy.</p> : <ul className="mt-2 space-y-1">{board?.dailyReport.couponOrders.map((order) => <li key={order.code} className="flex justify-between gap-2 text-[10px]"><span>{order.code} · {order.couponCode}</span><span className="font-semibold">−{money(order.amount)}</span></li>)}</ul>}
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Diferencias de caja ({board?.dailyReport.cashDifferences.length ?? 0})</p>
-                {(board?.dailyReport.cashDifferences.length ?? 0) === 0 ? <p className="mt-2 text-[10px] text-muted-foreground">Sin diferencias registradas hoy.</p> : <ul className="mt-2 space-y-2">{board?.dailyReport.cashDifferences.map((order) => <li key={order.code} className="text-[10px]"><span className="font-semibold">{order.code} · {order.buyerName}</span><p className="text-muted-foreground">Debía {money(order.due)} · recibió {money(order.received)} · diferencia {money(order.difference)}</p></li>)}</ul>}
-              </div>
-            </div>
-          </section>
-
-          <div className="surface-raised rounded-3xl p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-lg font-bold">Últimos pedidos</h2>
-              <div className="flex items-center gap-2">
-                <Select
-                  value={String(recentRange)}
-                  onValueChange={(value) => setRecentRange(Number(value))}
-                >
-                  <SelectTrigger
-                    aria-label="Filtrar últimos pedidos por período"
-                    className="h-8 w-40 text-xs"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RECENT_ORDER_RANGES.map((range) => (
-                      <SelectItem key={range.ms} value={String(range.ms)}>
-                        {range.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Link
-                  to="/business?tab=orders"
-                  className="flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
-                >
-                  Ver todos
-                  <ArrowRight className="size-3.5" />
-                </Link>
-              </div>
-            </div>
-            {orders.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
-                Todavía no recibiste pedidos. Cuando alguien deslice a la derecha
-                uno de tus productos, aparece acá.
-              </p>
-            ) : recentOrders.length === 0 ? (
-              <p className="mt-4 rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
-                Sin pedidos en este período. Elegí un período más amplio en el selector.
-              </p>
-            ) : (
-              <div className="mt-4 space-y-2">
-                <p className="text-[11px] text-muted-foreground">
-                  {recentOrders.length} {recentOrders.length === 1 ? "pedido" : "pedidos"} en el período elegido.
-                </p>
-                {recentOrders.slice(0, 8).map((order) => (
-                  <div
-                    key={order._id}
-                    className="flex items-center gap-3 rounded-xl border border-border/60 bg-black/20 p-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 text-sm font-semibold">
-                                              
-                        {order.code}
-                        <span className="text-[10px] font-normal text-muted-foreground">
-                          {relativeTime(order.createdAt)}
-                        </span>
-                      {order.batchCount && order.batchCount > 1 && (
-                        <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
-                          Entrega {order.batchIndex} de {order.batchCount}
-                        </span>
-                      )}
-                      {order.tripStops > 1 && (
-                        <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-
-                      </p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {order.items.length} productos ·{" "}
-                        {order.items.reduce((acc, item) => acc + item.quantity, 0)} unidades ·{" "}
-                        {order.buyerName}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-display text-sm font-bold">
-                        {money(order.subtotal)}
-                      </p>
-                      <StatusPill status={order.status} />
-                    </div>
-                  </div>
-                ))}
-                {recentOrders.length > 8 && (
-                  <Link
-                    to="/business?tab=orders"
-                    className="block pt-1 text-center text-xs font-semibold text-accent hover:underline"
-                  >
-                    Ver los {recentOrders.length - 8} restantes en Pedidos
-                  </Link>
-                )}
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={openNewProduct}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-accent/30 bg-accent/[0.04] py-3.5 text-sm font-semibold text-accent transition-colors hover:bg-accent/10"
-          >
-            <Plus className="size-4" />
-            Publicar un producto nuevo
-          </button>
-        </motion.div>
-      )}
-
-      {tab === "orders" && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-4"
-        >
           {orders.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
@@ -1906,482 +1280,474 @@ export default function BusinessPage() {
                     )}
                   </div>
                 ) : (
-                <div className="mt-3 rounded-xl border border-border/70 p-3">
-                  <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
-                    <Wallet className="size-3.5" /> Efectivo de este pedido
-                  </p>
-                  <div className="mt-2 space-y-1 text-[11px]">
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Productos de tu local</span>
-                      <span>{money(order.subtotal)}</span>
-                    </div>
-                    {(order.deliveryDiscount ?? 0) > 0 && (
-                      <div className="flex justify-between text-accent">
-                        <span>Tu promoción de envío cubre</span>
-                        <span>−{money(order.deliveryDiscount ?? 0)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between border-t border-border/60 pt-1 font-semibold">
-                      <span>Recibís del repartidor</span>
-                      <span>{money(order.businessDue)}</span>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Envío (para el repartidor)</span>
-                      <span>{money(order.deliveryFee)}</span>
-                    </div>
-                  </div>
-
-                  {order.cashCollected !== null && (
-                    <p className="mt-2 rounded-lg bg-secondary/40 p-2 text-[10px] leading-relaxed text-muted-foreground">
-                      El repartidor confirmó {money(order.cashCollected)} cobrados al
-                      comprador por toda la entrega
-                      {order.cashCollectedByName
-                        ? ` (${order.cashCollectedByName})`
-                        : ""}
-                      {" · "}
-                      {relativeTime(order.cashCollectedAt ?? order.createdAt)}.
-                      {(order.cashDifference ?? 0) !== 0 && (
-                        <span className="text-primary">
-                          {" "}
-                          Diferencia de {money(order.cashDifference ?? 0)} sobre lo
-                          esperado.
-                        </span>
-                      )}
-                    </p>
-                  )}
-
-                  {order.cashHanded !== null ? (
-                    <div className="mt-2 space-y-1 text-[11px] leading-relaxed">
-                      <p className="text-accent">
-                        Confirmaste {money(order.cashHanded)} recibidos
-                        {order.cashHandedByName
-                          ? ` · ${order.cashHandedByName}`
-                          : ""}{" · "}
-                        {relativeTime(order.cashHandedAt ?? order.createdAt)}
-                      </p>
-                      {order.businessPending !== 0 && (
-                        <p className="text-primary">
-                          Diferencia pendiente: {money(order.businessPending)}
-                          {order.businessPending > 0
-                            ? " · todavía te falta cobrar."
-                            : " · recibiste de más."}
-                        </p>
-                      )}
-                      {order.cashHandedLog.length > 0 && (
-                        <p className="text-[10px] text-muted-foreground">
-                          Registros:{" "}
-                          {order.cashHandedLog
-                            .map(
-                              (entry) =>
-                                `${money(entry.amount)} (${relativeTime(entry.at)})`,
-                            )
-                            .join(" · ")}
-                        </p>
-                      )}
-                    </div>
-                  ) : order.status === "delivered" ? (
-                    <Button
-                      size="sm"
-                      className="mt-2 w-full gap-1.5 bg-ember-gradient text-black"
-                      onClick={() => openCash(order)}
-                    >
+                  <div className="mt-3 rounded-xl border border-border/70 p-3">
+                    <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
                       <Wallet className="size-3.5" />
-                      Confirmar efectivo recibido
-                    </Button>
-                  ) : (
-                    <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
-                      El efectivo se confirma cuando la entrega está completada.
+                      Efectivo de este pedido
                     </p>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1 h-7 px-2 text-[11px] text-muted-foreground hover:text-primary"
-                    onClick={() => openIssue(order)}
-                  >
-                    Reportar problema de efectivo
-                  </Button>
-                </div>
-                )}
-
-                {order.cashIssue && (
-                  <CashIssueNote
-                    issue={order.cashIssue}
-                    className="mt-2"
-                    onResolve={() => void handleResolveIssue(order)}
-                  />
-                )}
-
-                {order.tripStops > 1 && (
-                  <p className="mt-2 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                    El repartidor retira esta entrega también en{" "}
-                    {order.stops
-                      .filter((stop) => stop.businessId !== order.businessId)
-                      .map((stop) => stop.name)
-                      .join(" y ")}
-                    . El envío se cobra una sola vez por entrega y suma{" "}
-                    {money(order.extraStopFee)} por la tienda adicional. A tu tienda
-                    le corresponde {money(order.deliveryFee)} de ese envío.
-                    {(order.deliveryDiscount ?? 0) > 0 && (
-                      <span className="text-accent">
-                        {" "}
-                        Cubrís {money(order.deliveryDiscount ?? 0)} con tu
-                        promoción (gasto promocional, no comisión).
-                      </span>
-                    )}
-                  </p>
-                )}
-
-                {order.tripStops <= 1 && (order.deliveryDiscount ?? 0) > 0 && (
-                  <p className="mt-2 rounded-xl border border-accent/30 bg-accent/[0.07] p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                    Tu promoción cubre {money(order.deliveryDiscount ?? 0)} del
-                    envío de esta entrega. Queda como gasto promocional tuyo, no
-                    como comisión: el valor de tus productos se te paga completo.
-                  </p>
-                )}
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      Total del pedido
-                    </p>
-                    <p className="font-display text-lg font-extrabold">
-                      {money(order.total)}
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      El repartidor recibe en efectivo cuando entrega el pedido. Si
+                      lo cobró por más o por menos, podés ajustar la diferencia acá.
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {order.locked && (
-                      <span className="rounded-full border border-border/80 bg-secondary/50 px-3 py-1.5 text-[11px] text-muted-foreground">
-                        Se habilita cuando salga la entrega anterior
-                      </span>
-                    )}
-                    {order.status === "pending" &&
-                      order.paymentMethod === "sinpe" &&
-                      !order.buyerConfirmedAt && (
-                        <span className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-[11px] font-semibold text-primary">
-                          Esperando que el comprador pague por SINPE y confirme el pedido
-                        </span>
-                      )}
-                    {(order.status === "pending" || order.status === "accepted") && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-primary"
-                        disabled={busyOrder === order._id}
-                        onClick={() => handleStatus(order._id, "cancelled")}
-                      >
-                        Rechazar
-                      </Button>
-                    )}
-                    {ACTION_BUTTONS[order.status].map((action) => (
-                      <Button
-                        key={action.status}
-                        size="sm"
-                        className="gap-1.5 bg-ember-gradient text-black"
-                        disabled={
-                          busyOrder === order._id ||
-                          order.locked ||
-                          (action.status === "accepted" &&
-                            order.paymentMethod === "sinpe" &&
-                            !order.buyerConfirmedAt)
-                        }
-                        onClick={() => handleStatus(order._id, action.status)}
-                      >
-                        {busyOrder === order._id ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <action.icon className="size-3.5" />
-                        )}
-                        {action.label}
-                      </Button>
-                    ))}
-                    {order.status === "ready" &&
-                      (order.fulfillment ?? "delivery") !== "delivery" &&
-                      !order.courierId && (
-                        <Button
-                          size="sm"
-                          className="gap-1.5 bg-ember-gradient text-black"
-                          disabled={busyOrder === order._id || order.locked}
-                          onClick={() => handleStatus(order._id, "delivered")}
-                        >
-                          {busyOrder === order._id ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <PackageCheck className="size-3.5" />
-                          )}
-                          Marcar entregado
-                        </Button>
-                      )}
-                    {order.status === "ready" &&
-                      (order.fulfillment ?? "delivery") === "delivery" &&
-                      (order.courierId ? (
-                        <span className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] font-semibold text-accent">
-                          {order.courierName ?? "Repartidor"} va a retirar
-                        </span>
-                      ) : (
-                        <div className="flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border border-border/70 bg-black/20 p-3">
-                          <div>
-                            <p
-                              className={cn(
-                                "flex items-center gap-1.5 text-[11px] font-semibold",
-                                waitUrgent ? "text-primary" : "text-accent",
-                              )}
-                            >
-                              <Timer className="size-3.5" />
-                              {waitUrgent
-                                ? "Nadie lo tomó todavía"
-                                : "Esperando repartidor"}
-                            </p>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              {waitingMinutes ?? 0} min esperando
-                              {!waitUrgent && waitSeconds !== null
-                                ? ` · quedan ${Math.floor(
-                                    waitSeconds / 60,
-                                  )}:${String(waitSeconds % 60).padStart(2, "0")}`
-                                : ""}
-                              {" · "}código {order.pickupCode ?? "—"}
-                            </p>
-                            <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">
-                              {canCancel
-                                ? `Podés cancelarlo ahora o esperar: a los ${ASSIGNMENT_RULES.autoCancelAfterMinutes} min se cancela solo. El comprador ve el motivo.`
-                                : `Podés cancelarlo a los ${ASSIGNMENT_RULES.cancelAfterMinutes} min; a los ${ASSIGNMENT_RULES.autoCancelAfterMinutes} se cancela solo.`}
-                            </p>
-                          </div>
-                          {canCancel && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-1.5 border-primary/40 text-[11px] text-primary hover:bg-primary/10"
-                              disabled={busyOrder === order._id}
-                              onClick={() => setCancelling(order)}
-                            >
-                              Cancelar sin repartidor
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    {order.status === "picked_up" && (
-                      <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-[11px] font-semibold text-primary">
-                        {order.courierName ?? "Repartidor"} en camino
-                      </span>
-                    )}
-                    {(order.status === "delivered" || order.status === "cancelled") && (
-                      <span className="max-w-md text-[11px] text-muted-foreground">
-                        {ORDER_STATUS[order.status].label}
-                        {order.status === "cancelled" && order.cancellationReason
-                          ? ` · ${order.cancellationReason}`
-                          : ""}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              );
-            })
+                )
+              }
+            )}
           )}
         </motion.div>
       )}
 
-      {tab === "stories" && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="mb-4">
-            <p className="text-sm text-muted-foreground">
-              Fotos y videos de 24 horas, igual que en Instagram.
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Aparecen arriba de “Todos los negocios” para las cuentas de
-              comprador.
-            </p>
-          </div>
-          <StoryUpload enabled={proStoriesEnabled} />
-        </motion.div>
-      )}
-
-      {tab === "servicios" && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <BusinessServices
-            businessName={business.name}
-            whatsappNumber={
-              subscription?.settings?.whatsappNumbers?.[0] ??
-              DEFAULT_WHATSAPP_NUMBERS[0]
-            }
-          />
-        </motion.div>
-      )}
-
-      {tab === "menu" && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-sm text-muted-foreground">
-                {products.length} productos ·{" "}
-                {products.filter((product) => product.isAvailable).length} visibles
-                en el mazo
-              </p>
-              <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <GripVertical className="size-3.5 shrink-0" />
-                {savingOrder
-                  ? "Guardando orden…"
-                  : "Arrastrá el mango para cambiar el orden"}
-              </p>
-            </div>
-            <Button className="gap-2 bg-ember-gradient text-black" onClick={openNewProduct}>
-              <Plus className="size-4" />
-              Nuevo producto
-            </Button>
-          </div>
-
-          {products.length === 0 ? (
-            <EmptyState
-              icon={UtensilsCrossed}
-              title="Tu catálogo está vacío"
-              description="Publicá tu primer producto para que empiece a aparecer en el mazo de los compradores."
-              action={
-                <Button className="gap-2 bg-ember-gradient text-black" onClick={openNewProduct}>
-                  <Plus className="size-4" />
-                  Crear producto
-                </Button>
-              }
+      {tab === "portada" && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-4"
+        >
+          <div className="relative overflow-hidden rounded-3xl border border-border/70">
+            <CoverUpload
+              preview={business.image}
+              onChange={(id, localPreview) => {
+                if (!headerBusy) {
+                  setHeaderBusy(true);
+                  void Promise.resolve().then(() => setHeaderBusy(false));
+                }
+              }}
+              hint="Si no subís una, usamos la portada por defecto de tu departamento."
             />
-          ) : (
-            <div className="space-y-2.5">
-              {orderedProducts.map((product) => (
-                <div
-                  key={product._id}
-                  ref={(node) => {
-                    if (node) productRowRefs.current.set(product._id, node);
-                    else productRowRefs.current.delete(product._id);
-                  }}
-                  className={cn(
-                    "surface-raised flex flex-wrap items-center gap-2 rounded-2xl p-3 sm:flex-nowrap sm:gap-3",
-                    draggingProductId === product._id &&
-                      "relative z-10 ring-1 ring-primary/50",
-                  )}
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.1)_0%,rgba(6,6,7,0.92)_100%)]" />
+            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                  {departmentInfo.label} · {business.category}
+                </p>
+                <p className="mt-1 font-display text-2xl font-extrabold text-white">
+                  {business.name}
+                </p>
+                <p className="mt-1 flex items-center gap-2 text-xs text-white/60">
+                  <span className="flex items-center gap-1">
+                    ⭐ {business.rating.toFixed(1)} ({business.reviews})
+                  </span>
+                  · {products.length} productos · ETA {business.etaMinutes} min
+                </p>
+              </div>
+              <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
+                <Link to="/business?tab=menu">
+                  Ver productos
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          {!business.location && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
+              <p className="text-xs leading-relaxed text-primary">
+                Tu local todavía no tiene un punto en el mapa, así que no podemos
+                calcular los envíos ni recibir pedidos.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-primary/40 text-primary"
+                onClick={openSettings}
+              >
+                Fijar ubicación
+              </Button>
+            </div>
+          )}
+
+          {(!business.sinpePhone || !business.whatsappPhone) && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <Wallet className="size-3.5" /> Falta tu cobro por SINPE Móvil
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Agregá el número de SINPE y el WhatsApp de la tienda en los
+                  ajustes. Son obligatorios para que los compradores que no pagan
+                  en efectivo puedan transferirte y mandarte el comprobante.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-primary/40 text-primary"
+                onClick={openSettings}
+              >
+                Completar cobro
+              </Button>
+            </div>
+          )}
+
+          <TextSizeControl contextLabel="Se aplica en toda la plataforma y se guarda en este teléfono, también para tu cuenta de negocio." />
+
+
+
+          {business.deliveryPromo && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-accent">
+                  <TicketPercent className="size-3.5" />
+                  {promoLabel(business.deliveryPromo)} activo en toda la tienda
+                </p>
+                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
+                  Cubrís{" "}
+                  {business.deliveryPromo === "free_delivery"
+                    ? "el 100%"
+                    : "la mitad"}{" "}
+                  de la parte de envío de tu tienda en cada entrega. Hoy sumás{" "}
+                  {money(stats?.promoSpendToday ?? 0)} de gasto promocional. Tus
+                  productos se te pagan completos: no es una comisión de Shop To Go.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-accent/40 text-accent"
+                onClick={openSettings}
+              >
+                Cambiar promoción
+              </Button>
+            </div>
+          )}
+
+          {(stats?.cashPending ?? 0) > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/[0.07] p-3.5">
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <Wallet className="size-3.5" />
+                  Efectivo pendiente de confirmar
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Los repartidores tienen {money(stats?.cashPending ?? 0)} de tus
+                  ventas sin confirmar. Confirmá el monto recibido en cada pedido
+                  entregado para cerrar la diferencia.
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline" className="border-primary/40 text-primary">
+                <Link to="/business?tab=orders">Revisar entregas</Link>
+              </Button>
+            </div>
+          )}
+
+          <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip lg:grid-cols-4">
+            <StatCard
+              label="Ingresos hoy"
+              value={money(stats?.revenueToday ?? 0)}
+              hint={`${stats?.deliveredToday ?? 0} entregados · productos ${money(stats?.productSalesToday ?? 0)}`
+              accent="ember"
+            />
+            <StatCard
+              label="Pedidos activos"
+              value={String(stats?.active ?? 0)}
+              hint={`${stats?.waiting ?? 0} esperando confirmación`
+              accent="chili"
+            />
+            <StatCard
+              label="Productos"
+              value={String(products.length)}
+              hint={`${products.filter((p) => p.isAvailable).length} visibles`
+            />
+            <StatCard
+              label="Total histórico"
+              value={String(stats?.totalOrders ?? 0)}
+              hint="pedidos recibidos"
+            />
+          </div>
+
+          <section className="surface-raised rounded-3xl p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                  Cierre diario · Costa Rica
+                </p>
+                <h2 className="mt-1 font-display text-lg font-bold">Ventas y caja de hoy</h2>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  El efectivo esperado corresponde a productos entregados, menos las
+                  promociones de envío y los cupones financiados por el local.
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline" className="border-border/80">
+                <Link to="/business?tab=orders">Ver pedidos del día</Link>
+              </Button>
+            </div>
+            <div className="mt-4 grid w-full max-w-full min-w-0 grid-cols-2 gap-2 overflow-x-clip sm:grid-cols-3 lg:grid-cols-4">
+              <StatCard label="Pedidos creados" value={String(stats?.ordersToday ?? 0)} hint={`${stats?.deliveredToday ?? 0} entregados`} />
+              <StatCard label="Ventas de productos" value={money(stats?.productSalesToday ?? 0)} hint="pedidos entregados" />
+              <StatCard label="Promos de envío" value={money(stats?.promoSpendToday ?? 0)} hint={`${board?.dailyReport.promoOrders.length ?? 0} pedidos con promo`} />
+              <StatCard label="Cupones del local" value={money(stats?.couponSpendToday ?? 0)} hint={`${board?.dailyReport.couponOrders.length ?? 0} pedidos con cupón`} />
+              <StatCard label="Efectivo esperado" value={money(stats?.cashDueToday ?? 0)} hint="a recibir por productos" accent="ember" />
+              <StatCard label="Efectivo recibido" value={money(stats?.cashReceivedToday ?? 0)} hint={stats?.cashPendingToday ? `pendiente ${money(stats.cashPendingToday)}` : "cuentas al día"} />
+              <StatCard label="Cancelados" value={String(stats?.cancelledToday ?? 0)} hint="hoy" accent="chili" />
+              <StatCard label="Diferencias de caja" value={String(stats?.cashDifferenceCountToday ?? 0)} hint={`total ${money(stats?.cashDifferenceAmountToday ?? 0)}`} accent={stats?.cashDifferenceCountToday ? "chili" : undefined} />
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Cancelaciones ({board?.dailyReport.cancelled.length ?? 0})</p>
+                {(board?.dailyReport.cancelled.length ?? 0) === 0 ? (
+                  <p className="mt-2 text-[10px] text-muted-foreground">Sin cancelaciones hoy.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {board?.dailyReport.cancelled.map((order) => (
+                      <li key={order.code} className="text-[10px] leading-relaxed">
+                        <span className="font-semibold">{order.code} · {order.buyerName} · {money(order.total)}</span>
+                        <p className="text-muted-foreground">{order.reason}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Descuentos promocionales ({board?.dailyReport.promoOrders.length ?? 0})</p>
+                {(board?.dailyReport.promoOrders.length ?? 0) === 0 ? (
+                  <p className="mt-2 text-[10px] text-muted-foreground">Sin descuentos de envío hoy.</p>
+                ) : (
+                  <ul className="mt-2 space-y-1">
+                    {board?.dailyReport.promoOrders.map((order) => (
+                      <li key={order.code} className="flex justify-between gap-2 text-[10px]">
+                        <span>{order.code}</span>
+                        <span className="font-semibold">−{money(order.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Cupones aplicados ({board?.dailyReport.couponOrders.length ?? 0})</p>
+                {(board?.dailyReport.couponOrders.length ?? 0) === 0 ? (
+                  <p className="mt-2 text-[10px] text-muted-foreground">Sin cupones usados hoy.</p>
+                ) : (
+                  <ul className="mt-2 space-y-1">
+                    {board?.dailyReport.couponOrders.map((order) => (
+                      <li key={order.code} className="flex justify-between gap-2 text-[10px]">
+                        <span>{order.code} · {order.couponCode}</span>
+                        <span className="font-semibold">−{money(order.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-border/70 bg-black/20 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Diferencias de caja ({board?.dailyReport.cashDifferences.length ?? 0})</p>
+                {(board?.dailyReport.cashDifferences.length ?? 0) === 0 ? (
+                  <p className="mt-2 text-[10px] text-muted-foreground">Sin diferencias registradas hoy.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {board?.dailyReport.cashDifferences.map((order) => (
+                      <li key={order.code} className="text-[10px]">
+                        <span className="font-semibold">{order.code} · {order.buyerName}</span>
+                        <p className="text-muted-foreground">Debía {money(order.due)} · recibió {money(order.received)} · diferencia {money(order.difference)}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="surface-raised rounded-3xl p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-bold">Últimos pedidos</h2>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(recentRange)}
+                  onValueChange={(value) => setRecentRange(Number(value))}
                 >
-                  <button
-                    type="button"
-                    aria-label={`Reordenar ${product.name}`}
-                    title="Arrastrá para cambiar el orden"
-                    disabled={savingOrder}
-                    className="flex size-7 shrink-0 touch-none select-none items-center justify-center rounded-lg text-muted-foreground/70 transition-colors hover:bg-white/5 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40 sm:cursor-grab"
-                    onContextMenu={(event) => event.preventDefault()}
-                    onPointerDown={(event) => startProductDrag(event, product)}
-                    onPointerMove={moveProductDrag}
-                    onPointerUp={(event) => void endProductDrag(event, true)}
-                    onPointerCancel={(event) => void endProductDrag(event, false)}
-                    onLostPointerCapture={(event) => {
-                      if (productDragRef.current) {
-                        void endProductDrag(event, false);
-                      }
-                    }}
+                  <SelectTrigger
+                    aria-label="Filtrar últimos pedidos por período"
+                    className="h-8 w-40 text-xs"
                   >
-                    <GripVertical className="size-4" />
-                  </button>
-                  <div className="relative shrink-0">
-                    <ProductMedia
-                      image={product.image}
-                      video={product.video}
-                      alt={product.name}
-                      className="size-16 rounded-xl"
-                    />
-                    {business.deliveryPromo && (
-                      <PromoBadge
-                        promo={business.deliveryPromo}
-                        withIcon={false}
-                        className="absolute inset-x-1 bottom-1 justify-center px-1 py-0.5 text-[9px]"
-                      />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{product.name}</p>
-                    <p className="line-clamp-1 text-[11px] text-muted-foreground">
-                      {product.description || "Sin descripción"}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {normalizeSubcategory(product.category)} · {money(product.price)}
-                      {product.stockEnabled ? ` · Stock: ${product.stock ?? 0}` : ""}
-                      {product.reservable ? " · Con cita" : ""}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5 max-sm:order-last max-sm:basis-full max-sm:justify-end max-sm:border-t max-sm:border-border/40 max-sm:pt-2">
-                    <span className={cn("hidden text-[10px] font-semibold sm:inline", product.isAvailable ? "text-accent" : "text-primary")}>
-                      {product.isAvailable ? "Disponible" : "Agotado"}
-                    </span>
-                    <Switch
-                      checked={product.isAvailable}
-                      aria-label={product.isAvailable ? `Pausar ${product.name} por agotamiento` : `Volver a ofrecer ${product.name}`}
-                      onCheckedChange={async (checked) => {
-                        try {
-                          await updateProduct({
-                            productId: product._id,
-                            isAvailable: checked,
-                          });
-                          toast(
-                            checked ? "Producto disponible" : "Producto pausado por agotamiento",
-                            {
-                              description: checked
-                                ? `${product.name} vuelve a aparecer en el catálogo.`
-                                : `${product.name} deja de aparecer y no se puede pedir hasta que lo actives.`,
-                            },
-                          );
-                        } catch (error) {
-                          toast.error(
-                            error instanceof Error ? error.message : "No pudimos actualizar",
-                          );
-                        }
-                      }}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Vista previa de ${product.name} en el mazo`}
-                      title="Vista previa en el mazo"
-                      className="size-8 text-muted-foreground"
-                      onClick={() => setPreviewing(product)}
-                    >
-                      <Eye className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Editar"
-                      className="size-8 text-muted-foreground"
-                      onClick={() => openEditProduct(product)}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Duplicar ${product.name}`}
-                      title="Duplicar producto"
-                      className="size-8 text-muted-foreground"
-                      disabled={duplicatingProductId !== null}
-                      onClick={() => void handleDuplicateProduct(product)}
-                    >
-                      {duplicatingProductId === product._id ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Copy className="size-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Eliminar"
-                      className="size-8 text-muted-foreground hover:text-primary"
-                      onClick={() => setDeleting(product)}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RECENT_ORDER_RANGES.map((range) => (
+                      <SelectItem key={range.ms} value={String(range.ms)}>
+                        {range.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Link
+                  to="/business?tab=orders"
+                  className="flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
+                >
+                  Ver todos
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </div>
+            </div>
+            {orders.length === 0 ? (
+              <p className="mt-4 rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
+                Todavía no recibiste pedidos. Cuando alguien deslice a la derecha
+                uno de tus productos, aparece acá.
+              </p>
+            ) : recentOrders.length === 0 ? (
+              <p className="mt-4 rounded-xl border border-dashed border-border/70 p-4 text-center text-xs text-muted-foreground">
+                Sin pedidos en este período. Elegí un período más amplio en el selector.
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[640px] text-xs">
+                  <thead>
+                    <tr className="border-b border-border/70">
+                      <th className="pigment px-3 py-2 text-left font-semibold uppercase tracking-wider">Código</th>
+                      <th className="pigment px-3 py-2 text-left font-semibold uppercase tracking-wider">Comprador</th>
+                      <th className="pigment px-3 py-2 text-left font-semibold uppercase tracking-wider">Dirección</th>
+                      <th className="pigment px-3 py-2 text-right font-semibold uppercase tracking-wider">Total</th>
+                      <th className="pigment px-3 py-2 text-left font-semibold uppercase tracking-wider">Estado</th>
+                      <th className="pigment px-3 py-2 text-right font-semibold uppercase tracking-wider">ETA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentOrders.map((order) => (
+                      <tr key={order._id} className="border-b border-border/40">
+                        <td className="pigment px-3 py-2 font-bold tracking-wide">{order.code}</td>
+                        <td className="pigment px-3 py-2">{order.buyerName}</td>
+                        <td className="pigment px-3 py-2 truncate max-w-[160px] sm:max-w-[200px] lg:max-w-[240px]">{order.address}</td>
+                        <td className="pigment px-3 py-2 text-right">{money(order.total)}</td>
+                        <td className="pigment px-3 py-2"><StatusPill status={order.status} /></td>
+                        <td className="pigment px-3 py-2 text-right">
+                          {order.estimatedArrivalAt != null && statusTransitionsBefore(order, order.estimatedArrivalAt) === 0 ? (
+                            <span className="font-medium tabular-nums">
+                              {formatCountdown(now, order.estimatedArrivalAt)}
+                            </span>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <button
+            type="button"
+            onClick={openNewProduct}
+            className="flex w-full flex-wrap items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/80 bg-black/10 p-4 text-sm font-semibold text-muted-foreground hover:bg-black/20 hover:text-white"
+          >
+            <Plus className="size-4" />
+            {products.length === 0 ? (
+              <>
+                Publicá tu primer producto
+                <span className="text-[10px] font-normal text-muted-foreground/80"> y empezá a recibir pedidos</span>
+              </>
+            ) : (
+              <>
+                {products.length === 1
+                  ? "Publicá tu segundo producto"
+                  : "Publicá otro producto"}{" "}
+                <span className="text-[10px] font-normal text-muted-foreground/80">
+                  aparecerá en el mazo inmediatamente
+                </span>
+              </>
+            )}
+          </button>
+
+          <div className="flex w-full items-stretch justify-center gap-x-4 gap-y-2 rounded-2xl border border-border/50 bg-black/20 p-4">
+            <Button asChild size="sm" className="border-border/60 text-muted-foreground">
+              <Link to="/business?tab=menu">
+                <PackagePlus className="size-4" />
+                Editar catálogo
+              </Link>
+            </Button>
+            <Button asChild size="sm" className="border-border/60 text-muted-foreground">
+              <Link to="/business?tab=settings">
+                <User className="size-4" />
+                Configuración
+              </Link>
+            </Button>
+            {!business.isOnlineSubscriptionActive && (
+              <Button asChild size="sm" className="border-primary/40 text-primary">
+                <Link to="/subscriptions?tier=elite">
+                  <Sparkles className="size-4" />
+                  Activar Elite
+                </Link>
+              </Button>
+            )}
+          </div>
+
+        </motion.div>
+      )}
+
+      <section className="w-full">
+        {business.products.length === 0 ? (
+          <div className="flex w-full items-center justify-center rounded-2xl border border-dashed border-border/70 bg-black/20 p-6 text-center text-sm text-muted-foreground">
+            <PackagePlus className="size-5 text-muted-foreground" />
+            <span className="ml-2">Aún no publicaste productos.</span>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Productos guardados
+              </p>
+              <span className="text-[11px] font-mono text-muted-foreground">
+                {business.products.length} producto{business.products.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {business.products.map((product) => (
+                <div key={product._id} className="rounded-2xl border border-border/70 bg-black/30 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-sm">{product.name}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {money(product.price)} · {product.fulfillmentMethods.length} método{product.fulfillmentMethods.length === 1 ? "" : "s"} de entrega
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Vista previa"
+                        className="size-8 text-muted-foreground"
+                        onClick={() => setPreviewing(product)}
+                      >
+                        <Eye className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Editar"
+                        className="size-8 text-muted-foreground"
+                        onClick={() => openEditProduct(product)}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Duplicar ${product.name}`}
+                        title="Duplicar producto"
+                        className="size-8 text-muted-foreground"
+                        disabled={duplicatingProductId !== null}
+                        onClick={() => void handleDuplicateProduct(product)}
+                      >
+                        {duplicatingProductId === product._id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Eliminar"
+                        className="size-8 text-muted-foreground hover:text-primary"
+                        onClick={() => setDeleting(product)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          )}
-        </motion.div>
-      )}
+          </div>
+        )}
+      </section>
 
       <Dialog
         open={reviewCourier !== null}
@@ -3517,3 +2883,4 @@ export default function BusinessPage() {
     </div>
   );
 }
+
