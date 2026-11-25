@@ -1,1 +1,0 @@
-const r="+506 8492-3074";function l(t){if(!t)return null;const n=t.replace(/\D/g,"");return n.length===8?`506${n}`:n.length===11&&n.startsWith("506")?n:null}function i(t){const n=l(t);if(!n)return null;const e=n.slice(3);return`+506 ${e.slice(0,4)}-${e.slice(4)}`}export{r as P,i as d,l as n};
