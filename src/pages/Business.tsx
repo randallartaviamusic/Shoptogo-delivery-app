@@ -1313,6 +1313,42 @@ export default function BusinessPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
+          <div className="relative overflow-hidden rounded-3xl border border-border/70">
+            <CoverUpload
+              preview={business.image}
+              onChange={(id, localPreview) => {
+                if (!headerBusy) {
+                  setHeaderBusy(true);
+                  void Promise.resolve().then(() => setHeaderBusy(false));
+                }
+              }}
+              hint="Si no subís una, usamos la portada por defecto de tu departamento."
+            />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.1)_0%,rgba(6,6,7,0.92)_100%)]" />
+            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+                  {departmentInfo.label} · {business.category}
+                </p>
+                <p className="mt-1 font-display text-2xl font-extrabold text-white">
+                  {business.name}
+                </p>
+                <p className="mt-1 flex items-center gap-2 text-xs text-white/60">
+                  <span className="flex items-center gap-1">
+                    ⭐ {business.rating.toFixed(1)} ({business.reviews})
+                  </span>
+                  · {products.length} productos · ETA {business.etaMinutes} min
+                </p>
+              </div>
+              <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
+                <Link to="/business?tab=menu">
+                  Ver productos
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+
           {!business.location && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
               <p className="text-xs leading-relaxed text-primary">
@@ -1400,43 +1436,7 @@ export default function BusinessPage() {
                 <Link to="/business?tab=orders">Revisar entregas</Link>
               </Button>
             </div>
-          )}
-
-          <div className="relative overflow-hidden rounded-3xl border border-border/70">
-            <CoverUpload
-              preview={business.image}
-              onChange={(id, localPreview) => {
-                if (!headerBusy) {
-                  setHeaderBusy(true);
-                  void Promise.resolve().then(() => setHeaderBusy(false));
-                }
-              }}
-              hint="Si no subís una, usamos la portada por defecto de tu departamento."
-            />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.1)_0%,rgba(6,6,7,0.92)_100%)]" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-                  {departmentInfo.label} · {business.category}
-                </p>
-                <p className="mt-1 font-display text-2xl font-extrabold text-white">
-                  {business.name}
-                </p>
-                <p className="mt-1 flex items-center gap-2 text-xs text-white/60">
-                  <span className="flex items-center gap-1">
-                    ⭐ {business.rating.toFixed(1)} ({business.reviews})
-                  </span>
-                  · {products.length} productos · ETA {business.etaMinutes} min
-                </p>
-              </div>
-              <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
-                <Link to="/business?tab=menu">
-                  Ver productos
-                  <ArrowRight className="size-3.5" />
-                </Link>
-              </Button>
-            </div>
-          </div>
+          )
 
           <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip lg:grid-cols-4">
             <StatCard
@@ -1462,6 +1462,95 @@ export default function BusinessPage() {
               hint="pedidos recibidos"
             />
           </div>
+
+          {!business.location && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
+              <p className="text-xs leading-relaxed text-primary">
+                Tu local todavía no tiene un punto en el mapa, así que no podemos
+                calcular los envíos ni recibir pedidos.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-primary/40 text-primary"
+                onClick={openSettings}
+              >
+                Fijar ubicación
+              </Button>
+            </div>
+          )
+
+          {(!business.sinpePhone || !business.whatsappPhone) && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <Wallet className="size-3.5" /> Falta tu cobro por SINPE Móvil
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Agregá el número de SINPE y el WhatsApp de la tienda en los
+                  ajustes. Son obligatorios para que los compradores que no pagan
+                  en efectivo puedan transferirte y mandarte el comprobante.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-primary/40 text-primary"
+                onClick={openSettings}
+              >
+                Completar cobro
+              </Button>
+            </div>
+          )
+
+          <TextSizeControl contextLabel="Se aplica en toda la plataforma y se guarda en este teléfono, también para tu cuenta de negocio." />
+
+          {business.deliveryPromo && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-accent">
+                  <TicketPercent className="size-3.5" />
+                  {promoLabel(business.deliveryPromo)} activo en toda la tienda
+                </p>
+                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted-foreground">
+                  Cubrís{" "}
+                  {business.deliveryPromo === "free_delivery"
+                    ? "el 100%"
+                    : "la mitad"}{" "}
+                  de la parte de envío de tu tienda en cada entrega. Hoy sumás{" "}
+                  {money(stats?.promoSpendToday ?? 0)} de gasto promocional. Tus
+                  productos se te pagan completos: no es una comisión de Shop To Go.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-accent/40 text-accent"
+                onClick={openSettings}
+              >
+                Cambiar promoción
+              </Button>
+            </div>
+          )
+
+          {(stats?.cashPending ?? 0) > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/[0.07] p-3.5">
+              <div>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                  <Wallet className="size-3.5" />
+                  Efectivo pendiente de confirmar
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  Los repartidores tienen {money(stats?.cashPending ?? 0)} de tus
+                  ventas sin confirmar. Confirmá el monto recibido en cada pedido
+                  entregado para cerrar la diferencia.
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline" className="border-primary/40 text-primary">
+                <Link to="/business?tab=orders">Revisar entregas</Link>
+              </Button>
+            </div>
+          )}
 
           <section className="surface-raised rounded-3xl p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1561,10 +1650,19 @@ export default function BusinessPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 text-sm font-semibold">
+                                              
                         {order.code}
                         <span className="text-[10px] font-normal text-muted-foreground">
                           {relativeTime(order.createdAt)}
                         </span>
+                      {order.batchCount && order.batchCount > 1 && (
+                        <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                          Entrega {order.batchIndex} de {order.batchCount}
+                        </span>
+                      )}
+                      {order.tripStops > 1 && (
+                        <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+
                       </p>
                       <p className="truncate text-[11px] text-muted-foreground">
                         {order.items.length} productos ·{" "}
