@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/AppShell";
 import { AdminMetrics } from "@/components/AdminMetrics";
 import { DemoCatalogAdmin } from "@/components/DemoCatalogAdmin";
 import { ExtraServicesAdmin } from "@/components/ExtraServicesAdmin";
-import { ShareSettingsAdmin } from "@/components/ShareSettingsAdmin";
 import { StoreCatalogAdmin } from "@/components/StoreCatalogAdmin";
 import { SubscriptionAdmin } from "@/components/SubscriptionAdmin";
 import { SupportAdmin } from "@/components/SupportAdmin";
@@ -852,10 +851,7 @@ export default function ProfilePage() {
       )}
 
       {isAdmin && adminTab === "marca" && (
-        <>
-          <AppBrandingAdmin />
-          <ShareSettingsAdmin />
-        </>
+        <AppBrandingAdmin />
       )}
 
       {isAdmin && adminTab === "sonido" && (

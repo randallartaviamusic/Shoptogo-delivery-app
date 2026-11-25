@@ -1,5 +1,4 @@
 import { EmptyState, PageHeader } from "@/components/AppShell";
-import { ShareBusinessButton } from "@/components/ShareButtons";
 import { DepartmentIcon } from "@/components/DepartmentIcon";
 import { DishImage } from "@/components/DishImage";
 import { EliteAura } from "@/components/EliteAura";
@@ -763,19 +762,6 @@ function BusinessCard({
       >
         <Star className={cn("size-3.5", business.isFavorite && "fill-current")} />
       </button>
-      <div className="absolute right-3 top-[3.25rem] z-10">
-        <ShareBusinessButton
-          business={{
-            image: business.image,
-            name: business.name,
-            category: business.category,
-            tagline: business.tagline,
-            rating: business.rating,
-            productCount: business.productCount,
-            etaMinutes: business.etaMinutes + (business.delivery.minutes ?? 0),
-          }}
-        />
-      </div>
     </article>
   );
 }
