@@ -69,7 +69,10 @@ export default function SwipePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   // "Todo" es la etiqueta predeterminada: mezcla todos los rubros en un solo mazo.
-  const [departmentSlug, setDepartmentSlug] = useState("todos");
+  // Por defecto se abre en Comida sin reubicar el selector ni cambiar el orden
+  // de las etiquetas: la etiqueta "Comida" queda donde la pone el orden del
+  // array DEPARTMENTS, que la incluye en la primera posición.
+  const [departmentSlug, setDepartmentSlug] = useState("comida");
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Una semilla nueva por visita: el servidor baraja el mazo distinto cada vez.
