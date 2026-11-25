@@ -157,15 +157,14 @@ function HeaderTabPicker({
   onTabChange: (tab: string) => void;
 }) {
   return (
-    <div className="mb-6 overflow-x-auto no-scrollbar">
-      <div className="flex gap-1 rounded-full border border-border/80 bg-secondary/40 p-1">
+    <div className="mb-6 flex gap-1 flex-nowrap rounded-full border border-border/80 bg-secondary/40 p-1">
         {HEADER_TABS.map((item) => (
           <button
             key={item.key}
             type="button"
             onClick={() => onTabChange(item.to)}
             className={cn(
-              "flex-1 shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:flex-1 sm:px-4",
+              "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:flex-1 sm:px-4",
               tab === item.to
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:text-foreground",
