@@ -175,7 +175,6 @@ function HeaderTabPicker({
           </button>
         ))}
       </div>
-      {/* Cuando no hay espacio, la barra de pestañas se desplaza horizontalmente. */}
     </div>
   );
 }
