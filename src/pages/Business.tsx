@@ -121,63 +121,6 @@ const TABS = [
   { key: "servicios", label: "Servicios", to: "/business?tab=servicios" },
 ];
 
-/** Pestañas de la imagen y el nombre de la tienda en el panel: la portada,
- * el nombre y el logo. Son editables por el negocio y siempre la primera pestaña
- * abierta es la de la portada y el nombre.
- */
-const HEADER_TABS = [
-  {
-    key: "portada",
-    label: "Portada y nombre",
-    to: "/business?tab=portada",
-  },
-  {
-    key: "nombre",
-    label: "Nombre",
-    to: "/business?tab=nombre",
-  },
-  {
-    key: "imagen",
-    label: "Imagen",
-    to: "/business?tab=imagen",
-  },
-] as const;
-
-type HeaderTab = (typeof HEADER_TABS)[number]["key"];
-
-/** Vista del panel de la cuenta de negocio: pestaña abierta entre paneles o
- * encabezados. La portada y el nombre de la tienda siempre son la pestaña
- * predeterminada del perfil.
- */
-function HeaderTabPicker({
-  tab,
-  onTabChange,
-}: {
-  tab: string;
-  onTabChange: (tab: string) => void;
-}) {
-  return (
-    <div className="mb-6 flex gap-1 flex-nowrap rounded-full border border-border/80 bg-secondary/40 p-1">
-      {HEADER_TABS.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          onClick={() => onTabChange(item.to)}
-          className={cn(
-            "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:flex-1 sm:px-4",
-            tab === item.to
-              ? "bg-accent text-accent-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-          aria-pressed={tab === item.key}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Períodos del selector de "Últimos pedidos" en el panel del negocio. */
@@ -295,9 +238,6 @@ export default function BusinessPage() {
   const [issueAmount, setIssueAmount] = useState("");
   const [issueNote, setIssueNote] = useState("");
   const [savingIssue, setSavingIssue] = useState(false);
-  // Pestaña de la imagen y el nombre de la tienda: portada, nombre y logo.
-  const headerTabId = useRef<string>("portada");
-  const headerTab = headerTabId.current;
   const [headerBusy, setHeaderBusy] = useState(false);
   // Repartidores favoritos y reseñas del local a la entrega.
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
@@ -1129,15 +1069,12 @@ export default function BusinessPage() {
       <SubscriptionReminder />
       <VerificationBanner />
 
-      <HeaderTabPicker tab={tab} onTabChange={(tab) => navigate(`/business?tab=${new URLSearchParams({ tab }).toString().slice(1)}`)} />
-
       {tab === "couriers" && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="space-y-5"
         >
-          <HeaderTabPicker tab={`/business?tab=${headerTab}`} onTabChange={(next) => { headerTabId.current = next.replace(/^.*?tab=/, ""); navigate(next); }} />
           <div className="surface-raised rounded-3xl p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-start gap-3">
@@ -1363,7 +1300,6 @@ export default function BusinessPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
-          <HeaderTabPicker tab={`/business?tab=${headerTab}`} onTabChange={(next) => { headerTabId.current = next.replace(/^.*?tab=/, ""); navigate(next); }} />
           {!business.location && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
               <p className="text-xs leading-relaxed text-primary">
@@ -1492,10 +1428,6 @@ export default function BusinessPage() {
                 </Link>
               </Button>
             </div>
-          </div>
-
-          <div>
-            <HeaderTabPicker tab={`/business?tab=${headerTab}`} onTabChange={(next) => { headerTabId.current = next.replace(/^.*?tab=/, ""); navigate(next); }} />
           </div>
 
           <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip lg:grid-cols-4">
@@ -1668,7 +1600,6 @@ export default function BusinessPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
-          <HeaderTabPicker tab={`/business?tab=${headerTab}`} onTabChange={(next) => { headerTabId.current = next.replace(/^.*?tab=/, ""); navigate(next); }} />
           {orders.length === 0 ? (
             <EmptyState
               icon={ClipboardList}
@@ -2148,7 +2079,6 @@ export default function BusinessPage() {
 
       {tab === "stories" && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <HeaderTabPicker tab={`/business?tab=${headerTab}`} onTabChange={(next) => { headerTabId.current = next.replace(/^.*?tab=/, ""); navigate(next); }} />
           <div className="mb-4">
             <p className="text-sm text-muted-foreground">
               Fotos y videos de 24 horas, igual que en Instagram.
@@ -2164,7 +2094,6 @@ export default function BusinessPage() {
 
       {tab === "servicios" && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <HeaderTabPicker tab={`/business?tab=${headerTab}`} onTabChange={(next) => { headerTabId.current = next.replace(/^.*?tab=/, ""); navigate(next); }} />
           <BusinessServices
             businessName={business.name}
             whatsappNumber={
@@ -2177,7 +2106,6 @@ export default function BusinessPage() {
 
       {tab === "menu" && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <HeaderTabPicker tab={`/business?tab=${headerTab}`} onTabChange={(next) => { headerTabId.current = next.replace(/^.*?tab=/, ""); navigate(next); }} />
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-sm text-muted-foreground">
