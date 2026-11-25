@@ -108,7 +108,7 @@ export default function SwipePage() {
           slug: "todos",
           label: "Todo",
           short: "Todo",
-          headline: "Todo el antojo junto",
+          headline: "¿Qué se te antoja hoy?",
           blurb:
             "Platos de todos los rubros mezclados. Deslizá sin límites.",
           filters: todosFilters,
