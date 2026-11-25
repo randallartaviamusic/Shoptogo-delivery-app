@@ -1338,6 +1338,7 @@ export default function BusinessPage() {
               </Button>
             </div>
           </div>
+        </div>
 
           {!business.location && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
