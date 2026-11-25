@@ -110,7 +110,7 @@ export default function SwipePage() {
           short: "Todo",
           headline: "¿Qué se te antoja hoy?",
           blurb:
-            "Platos de todos los rubros mezclados. Deslizá sin límites.",
+            "Lo mejor de tu barrio y tu ciudad, al azar. Deslizá sin límites.",
           filters: todosFilters,
         }
       : getDepartment(departmentSlug);
