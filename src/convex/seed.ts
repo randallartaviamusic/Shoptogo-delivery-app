@@ -78,6 +78,10 @@ function cuisineFor(category: string) {
 function foodAttributes(category: string, tags: string[], cuisine: string) {
   const attributes: Array<{ key: string; value: string }> = [
     { key: "cocina", value: cuisineFor(cuisine) },
+    { key: "snacks", value: "Snacks" },
+    { key: "postres", value: "Postres" },
+    { key: "golosinas", value: "Golosinas" },
+    { key: "café", value: "Café" },
     { key: "tipo", value: foodTipo(category) },
     {
       key: "porcion",
