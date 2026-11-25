@@ -158,23 +158,23 @@ function HeaderTabPicker({
 }) {
   return (
     <div className="mb-6 flex gap-1 flex-nowrap rounded-full border border-border/80 bg-secondary/40 p-1">
-        {HEADER_TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => onTabChange(item.to)}
-            className={cn(
-              "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:flex-1 sm:px-4",
-              tab === item.to
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-            aria-pressed={tab === item.key}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {HEADER_TABS.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          onClick={() => onTabChange(item.to)}
+          className={cn(
+            "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:flex-1 sm:px-4",
+            tab === item.to
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+          aria-pressed={tab === item.key}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   )
 }
 
