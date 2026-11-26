@@ -170,7 +170,7 @@ function EliteSpotlightCarousel({
       }
       activeRef.current = next;
       setActiveIndex(next);
-      scrollToBusiness(next, "smooth");
+      scrollToBusiness(next, "auto");
     }, ELITE_SPOTLIGHT_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [businesses.length]);
