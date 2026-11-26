@@ -65,12 +65,34 @@ function RouteLoading() {
 function LegacyGuestCleanup() {
   const { isLoading, user, signOut } = useAuth();
   const handled = useRef(false);
+  const once = useRef(false);
 
   useEffect(() => {
     if (handled.current || isLoading || !user?.isAnonymous) return;
     handled.current = true;
     void signOut();
   }, [isLoading, user, signOut]);
+
+  // Una sesión anónima de antes de este cambio no cuenta como cuenta: hay que
+  // entrar o registrarse con correo y contraseña.
+  //
+  // En el edge de producción el cierre de la sesión puede tardar o no propagarse
+  // de inmediato; si el auth volvió a entrar en carga y no resolvía luego de
+  // esperar un poco, recargamos la página una sola vez para que el cliente de
+  // Convex vuelva a negociar la sesión en vez de dejar al visitante parado.
+  useEffect(() => {
+    if (!isLoading || once.current) return;
+    once.current = true;
+    const timer = setTimeout(() => {
+      try {
+        window.location.reload();
+      } catch {
+        // Sin recargar no hay escape: el usuario sigue parado, pero al menos no
+        // quedamos en un bucle silencioso.
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   return null;
 }
