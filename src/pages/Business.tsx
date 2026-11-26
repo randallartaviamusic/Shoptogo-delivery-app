@@ -18,7 +18,6 @@ import { SwipeCard, type Dish } from "@/components/SwipeCard";
 import { StoryUpload } from "@/components/StoryUpload";
 import { PromoBadge } from "@/components/PromoBadge";
 import { OrderAlertsSettings } from "@/components/OrderAlertsSettings";
-import { TextSizeControl } from "@/components/TextSizeControl";
 import { StatusPill, type OrderView } from "@/pages/Orders";
 import {
   AlertDialog,
@@ -1392,10 +1391,6 @@ export default function BusinessPage() {
               </Button>
             </div>
           )}
-
-          <TextSizeControl contextLabel="Se aplica en toda la plataforma y se guarda en este teléfono, también para tu cuenta de negocio." />
-
-
 
           {business.deliveryPromo && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5">
