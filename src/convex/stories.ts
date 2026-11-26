@@ -126,6 +126,30 @@ export const remove = mutation({
   },
 });
 
+/** Cambia el texto de una historia vigente del propio negocio. */
+export const update = mutation({
+  args: {
+    storyId: v.id("businessStories"),
+    caption: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Necesitás iniciar sesión");
+    const business = await ownedBusiness(ctx, userId);
+    if (!business) throw new Error("No tenés un negocio asociado");
+    const story = await ctx.db.get(args.storyId);
+    if (!story || story.businessId !== business._id) {
+      throw new Error("Esa historia no es de tu negocio");
+    }
+    if (story.expiresAt <= Date.now()) {
+      throw new Error("Esa historia ya venció");
+    }
+    const caption = args.caption?.trim().slice(0, 140) || undefined;
+    await ctx.db.patch(args.storyId, { caption });
+    return await ctx.db.get(args.storyId);
+  },
+});
+
 /** Historias vigentes del negocio que está mirando su panel. */
 export const mine = query({
   args: {},

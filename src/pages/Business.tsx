@@ -1758,7 +1758,11 @@ export default function BusinessPage() {
               negocios” para los compradores. Incluidas en Pro y Élite.
             </p>
           </div>
-          <StoryUpload enabled={proStoriesEnabled} />
+          <StoryUpload
+            enabled={proStoriesEnabled}
+            businessName={business.name}
+            businessImage={business.image}
+          />
         </section>
       )}
 
