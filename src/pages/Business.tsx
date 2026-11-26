@@ -90,6 +90,7 @@ import {
   Eye,
   GripVertical,
   Heart,
+  ImageUp,
   Loader2,
   MapPin,
   MessageCircle,
@@ -241,7 +242,6 @@ export default function BusinessPage() {
   const [issueAmount, setIssueAmount] = useState("");
   const [issueNote, setIssueNote] = useState("");
   const [savingIssue, setSavingIssue] = useState(false);
-  const [headerBusy, setHeaderBusy] = useState(false);
   // Repartidores favoritos y reseñas del local a la entrega.
   const [favoriteBusy, setFavoriteBusy] = useState<string | null>(null);
   const [reviewCourier, setReviewCourier] = useState<{
@@ -1307,41 +1307,51 @@ export default function BusinessPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
-          <div className="relative overflow-hidden rounded-3xl border border-border/70">
-            <CoverUpload
-              preview={business.image}
-              onChange={(id, localPreview) => {
-                if (!headerBusy) {
-                  setHeaderBusy(true);
-                  void Promise.resolve().then(() => setHeaderBusy(false));
-                }
-              }}
-              hint="Si no subís una, usamos la portada por defecto de tu departamento."
-            />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.1)_0%,rgba(6,6,7,0.92)_100%)]" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-                  {departmentInfo.label} · {business.category}
-                </p>
-                <p className="mt-1 font-display text-2xl font-extrabold text-white">
-                  {business.name}
-                </p>
-                <p className="mt-1 flex items-center gap-2 text-xs text-white/60">
-                  <span className="flex items-center gap-1">
-                    ⭐ {business.rating.toFixed(1)} ({business.reviews})
-                  </span>
-                  · {products.length} productos · ETA {business.etaMinutes} min
-                </p>
-              </div>
-              <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
+          <section className="w-full overflow-hidden rounded-2xl border border-border/70 bg-black/20 sm:rounded-3xl">
+            <div className="relative h-52 w-full overflow-hidden bg-secondary sm:h-72">
+              {business.image ? (
+                <img
+                  src={business.image}
+                  alt={`Portada de ${business.name}`}
+                  className="size-full object-cover"
+                />
+              ) : (
+                <div className="size-full bg-ember-gradient opacity-60" />
+              )}
+            </div>
+            <div className="p-4 sm:p-5">
+              <p className="break-words text-[10px] font-semibold uppercase leading-relaxed tracking-[0.18em] text-accent">
+                {departmentInfo.label} · {business.category}
+              </p>
+              <h2 className="mt-1 break-words font-display text-lg font-extrabold leading-tight sm:text-2xl">
+                {business.name}
+              </h2>
+              <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-relaxed text-muted-foreground">
+                <span>⭐ {business.rating.toFixed(1)} ({business.reviews})</span>
+                <span>{products.length} productos</span>
+                <span>ETA {business.etaMinutes} min</span>
+              </p>
+              <Button
+                asChild
+                size="sm"
+                className="mt-3 w-fit gap-1.5 bg-ember-gradient text-black"
+              >
                 <Link to="/business?tab=menu">
                   Ver productos
                   <ArrowRight className="size-3.5" />
                 </Link>
               </Button>
             </div>
-          </div>
+          </section>
+
+          <Button
+            variant="outline"
+            className="w-fit gap-2 border-border/80"
+            onClick={openSettings}
+          >
+            <ImageUp className="size-4" />
+            Cambiar portada
+          </Button>
 
           {!business.location && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
