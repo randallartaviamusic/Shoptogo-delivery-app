@@ -1747,6 +1747,21 @@ export default function BusinessPage() {
         </motion.div>
       )}
 
+      {(tab === "menu" || tab === "stories" || tab === "portada") && (
+        <section className="mb-4 w-full rounded-2xl border border-border/70 bg-card/40 p-3 sm:p-4">
+          <div className="mb-3">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+              <Sparkles className="size-3.5" /> Historias del local
+            </p>
+            <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+              Fotos y videos de 24 horas que aparecen arriba de “Todos los
+              negocios” para los compradores. Incluidas en Pro y Élite.
+            </p>
+          </div>
+          <StoryUpload enabled={proStoriesEnabled} />
+        </section>
+      )}
+
       <section className="w-full">
         {products.length === 0 ? (
           <div className="flex w-full items-center justify-center rounded-2xl border border-dashed border-border/70 bg-black/20 p-6 text-center text-sm text-muted-foreground">

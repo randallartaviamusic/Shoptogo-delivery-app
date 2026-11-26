@@ -287,6 +287,10 @@ function Directory() {
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-x-clip">
+      {showStories && storiesFeed && storiesFeed.length > 0 && (
+        <StoriesTray groups={storiesFeed} />
+      )}
+
       <PageHeader
         title="Todos los negocios"
         description="Entrá al local que quieras y comprá directo de su catálogo completo, sin deslizar."
@@ -312,10 +316,6 @@ function Directory() {
           </div>
         }
       />
-
-      {showStories && storiesFeed && storiesFeed.length > 0 && (
-        <StoriesTray groups={storiesFeed} />
-      )}
 
       {spotlight && (
         <Link
