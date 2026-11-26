@@ -1401,6 +1401,22 @@ export default function BusinessPage() {
               ) : (
                 <div className="size-full bg-ember-gradient opacity-60" />
               )}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/5 to-transparent" />
+              <div className="absolute bottom-3 left-4 sm:bottom-4 sm:left-5">
+                <div className="size-16 overflow-hidden rounded-2xl border-4 border-background bg-black/50 shadow-[0_12px_32px_rgba(0,0,0,0.45)] sm:size-20">
+                  {business.profileImage || business.image ? (
+                    <img
+                      src={business.profileImage || business.image}
+                      alt={`Foto de perfil de ${business.name}`}
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex size-full items-center justify-center bg-secondary">
+                      <Store className="size-6 text-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="p-4 sm:p-5">
               <p className="break-words text-[10px] font-semibold uppercase leading-relaxed tracking-[0.18em] text-accent">

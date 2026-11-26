@@ -834,6 +834,8 @@ export const update = mutation({
     image: v.optional(v.string()),
     // Portada nueva subida desde la galería. Tiene prioridad sobre `image`.
     coverStorageId: v.optional(v.id("_storage")),
+    // Foto de perfil del local subida desde la galería.
+    profileImageStorageId: v.optional(v.id("_storage")),
     // Horario semanal. null = se borra y vuelve el control manual.
     hours: v.optional(v.union(v.array(businessHourValidator), v.null())),
     // Promoción de envío del local. null = queda sin promoción.
@@ -907,6 +909,11 @@ export const update = mutation({
       const coverUrl = await ctx.storage.getUrl(args.coverStorageId);
       if (!coverUrl) throw new Error("No pudimos guardar la portada");
       patch.image = coverUrl;
+    }
+    if (args.profileImageStorageId) {
+      const profileUrl = await ctx.storage.getUrl(args.profileImageStorageId);
+      if (!profileUrl) throw new Error("No pudimos guardar la foto de perfil");
+      patch.profileImage = profileUrl;
     }
     if (args.deliveryPromo !== undefined)
       patch.deliveryPromo = args.deliveryPromo ?? undefined;

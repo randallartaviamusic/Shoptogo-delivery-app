@@ -354,6 +354,9 @@ const schema = defineSchema(
       category: v.string(),
       tagline: v.string(),
       image: v.string(),
+      // Foto de perfil del local (logo o avatar). La portada grande va en
+      // `image`; si esta falta, se usa la portada como respaldo.
+      profileImage: v.optional(v.string()),
       address: v.string(),
       // Cobro directo de los pedidos: el comprador que no paga en efectivo
       // transfiere por SINPE Móvil a este número y manda el comprobante al

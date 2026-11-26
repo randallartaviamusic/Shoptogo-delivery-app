@@ -169,6 +169,10 @@ export default function ProfilePage() {
   const updateProfile = useMutation(api.profiles.updateProfile);
   const generatePhotoUploadUrl = useMutation(api.profiles.generatePhotoUploadUrl);
   const setPhoto = useMutation(api.profiles.setPhoto);
+  const updateBusiness = useMutation(api.businesses.update);
+  const generateBusinessImageUploadUrl = useMutation(
+    api.businesses.generateCoverUploadUrl,
+  );
 
   // Administración de la marca (sólo para el perfil administrador).
   const isAdmin = useQuery(api.branding.amIAdmin) ?? false;
@@ -299,6 +303,11 @@ export default function ProfilePage() {
 
   const role = user.role ?? "buyer";
   const hasBusiness = Boolean(myBusiness?.business);
+  // En la cuenta de negocio, la portada y el avatar son los del local para
+  // que se vean iguales acá, en el Panel y en la sección Negocios.
+  const business = role === "business" ? myBusiness?.business : undefined;
+  const profileCover = business?.image || user.coverImage;
+  const profileAvatar = business?.profileImage || business?.image || user.image;
 
   const handleSave = async () => {
     setSaving(true);
@@ -325,6 +334,27 @@ export default function ProfilePage() {
 
     setUploading(kind);
     try {
+      if (business) {
+        const uploadUrl = await generateBusinessImageUploadUrl({});
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!response.ok) throw new Error("No pudimos subir la imagen");
+        const { storageId } = (await response.json()) as { storageId: string };
+        await updateBusiness(
+          kind === "avatar"
+            ? { profileImageStorageId: storageId as Id<"_storage"> }
+            : { coverStorageId: storageId as Id<"_storage"> },
+        );
+        toast.success(
+          kind === "avatar"
+            ? "Foto de perfil del negocio actualizada"
+            : "Portada del negocio actualizada",
+        );
+        return;
+      }
       const uploadUrl = await generatePhotoUploadUrl();
       const response = await fetch(uploadUrl, {
         method: "POST",
@@ -627,10 +657,12 @@ export default function ProfilePage() {
 
       <div className="surface-raised overflow-hidden rounded-3xl">
         <div className="relative h-32 sm:h-44">
-          {user.coverImage ? (
+          {profileCover ? (
             <img
-              src={user.coverImage}
-              alt="Portada del perfil"
+              src={profileCover}
+              alt={
+                business ? `Portada de ${business.name}` : "Portada del perfil"
+              }
               className="size-full object-cover"
             />
           ) : (
@@ -668,10 +700,14 @@ export default function ProfilePage() {
           <div className="flex flex-wrap items-end gap-4">
             <div className="relative -mt-10 shrink-0">
               <div className="flex size-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-background bg-ember-gradient font-display text-2xl font-extrabold text-black">
-                {user.image ? (
+                {profileAvatar ? (
                   <img
-                    src={user.image}
-                    alt="Foto de perfil"
+                    src={profileAvatar}
+                    alt={
+                      business
+                        ? `Foto de perfil de ${business.name}`
+                        : "Foto de perfil"
+                    }
                     className="size-full object-cover"
                   />
                 ) : (
@@ -744,8 +780,9 @@ export default function ProfilePage() {
           </div>
 
           <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-            Subí tu foto de perfil y tu portada desde la galería del teléfono o
-            los archivos de tu compu. JPG, PNG o WebP hasta 8 MB.
+            {business
+              ? "La portada y la foto de perfil son las del negocio: se ven igual acá y en el Panel. Cambialas desde la galería del teléfono o los archivos de tu compu. JPG, PNG o WebP hasta 8 MB."
+              : "Subí tu foto de perfil y tu portada desde la galería del teléfono o los archivos de tu compu. JPG, PNG o WebP hasta 8 MB."}
           </p>
 
           <div className="mt-4 grid w-full max-w-full min-w-0 grid-cols-3 gap-2 overflow-x-clip">
