@@ -1696,21 +1696,53 @@ export default function BusinessPage() {
                 {products.length} producto{products.length === 1 ? "" : "s"}
               </span>
             </div>
-            <div className="space-y-2">
+            <div className="grid w-full max-w-full min-w-0 grid-cols-2 gap-3 overflow-x-clip sm:gap-4 lg:grid-cols-3">
               {products.map((product) => (
-                <div key={product._id} className="rounded-2xl border border-border/70 bg-black/30 p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-sm">{product.name}</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {money(product.price)} · {product.fulfillmentMethods?.length ?? 0} método{(product.fulfillmentMethods?.length ?? 0) === 1 ? "" : "s"} de entrega
+                <article
+                  key={product._id}
+                  className="group w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden">
+                    <ProductMedia
+                      image={product.image}
+                      video={product.video}
+                      alt={product.name}
+                      className="size-full transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_40%,rgba(6,6,7,0.85)_100%)]" />
+                    <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+                      <span className="rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-accent backdrop-blur">
+                        {money(product.price)}
+                      </span>
+                      <PromoBadge
+                        promo={business.deliveryPromo}
+                        withIcon={false}
+                        className="px-2 py-0.5 text-[9px]"
+                      />
+                    </div>
+                    {!product.isAvailable && (
+                      <span className="absolute right-2 top-2 rounded-full border border-primary/50 bg-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                        Agotado
+                      </span>
+                    )}
+                    <div className="absolute inset-x-2 bottom-2">
+                      <p className="line-clamp-2 break-words font-display text-sm font-bold text-white">
+                        {product.name}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1">
+                  </div>
+                  <div className="space-y-2 p-3">
+                    <p className="line-clamp-3 whitespace-pre-line break-words text-[11px] leading-snug text-muted-foreground">
+                      {product.description || "Sin descripción"}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {product.fulfillmentMethods?.length ?? 0} método{(product.fulfillmentMethods?.length ?? 0) === 1 ? "" : "s"} de entrega
+                    </p>
+                    <div className="flex items-center justify-between border-t border-border/60 pt-1">
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label="Vista previa"
+                        aria-label={`Vista previa de ${product.name}`}
                         className="size-8 text-muted-foreground"
                         onClick={() => setPreviewing(product)}
                       >
@@ -1719,7 +1751,7 @@ export default function BusinessPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label="Editar"
+                        aria-label={`Editar ${product.name}`}
                         className="size-8 text-muted-foreground"
                         onClick={() => openEditProduct(product)}
                       >
@@ -1743,7 +1775,7 @@ export default function BusinessPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label="Eliminar"
+                        aria-label={`Eliminar ${product.name}`}
                         className="size-8 text-muted-foreground hover:text-primary"
                         onClick={() => setDeleting(product)}
                       >
@@ -1751,7 +1783,7 @@ export default function BusinessPage() {
                       </Button>
                     </div>
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           </div>
