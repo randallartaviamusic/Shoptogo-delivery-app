@@ -104,6 +104,9 @@ import {
   Timer,
   Trash2,
   Users,
+  PackagePlus,
+  User,
+  Sparkles,
   UtensilsCrossed,
   Wallet,
   Zap,
@@ -1290,10 +1293,11 @@ export default function BusinessPage() {
                       lo cobró por más o por menos, podés ajustar la diferencia acá.
                     </p>
                   </div>
-                )
-              }
-            );
-          });
+                )}
+              </div>
+              );
+            })
+          )}
         </motion.div>
       )}
 
@@ -1338,7 +1342,6 @@ export default function BusinessPage() {
               </Button>
             </div>
           </div>
-        </div>
 
           {!business.location && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-3.5">
@@ -1609,11 +1612,11 @@ export default function BusinessPage() {
                         <td className="pigment px-3 py-2 text-right">{money(order.total)}</td>
                         <td className="pigment px-3 py-2"><StatusPill status={order.status} /></td>
                         <td className="pigment px-3 py-2 text-right">
-                          {order.estimatedArrivalAt != null && statusTransitionsBefore(order, order.estimatedArrivalAt) === 0 ? (
+                          {order.estimatedArrivalAt != null ? (
                             <span className="font-medium tabular-nums">
-                              {formatCountdown(now, order.estimatedArrivalAt)}
+                              {clockTime(order.estimatedArrivalAt)}
                             </span>
-                          ) : null}
+                          ) : "—"}
                         </td>
                       </tr>
                     ))}
@@ -1659,7 +1662,7 @@ export default function BusinessPage() {
                 Configuración
               </Link>
             </Button>
-            {!business.isOnlineSubscriptionActive && (
+            {!subscription?.hasAccess && (
               <Button asChild size="sm" className="border-primary/40 text-primary">
                 <Link to="/subscriptions?tier=elite">
                   <Sparkles className="size-4" />
@@ -1673,7 +1676,7 @@ export default function BusinessPage() {
       )}
 
       <section className="w-full">
-        {business.products.length === 0 ? (
+        {products.length === 0 ? (
           <div className="flex w-full items-center justify-center rounded-2xl border border-dashed border-border/70 bg-black/20 p-6 text-center text-sm text-muted-foreground">
             <PackagePlus className="size-5 text-muted-foreground" />
             <span className="ml-2">Aún no publicaste productos.</span>
@@ -1685,17 +1688,17 @@ export default function BusinessPage() {
                 Productos guardados
               </p>
               <span className="text-[11px] font-mono text-muted-foreground">
-                {business.products.length} producto{business.products.length === 1 ? "" : "s"}
+                {products.length} producto{products.length === 1 ? "" : "s"}
               </span>
             </div>
             <div className="space-y-2">
-              {business.products.map((product) => (
+              {products.map((product) => (
                 <div key={product._id} className="rounded-2xl border border-border/70 bg-black/30 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-sm">{product.name}</p>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {money(product.price)} · {product.fulfillmentMethods.length} método{product.fulfillmentMethods.length === 1 ? "" : "s"} de entrega
+                        {money(product.price)} · {product.fulfillmentMethods?.length ?? 0} método{(product.fulfillmentMethods?.length ?? 0) === 1 ? "" : "s"} de entrega
                       </p>
                     </div>
                     <div className="flex items-center gap-1">
