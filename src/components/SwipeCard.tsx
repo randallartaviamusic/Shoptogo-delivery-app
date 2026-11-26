@@ -82,12 +82,14 @@ function CardBody({
   eliteBadgeUrl,
   eliteBadgeSize = 36,
   titleSize = 26,
+  soundToggle = false,
 }: {
   dish: Dish;
   dimmed?: boolean;
   eliteBadgeUrl?: string | null;
   eliteBadgeSize?: number;
   titleSize?: number;
+  soundToggle?: boolean;
 }) {
   return (
     <>
@@ -97,6 +99,7 @@ function CardBody({
         alt={dish.name}
         className="absolute inset-0 size-full"
         imgClassName={cn("transition-transform duration-700", dimmed && "scale-105")}
+        withSoundToggle={soundToggle}
       />
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.72)_0%,rgba(6,6,7,0.05)_28%,rgba(6,6,7,0.35)_58%,rgba(6,6,7,0.94)_100%)]" />
       {dish.elite && <EliteAura />}
@@ -299,6 +302,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
         eliteBadgeUrl={eliteBadgeUrl}
         eliteBadgeSize={eliteBadgeSize}
         titleSize={titleSize}
+        soundToggle
       />
 
       <motion.div
