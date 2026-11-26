@@ -47,7 +47,7 @@ export type Dish = {
   businessImage: string;
   elite?: boolean;
   eliteVerified?: boolean;
-  flash?: { title: string; detail: string; endsAt: number } | null;
+  flash?: { title: string; detail: string; mediaUrl?: string | null; mediaKind?: "image" | "video" | null; endsAt: number } | null;
   rating: number;
   reviews: number;
   etaMinutes: number;

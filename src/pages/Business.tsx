@@ -202,12 +202,25 @@ export default function BusinessPage() {
   const coupons = useQuery(api.coupons.mine);
   const createCoupon = useMutation(api.coupons.create);
   const setFlashSale = useMutation(api.businesses.setFlashSale);
+  const generateFlashMediaUploadUrl = useMutation(api.businesses.generateFlashMediaUploadUrl);
+  const flashMediaInputRef = useRef<HTMLInputElement>(null);
   const [flashForm, setFlashForm] = useState({
     title: "",
     detail: "",
     duration: "4",
   });
+  const [flashMediaStorageId, setFlashMediaStorageId] = useState<Id<"_storage"> | null>(null);
+  const [flashMediaPreview, setFlashMediaPreview] = useState<string | null>(null);
+  const [flashMediaKind, setFlashMediaKind] = useState<"image" | "video" | null>(null);
+  const [removeFlashMedia, setRemoveFlashMedia] = useState(false);
+  const [flashMediaUploading, setFlashMediaUploading] = useState(false);
   const [flashBusy, setFlashBusy] = useState(false);
+
+  useEffect(() => {
+    if (!flashMediaPreview?.startsWith("blob:")) return;
+    return () => URL.revokeObjectURL(flashMediaPreview);
+  }, [flashMediaPreview]);
+
   const setCouponActive = useMutation(api.coupons.setActive);
   const removeCoupon = useMutation(api.coupons.remove);
   const confirmCash = useMutation(api.orders.businessConfirmCash);
@@ -774,12 +787,53 @@ export default function BusinessPage() {
       detail: business.flashDetail ?? "",
       duration: "4",
     });
+    setFlashMediaStorageId(null);
+    setFlashMediaPreview(business.flashMediaUrl ?? null);
+    setFlashMediaKind(business.flashMediaKind ?? null);
+    setRemoveFlashMedia(false);
     setSettingsDialog(true);
   };
 
   const flashActive =
     Boolean(business.flashTitle?.trim()) &&
     (business.flashEndsAt ?? 0) > now;
+
+  const handleFlashMediaUpload = async (file?: File | null) => {
+    if (!file) return;
+    const kind = file.type.startsWith("image/")
+      ? "image"
+      : file.type.startsWith("video/")
+        ? "video"
+        : null;
+    if (!kind) {
+      toast.error("Elegí una imagen o un video desde la galería");
+      return;
+    }
+    const maxBytes = kind === "image" ? 8 * 1024 * 1024 : 30 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error(kind === "image" ? "La imagen no puede pesar más de 8 MB" : "El video no puede pesar más de 30 MB");
+      return;
+    }
+    setFlashMediaUploading(true);
+    try {
+      const uploadUrl = await generateFlashMediaUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir el medio de la oferta");
+      const { storageId } = (await response.json()) as { storageId: string };
+      setFlashMediaStorageId(storageId as Id<"_storage">);
+      setFlashMediaPreview(URL.createObjectURL(file));
+      setFlashMediaKind(kind);
+      setRemoveFlashMedia(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos subir el medio");
+    } finally {
+      setFlashMediaUploading(false);
+    }
+  };
 
   const handleFlashSave = async () => {
     setFlashBusy(true);
@@ -788,7 +842,13 @@ export default function BusinessPage() {
         title: flashForm.title,
         detail: flashForm.detail,
         durationHours: Number(flashForm.duration) || 4,
+        mediaStorageId: flashMediaStorageId ?? undefined,
+        removeMedia: removeFlashMedia || undefined,
       });
+      setFlashMediaStorageId(null);
+      setFlashMediaPreview(result.mediaUrl ?? null);
+      setFlashMediaKind(result.mediaKind ?? null);
+      setRemoveFlashMedia(false);
       toast.success("Oferta flash publicada", {
         description:
           result.endsAt !== null
@@ -808,6 +868,10 @@ export default function BusinessPage() {
     setFlashBusy(true);
     try {
       await setFlashSale({ clear: true });
+      setFlashMediaStorageId(null);
+      setFlashMediaPreview(null);
+      setFlashMediaKind(null);
+      setRemoveFlashMedia(false);
       toast.success("Oferta flash terminada");
     } catch (error) {
       toast.error(
@@ -2579,6 +2643,66 @@ export default function BusinessPage() {
                       className="h-9 text-xs"
                     />
                   </div>
+                  <div className="space-y-2 rounded-xl border border-border/70 bg-black/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label>Imagen o video de la oferta (opcional)</Label>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          Imagen hasta 8 MB · video hasta 30 MB
+                        </p>
+                      </div>
+                      {flashMediaPreview && (
+                        <div className="size-14 shrink-0 overflow-hidden rounded-xl border border-amber-300/40">
+                          {flashMediaKind === "video" ? (
+                            <video src={flashMediaPreview} muted autoPlay loop playsInline className="size-full object-cover" />
+                          ) : (
+                            <img src={flashMediaPreview} alt="Vista previa del medio de la oferta flash" className="size-full object-cover" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      ref={flashMediaInputRef}
+                      type="file"
+                      accept="image/*,video/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        void handleFlashMediaUpload(file);
+                      }}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 border-amber-300/40 text-amber-100"
+                        disabled={flashMediaUploading || flashBusy}
+                        onClick={() => flashMediaInputRef.current?.click()}
+                      >
+                        {flashMediaUploading ? <Loader2 className="size-3.5 animate-spin" /> : <ImageUp className="size-3.5" />}
+                        {flashMediaUploading ? "Subiendo" : flashMediaPreview ? "Cambiar medio" : "Subir desde galería"}
+                      </Button>
+                      {flashMediaPreview && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1.5 text-muted-foreground"
+                          disabled={flashMediaUploading || flashBusy}
+                          onClick={() => {
+                            setFlashMediaStorageId(null);
+                            setFlashMediaPreview(null);
+                            setFlashMediaKind(null);
+                            setRemoveFlashMedia(true);
+                          }}
+                        >
+                          <Trash2 className="size-3.5" /> Quitar medio
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex gap-2">
                     <div className="flex-1 space-y-1.5">
                       <Label htmlFor="flash-duration">Duración</Label>
@@ -2602,7 +2726,7 @@ export default function BusinessPage() {
                         type="button"
                         size="sm"
                         className="h-9 flex-1 gap-1.5 bg-ember-gradient text-black"
-                        disabled={flashBusy}
+                        disabled={flashBusy || flashMediaUploading}
                         onClick={() => void handleFlashSave()}
                       >
                         {flashBusy ? (
@@ -2804,6 +2928,8 @@ export default function BusinessPage() {
                     ? {
                         title: flashTitle,
                         detail: business.flashDetail?.trim() ?? "",
+                        mediaUrl: business.flashMediaUrl ?? null,
+                        mediaKind: business.flashMediaKind ?? null,
                         endsAt: flashEndsAt,
                       }
                     : null,

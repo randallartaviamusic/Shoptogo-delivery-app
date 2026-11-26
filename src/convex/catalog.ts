@@ -166,6 +166,8 @@ export const deck = query({
               ? {
                   title: flashTitle,
                   detail: business.flashDetail?.trim() ?? "",
+                  mediaUrl: business.flashMediaUrl ?? null,
+                  mediaKind: business.flashMediaKind ?? null,
                   endsAt: flashEndsAt,
                 }
               : null,

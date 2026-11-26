@@ -75,6 +75,8 @@ export function isSlotBlocked(
 
 const DEFAULT_DEPARTMENT = "comida";
 const PRODUCT_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
+const FLASH_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const FLASH_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
 const PRODUCT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 
 /** Orden manual del catálogo; sin posición explícita manda la creación. */
@@ -203,7 +205,13 @@ function activeFlash(business: Doc<"businesses">, now = Date.now()) {
   const detail = business.flashDetail?.trim() ?? "";
   const endsAt = business.flashEndsAt ?? 0;
   if (!title || endsAt <= now) return null;
-  return { title, detail, endsAt };
+  return {
+    title,
+    detail,
+    mediaUrl: business.flashMediaUrl ?? null,
+    mediaKind: business.flashMediaKind ?? null,
+    endsAt,
+  };
 }
 
 async function requireUserId(ctx: DbCtx) {
@@ -532,6 +540,23 @@ export const storefront = query({
   },
 });
 
+/** URL temporal para subir el medio de una oferta flash Élite. */
+export const generateFlashMediaUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
+    if (!(await ownedBusiness(ctx, userId))) {
+      throw new ConvexError("No tenés un negocio asociado");
+    }
+    await requireElitePlan(
+      ctx,
+      userId,
+      "Los medios de ofertas flash están disponibles sólo con Élite activo",
+    );
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 /** URL temporal para subir la portada del local desde la galería. */
 export const generateCoverUploadUrl = mutation({
   args: {},
@@ -575,6 +600,8 @@ export const setFlashSale = mutation({
     title: v.optional(v.string()),
     detail: v.optional(v.string()),
     durationHours: v.optional(v.number()),
+    mediaStorageId: v.optional(v.id("_storage")),
+    removeMedia: v.optional(v.boolean()),
     clear: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
@@ -587,11 +614,22 @@ export const setFlashSale = mutation({
       "Las ofertas flash están disponibles sólo con la suscripción Élite activa",
     );
     if (args.clear) {
+      const previousMedia = business.flashMediaStorageId;
       await ctx.db.patch(business._id, {
         flashTitle: undefined,
         flashDetail: undefined,
+        flashMediaUrl: undefined,
+        flashMediaStorageId: undefined,
+        flashMediaKind: undefined,
         flashEndsAt: undefined,
       });
+      if (previousMedia) {
+        try {
+          await ctx.storage.delete(previousMedia);
+        } catch {
+          // El medio puede haberse borrado antes; la oferta queda terminada.
+        }
+      }
       return { endsAt: null as number | null, cleared: true };
     }
     const title = (args.title ?? "").trim().slice(0, 60);
@@ -604,12 +642,52 @@ export const setFlashSale = mutation({
       throw new ConvexError("La oferta flash puede durar de 1 a 24 horas");
     }
     const endsAt = Date.now() + duration * 60 * 60 * 1000;
+    let mediaUrl: string | undefined;
+    let mediaKind: "image" | "video" | undefined;
+    if (args.mediaStorageId) {
+      const metadata = await ctx.storage.getMetadata(args.mediaStorageId);
+      if (!metadata) throw new ConvexError("No pudimos leer el medio de la oferta");
+      if (metadata.contentType?.startsWith("image/")) mediaKind = "image";
+      else if (metadata.contentType?.startsWith("video/")) mediaKind = "video";
+      else throw new ConvexError("El archivo tiene que ser una imagen o un video");
+      const maxBytes = mediaKind === "image" ? FLASH_IMAGE_MAX_BYTES : FLASH_VIDEO_MAX_BYTES;
+      if (metadata.size > maxBytes) {
+        throw new ConvexError(
+          mediaKind === "image"
+            ? "La imagen no puede pesar más de 8 MB"
+            : "El video no puede pesar más de 30 MB",
+        );
+      }
+      mediaUrl = await ctx.storage.getUrl(args.mediaStorageId) ?? undefined;
+      if (!mediaUrl) throw new ConvexError("No pudimos guardar el medio de la oferta");
+    }
+    const previousMedia = business.flashMediaStorageId;
     await ctx.db.patch(business._id, {
       flashTitle: title,
       flashDetail: detail || undefined,
+      flashMediaUrl: args.removeMedia
+        ? undefined
+        : mediaUrl ?? business.flashMediaUrl,
+      flashMediaStorageId: args.removeMedia
+        ? undefined
+        : args.mediaStorageId ?? business.flashMediaStorageId,
+      flashMediaKind: args.removeMedia
+        ? undefined
+        : mediaKind ?? business.flashMediaKind,
       flashEndsAt: endsAt,
     });
-    return { endsAt };
+    if (previousMedia && (args.removeMedia || (args.mediaStorageId && previousMedia !== args.mediaStorageId))) {
+      try {
+        await ctx.storage.delete(previousMedia);
+      } catch {
+        // El medio anterior puede haberse borrado antes de reemplazarlo.
+      }
+    }
+    return {
+      endsAt,
+      mediaUrl: args.removeMedia ? null : mediaUrl ?? business.flashMediaUrl ?? null,
+      mediaKind: args.removeMedia ? null : mediaKind ?? business.flashMediaKind ?? null,
+    };
   },
 });
 

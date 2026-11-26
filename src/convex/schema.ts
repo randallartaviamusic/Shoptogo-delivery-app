@@ -377,6 +377,9 @@ const schema = defineSchema(
       // desde sus ajustes. Sólo se muestra con suscripción Élite vigente.
       flashTitle: v.optional(v.string()),
       flashDetail: v.optional(v.string()),
+      flashMediaUrl: v.optional(v.string()),
+      flashMediaStorageId: v.optional(v.id("_storage")),
+      flashMediaKind: v.optional(v.union(v.literal("image"), v.literal("video"))),
       flashEndsAt: v.optional(v.number()),
       etaMinutes: v.number(),
       rating: v.number(),

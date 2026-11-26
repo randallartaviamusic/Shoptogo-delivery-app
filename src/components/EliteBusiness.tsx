@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 export type FlashSale = {
   title: string;
   detail: string;
+  mediaUrl?: string | null;
+  mediaKind?: "image" | "video" | null;
   endsAt: number;
 };
 
@@ -115,7 +117,28 @@ export function FlashSaleBadge({
         className,
       )}
     >
-      <Zap className="size-3 shrink-0" />
+      {flash.mediaUrl ? (
+        flash.mediaKind === "video" ? (
+          <video
+            src={flash.mediaUrl}
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="metadata"
+            aria-label={`Video de la oferta: ${flash.title}`}
+            className="size-5 shrink-0 rounded object-cover"
+          />
+        ) : (
+          <img
+            src={flash.mediaUrl}
+            alt={`Imagen de la oferta: ${flash.title}`}
+            className="size-5 shrink-0 rounded object-cover"
+          />
+        )
+      ) : (
+        <Zap className="size-3 shrink-0" />
+      )}
       <span className="truncate">{flash.title}</span>
       <FlashCountdown
         endsAt={flash.endsAt}

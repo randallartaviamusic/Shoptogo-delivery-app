@@ -648,7 +648,7 @@ function BusinessCard({
     minPrice: number | null;
     isFavorite: boolean;
     eliteVerified: boolean;
-    flash: { title: string; detail: string; endsAt: number } | null;
+    flash: { title: string; detail: string; mediaUrl?: string | null; mediaKind?: "image" | "video" | null; endsAt: number } | null;
   };
   searchTerm: string;
   onToggleFavorite: (businessId: Id<"businesses">) => void;
