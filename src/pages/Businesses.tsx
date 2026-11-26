@@ -11,7 +11,6 @@ import {
   EliteVerifiedSeal,
   FlashCountdown,
   FlashSaleBadge,
-  weeklySpotlight,
 } from "@/components/EliteBusiness";
 import { LoopRow } from "@/components/LoopRow";
 import { StoriesTray } from "@/components/BusinessStories";
@@ -54,7 +53,7 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
@@ -92,6 +91,156 @@ function favoriteErrorMessage(error: unknown, fallback: string) {
     if (clean && !/Called by client/i.test(clean)) return clean;
   }
   return fallback;
+}
+
+type EliteSpotlightFlash = {
+  title: string;
+  detail: string;
+  mediaUrl?: string | null;
+  mediaKind?: "image" | "video" | null;
+  endsAt: number;
+};
+
+type EliteSpotlightBusiness = {
+  slug: string;
+  image: string;
+  name: string;
+  tagline: string;
+  eliteVerified: boolean;
+  flash: EliteSpotlightFlash | null;
+};
+
+const ELITE_SPOTLIGHT_INTERVAL_MS = 5000;
+const ELITE_SPOTLIGHT_PAUSE_AFTER_MANUAL_MS = 15000;
+
+/** Carrusel de portadas Élite: scroll horizontal y rotación aleatoria automática. */
+function EliteSpotlightCarousel({
+  businesses,
+}: {
+  businesses: EliteSpotlightBusiness[];
+}) {
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const activeRef = useRef(0);
+  const pausedUntilRef = useRef(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const signature = businesses.map((business) => business.slug).join("|");
+
+  useEffect(() => {
+    activeRef.current = 0;
+    setActiveIndex(0);
+    trackRef.current?.scrollTo({ left: 0 });
+  }, [signature]);
+
+  const scrollToBusiness = (index: number, behavior: ScrollBehavior) => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollTo({ left: index * track.clientWidth, behavior });
+  };
+
+  const markManualUse = () => {
+    pausedUntilRef.current = Date.now() + ELITE_SPOTLIGHT_PAUSE_AFTER_MANUAL_MS;
+  };
+
+  const updateIndexFromScroll = () => {
+    const track = trackRef.current;
+    if (!track || track.clientWidth === 0) return;
+    const index = Math.min(
+      businesses.length - 1,
+      Math.max(0, Math.round(track.scrollLeft / track.clientWidth)),
+    );
+    if (index !== activeRef.current) {
+      activeRef.current = index;
+      setActiveIndex(index);
+    }
+  };
+
+  useEffect(() => {
+    if (businesses.length < 2) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      if (Date.now() < pausedUntilRef.current) return;
+      let next = activeRef.current;
+      while (next === activeRef.current) {
+        next = Math.floor(Math.random() * businesses.length);
+      }
+      activeRef.current = next;
+      setActiveIndex(next);
+      scrollToBusiness(next, "smooth");
+    }, ELITE_SPOTLIGHT_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [businesses.length]);
+
+  if (businesses.length === 0) return null;
+
+  return (
+    <div
+      ref={trackRef}
+      role="region"
+      aria-roledescription="carrusel"
+      aria-label="Portadas de locales Élite"
+      onScroll={updateIndexFromScroll}
+      onPointerDown={markManualUse}
+      onTouchStart={markManualUse}
+      onWheel={markManualUse}
+      className="mb-4 flex snap-x snap-mandatory overflow-x-auto no-scrollbar"
+    >
+      {businesses.map((business, index) => {
+        const isActive = index === activeIndex;
+        return (
+          <article
+            key={business.slug}
+            aria-hidden={!isActive}
+            className={cn(
+              "w-full shrink-0 snap-center transition-opacity duration-500",
+              isActive ? "opacity-100" : "opacity-0",
+            )}
+          >
+            <Link
+              to={`/negocios/${business.slug}`}
+              tabIndex={isActive ? 0 : -1}
+              className="relative block overflow-hidden rounded-3xl border border-amber-300/60"
+            >
+              <DishImage
+                src={business.image}
+                alt={business.name}
+                className="h-44 w-full sm:h-52"
+              />
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.15)_0%,rgba(6,6,7,0.92)_100%)]" />
+              <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-5">
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">
+                    <Crown className="size-3.5" />
+                    Local Élite
+                    {business.eliteVerified && <EliteVerifiedSeal />}
+                  </p>
+                  <p className="mt-1 truncate font-display text-xl font-extrabold text-white sm:text-2xl">
+                    {business.name}
+                  </p>
+                  <p className="mt-0.5 line-clamp-1 text-xs text-white/70">
+                    {business.tagline}
+                  </p>
+                  {business.flash && (
+                    <div className="mt-2">
+                      <FlashSaleBadge flash={business.flash} />
+                    </div>
+                  )}
+                </div>
+                <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-300 px-3 py-1.5 text-[11px] font-extrabold text-black">
+                  Ver local
+                  <ArrowRight className="size-3.5" />
+                </span>
+              </div>
+            </Link>
+          </article>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function BusinessesPage() {
@@ -238,13 +387,13 @@ function Directory() {
     return shuffled(ordered, (visitSeed ^ 0x9e3779b9) | 0);
   }, [filtered, departmentSlug, searching, categories, visitSeed]);
 
-  // Portada Élite: rota cada semana entre los locales Élite abiertos.
-  const spotlight = useMemo(() => {
-    if (searching || departmentSlug !== "todos") return null;
-    return weeklySpotlight(
-      rows.filter((business) => business.elite && business.isOpen),
-    );
-  }, [rows, searching, departmentSlug]);
+  // Portadas Élite: todos los locales Élite abiertos comparten el mismo
+  // lugar del directorio. El carrusel permite moverlas con scroll y también
+  // rota solo entre portadas Élite, de forma aleatoria, cada cinco segundos.
+  const eliteSpotlights = useMemo(() => {
+    if (searching || departmentSlug !== "todos") return [];
+    return shuffledRows.filter((business) => business.elite && business.isOpen);
+  }, [shuffledRows, searching, departmentSlug]);
   const totalOpen = rows.filter((business) => business.isOpen).length;
   const activeFilterCount =
     (openOnly ? 1 : 0) +
@@ -317,42 +466,11 @@ function Directory() {
         }
       />
 
-      {spotlight && (
-        <Link
-          to={`/negocios/${spotlight.slug}`}
-          className="relative mb-4 block overflow-hidden rounded-3xl border border-amber-300/60"
-        >
-          <DishImage
-            src={spotlight.image}
-            alt={spotlight.name}
-            className="h-44 w-full sm:h-52"
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.15)_0%,rgba(6,6,7,0.92)_100%)]" />
-          <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-5">
-            <div className="min-w-0">
-              <p className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-200">
-                <Crown className="size-3.5" />
-                Local Élite de la semana
-                <EliteVerifiedSeal />
-              </p>
-              <p className="mt-1 truncate font-display text-xl font-extrabold text-white sm:text-2xl">
-                {spotlight.name}
-              </p>
-              <p className="mt-0.5 line-clamp-1 text-xs text-white/70">
-                {spotlight.tagline}
-              </p>
-              {spotlight.flash && (
-                <div className="mt-2">
-                  <FlashSaleBadge flash={spotlight.flash} />
-                </div>
-              )}
-            </div>
-            <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-300 px-3 py-1.5 text-[11px] font-extrabold text-black">
-              Ver local
-              <ArrowRight className="size-3.5" />
-            </span>
-          </div>
-        </Link>
+      {eliteSpotlights.length > 0 && (
+        <EliteSpotlightCarousel
+          key={eliteSpotlights.map((business) => business.slug).join("|")}
+          businesses={eliteSpotlights}
+        />
       )}
 
       <div className="relative mb-4">
