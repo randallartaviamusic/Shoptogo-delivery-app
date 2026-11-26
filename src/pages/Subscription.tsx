@@ -41,6 +41,7 @@ import {
   formatExpiry,
   formatExpiryDate,
   paymentWhatsappMessage,
+  discountForSubscriptionMonths,
   planOf,
   priceForSubscriptionMonths,
   renewalBase,
@@ -577,7 +578,7 @@ export default function SubscriptionPage() {
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 Nada de porcentajes por pedido. Cambiás de plan cuando quieras y
-                elegís pagar 1, 3, 6 o 12 meses: de 3 meses en adelante con 10% de descuento y vencimiento automático. Si es el mismo plan se suma a tu vencimiento; si cambias de plan los meses nuevos corren desde hoy.
+                elegís pagar 1, 3, 6 o 12 meses: 3 meses con 10%, 6 meses con 15% y 1 año con 20% de descuento, con vencimiento automático. Si es el mismo plan se suma a tu vencimiento; si cambias de plan los meses nuevos corren desde hoy.
               </p>
             </div>
             <ShieldCheck className="size-5 text-accent" />
@@ -748,7 +749,7 @@ export default function SubscriptionPage() {
                   coordinamos el retiro en tu dirección por WhatsApp.
                   {months === 1
                     ? ` Plan ${selected.name}: ${money(selected.price)}/mes.`
-                    : ` Incluye 10% de descuento por pagar ${durationLabel(months)} juntos (ahorrás ${money(savings)}).`}
+                    : ` Incluye ${Math.round(discountForSubscriptionMonths(months) * 100)}% de descuento por pagar ${durationLabel(months)} juntos (ahorrás ${money(savings)}).`}
                 </p>
               </div>
               <p className="rounded-full border border-border/70 px-3 py-1 text-[11px] text-muted-foreground">
@@ -801,7 +802,7 @@ export default function SubscriptionPage() {
                         </span>
                         {option > 1 && (
                           <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-accent-foreground">
-                            -10%
+                            -{Math.round(discountForSubscriptionMonths(option) * 100)}%
                           </span>
                         )}
                       </span>

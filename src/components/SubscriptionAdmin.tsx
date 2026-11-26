@@ -17,6 +17,7 @@ import {
   SUBSCRIPTION_PLANS,
   SUBSCRIPTION_PLAN_IDS,
   SUBSCRIPTION_STATUS_META,
+  discountForSubscriptionMonths,
   durationLabel,
   formatExpiry,
   planOf,
@@ -106,7 +107,9 @@ function AccountRow({
           {account.lastMonths != null && account.lastPrice != null && (
             <p className="mt-0.5 text-[11px] font-semibold text-accent">
               Suscribió {durationLabel(account.lastMonths)} por {money(account.lastPrice)}
-              {account.lastMonths > 1 ? " (con 10% de descuento)" : ""}
+              {account.lastMonths > 1
+                ? ` (con ${Math.round(discountForSubscriptionMonths(account.lastMonths) * 100)}% de descuento)`
+                : ""}
             </p>
           )}
         </div>
@@ -154,7 +157,9 @@ function AccountRow({
             {SUBSCRIPTION_DURATIONS.map((option) => (
               <SelectItem key={option} value={String(option)}>
                 {durationLabel(option)}
-                {option > 1 ? " · -10%" : ""}
+                {option > 1
+                  ? ` · -${Math.round(discountForSubscriptionMonths(option) * 100)}%`
+                  : ""}
               </SelectItem>
             ))}
           </SelectContent>
@@ -349,7 +354,7 @@ export function SubscriptionAdmin() {
           </p>
           <h2 className="font-display text-lg font-bold">Suscripciones</h2>
           <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Las cuentas pueden pagar 1, 3, 6 o 12 meses juntos: de 3 meses en adelante llevan 10% de descuento y el vencimiento se calcula solo. Los pagos manuales y en efectivo se activan solos al instante. Revisá los comprobantes con sus meses y montos, desactivá el plan si el pago no aparece (hasta 3 días) y editá los datos de cobro. Las tarifas son fijas: nunca un porcentaje de los pedidos.
+            Las cuentas pueden pagar 1, 3, 6 o 12 meses juntos: 3 meses llevan 10%, 6 meses 15% y 12 meses 20% de descuento, y el vencimiento se calcula solo. Los pagos manuales y en efectivo se activan solos al instante. Revisá los comprobantes con sus meses y montos, desactivá el plan si el pago no aparece (hasta 3 días) y editá los datos de cobro. Las tarifas son fijas: nunca un porcentaje de los pedidos.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-[11px]">

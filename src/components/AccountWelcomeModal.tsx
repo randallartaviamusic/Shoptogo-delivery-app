@@ -298,7 +298,7 @@ export default function AccountWelcomeModal({
               })}
             </div>
             <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
-              Pagá por 1, 3, 6 o 12 meses: desde 3 meses tenés 10% de descuento.
+              Pagá por 1, 3, 6 o 12 meses: 3 meses con 10%, 6 meses con 15% y 1 año con 20% de descuento.
               Cambiá de plan cuando quieras; el nuevo plan corre desde el día
               del cambio. {copy.closing}
             </p>

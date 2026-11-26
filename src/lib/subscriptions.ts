@@ -349,8 +349,16 @@ export const EXPIRY_MINUTES = [0, 15, 30, 45];
 export const SUBSCRIPTION_DURATIONS = [1, 3, 6, 12] as const;
 export type SubscriptionDuration = (typeof SUBSCRIPTION_DURATIONS)[number];
 
-/** Descuento aplicado al pagar 3, 6 o 12 meses juntos (10%). */
+/** Descuento por duración: 3 meses 10%, 6 meses 15%, 12 meses 20%. */
 export const SUBSCRIPTION_MULTI_MONTH_DISCOUNT = 0.1;
+
+export function discountForSubscriptionMonths(months: number): number {
+  const count = normalizeDurationMonths(months);
+  if (count === 3) return 0.1;
+  if (count === 6) return 0.15;
+  if (count === 12) return 0.2;
+  return 0;
+}
 
 export function normalizeDurationMonths(value: unknown): SubscriptionDuration {
   const months = Math.round(Number(value));
@@ -358,14 +366,14 @@ export function normalizeDurationMonths(value: unknown): SubscriptionDuration {
   return 1;
 }
 
-/** Total a pagar: 1 mes a precio lleno; 3, 6 o 12 meses con 10% de descuento. */
+/** Total a pagar: 1 mes a precio lleno; 3 meses 10%, 6 meses 15%, 12 meses 20%. */
 export function priceForSubscriptionMonths(
   plan: SubscriptionPlan,
   months: number,
 ) {
   const count = normalizeDurationMonths(months);
   if (count === 1) return plan.price;
-  return Math.round(plan.price * count * (1 - SUBSCRIPTION_MULTI_MONTH_DISCOUNT));
+  return Math.round(plan.price * count * (1 - discountForSubscriptionMonths(count)));
 }
 
 /** Cuánto se ahorra la cuenta al pagar varios meses juntos. */
