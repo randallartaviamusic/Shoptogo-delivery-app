@@ -210,6 +210,7 @@ function activeFlash(business: Doc<"businesses">, now = Date.now()) {
     detail,
     mediaUrl: business.flashMediaUrl ?? null,
     mediaKind: business.flashMediaKind ?? null,
+    productId: business.flashProductId ?? null,
     endsAt,
   };
 }
@@ -600,6 +601,7 @@ export const setFlashSale = mutation({
     title: v.optional(v.string()),
     detail: v.optional(v.string()),
     durationHours: v.optional(v.number()),
+    productId: v.optional(v.id("products")),
     mediaStorageId: v.optional(v.id("_storage")),
     removeMedia: v.optional(v.boolean()),
     clear: v.optional(v.boolean()),
@@ -621,6 +623,7 @@ export const setFlashSale = mutation({
         flashMediaUrl: undefined,
         flashMediaStorageId: undefined,
         flashMediaKind: undefined,
+        flashProductId: undefined,
         flashEndsAt: undefined,
       });
       if (previousMedia) {
@@ -642,6 +645,16 @@ export const setFlashSale = mutation({
       throw new ConvexError("La oferta flash puede durar de 1 a 24 horas");
     }
     const endsAt = Date.now() + duration * 60 * 60 * 1000;
+    // La oferta debe apuntar a un producto del propio catálogo para que el
+    // comprador pueda sumarlo al carrito desde la card de la oferta.
+    const flashProductId = args.productId ?? business.flashProductId;
+    if (!flashProductId) {
+      throw new ConvexError("Elegí el producto de la oferta flash");
+    }
+    const flashProduct = await ctx.db.get(flashProductId);
+    if (!flashProduct || flashProduct.businessId !== business._id) {
+      throw new ConvexError("Ese producto no es de tu catálogo");
+    }
     let mediaUrl: string | undefined;
     let mediaKind: "image" | "video" | undefined;
     if (args.mediaStorageId) {
@@ -674,6 +687,7 @@ export const setFlashSale = mutation({
       flashMediaKind: args.removeMedia
         ? undefined
         : mediaKind ?? business.flashMediaKind,
+      flashProductId,
       flashEndsAt: endsAt,
     });
     if (previousMedia && (args.removeMedia || (args.mediaStorageId && previousMedia !== args.mediaStorageId))) {

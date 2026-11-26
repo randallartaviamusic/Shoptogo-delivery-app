@@ -8,9 +8,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { money } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -34,6 +42,96 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 const MAX_CAPTION = 140;
 
+type StoryCtaKind = "local" | "product" | "offer";
+
+export type StoryCtaProduct = {
+  _id: string;
+  name: string;
+  price: number;
+};
+
+const CTA_LABELS: Record<StoryCtaKind, string> = {
+  local: "Ver local",
+  product: "Ver producto",
+  offer: "Ver oferta",
+};
+
+/** Selector compartido entre publicar y editar: qué botón ve el comprador. */
+function StoryCtaFields({
+  idPrefix,
+  kind,
+  productId,
+  products,
+  offerReady,
+  offerTitle,
+  onKindChange,
+  onProductChange,
+}: {
+  idPrefix: string;
+  kind: StoryCtaKind;
+  productId: string;
+  products: StoryCtaProduct[];
+  offerReady: boolean;
+  offerTitle?: string;
+  onKindChange: (kind: StoryCtaKind) => void;
+  onProductChange: (productId: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={`${idPrefix}-cta`}>Botón de la historia</Label>
+      <Select
+        value={kind}
+        onValueChange={(value) => onKindChange(value as StoryCtaKind)}
+      >
+        <SelectTrigger id={`${idPrefix}-cta`} className="h-9 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="select-scroll">
+          <SelectItem value="local">Ver local · abre tu catálogo</SelectItem>
+          <SelectItem value="product" disabled={products.length === 0}>
+            Ver producto · card para añadirlo al carrito
+          </SelectItem>
+          <SelectItem value="offer" disabled={!offerReady}>
+            Ver oferta · card de tu oferta flash
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      {kind === "product" &&
+        (products.length === 0 ? (
+          <p className="text-[10px] leading-relaxed text-muted-foreground">
+            Publicá un producto en tu catálogo para usar este botón.
+          </p>
+        ) : (
+          <Select
+            value={productId || undefined}
+            onValueChange={onProductChange}
+          >
+            <SelectTrigger
+              aria-label="Producto de la historia"
+              className="h-9 text-xs"
+            >
+              <SelectValue placeholder="Elegí el producto" />
+            </SelectTrigger>
+            <SelectContent className="select-scroll">
+              {products.map((product) => (
+                <SelectItem key={product._id} value={product._id}>
+                  {product.name} · {money(product.price)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ))}
+      {kind === "offer" && (
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          {offerReady
+            ? `Se abre “${offerTitle || "tu oferta flash"}” con su producto para añadirlo al carrito.`
+            : "Activá una oferta flash con un producto en la pestaña Ofertas flash para usar este botón."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function timeLeft(expiresAt: number) {
   const ms = Math.max(0, expiresAt - Date.now());
   const hours = Math.floor(ms / 3_600_000);
@@ -51,10 +149,18 @@ export function StoryUpload({
   enabled,
   businessName,
   businessImage,
+  products = [],
+  flashActive = false,
+  flashTitle,
+  flashProductId,
 }: {
   enabled: boolean;
   businessName?: string;
   businessImage?: string | null;
+  products?: StoryCtaProduct[];
+  flashActive?: boolean;
+  flashTitle?: string;
+  flashProductId?: string;
 }) {
   const stories = useQuery(api.stories.mine);
   const generateUploadUrl = useMutation(api.stories.generateStoryUploadUrl);
@@ -72,7 +178,16 @@ export function StoryUpload({
   const [previewProgress, setPreviewProgress] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCaption, setEditCaption] = useState("");
+  const [ctaKind, setCtaKind] = useState<StoryCtaKind>("local");
+  const [ctaProductId, setCtaProductId] = useState("");
+  const [editCtaKind, setEditCtaKind] = useState<StoryCtaKind>("local");
+  const [editCtaProductId, setEditCtaProductId] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+
+  const offerReady =
+    flashActive &&
+    Boolean(flashProductId) &&
+    products.some((product) => product._id === flashProductId);
 
   const previewStory = stories?.find((story) => story._id === previewId);
   const editingStory = stories?.find((story) => story._id === editingId);
@@ -124,6 +239,14 @@ export function StoryUpload({
 
   const handleFile = async (file?: File | null) => {
     if (!file || uploading) return;
+    if (ctaKind === "product" && !ctaProductId) {
+      toast.error("Elegí el producto para el botón de la historia");
+      return;
+    }
+    if (ctaKind === "offer" && !offerReady) {
+      toast.error("Activá una oferta flash con producto para usar este botón");
+      return;
+    }
     if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
       toast.error("Elegí una foto o un video");
       return;
@@ -153,6 +276,11 @@ export function StoryUpload({
       await publishStory({
         storageId: storageId as Id<"_storage">,
         caption: caption.trim() || undefined,
+        ctaKind,
+        ctaProductId:
+          ctaKind === "product"
+            ? (ctaProductId as Id<"products">)
+            : undefined,
       });
       setCaption("");
       toast.success("Historia publicada", {
@@ -185,8 +313,11 @@ export function StoryUpload({
   };
 
   const openEdit = (storyId: string, currentCaption?: string | null) => {
+    const story = stories?.find((item) => item._id === storyId);
     setEditingId(storyId);
     setEditCaption(currentCaption ?? "");
+    setEditCtaKind(story?.ctaKind ?? "local");
+    setEditCtaProductId(story?.ctaProductId ?? "");
   };
 
   const handleSaveCaption = async () => {
@@ -196,10 +327,15 @@ export function StoryUpload({
       await updateStory({
         storyId: editingId as Id<"businessStories">,
         caption: editCaption.trim() || undefined,
+        ctaKind: editCtaKind,
+        ctaProductId:
+          editCtaKind === "product"
+            ? (editCtaProductId as Id<"products">)
+            : undefined,
       });
       setEditingId(null);
       toast.success("Historia actualizada", {
-        description: "El nuevo texto ya se ve en Negocios.",
+        description: "El texto y el botón ya se ven en Negocios.",
       });
     } catch (error) {
       toast.error(
@@ -233,6 +369,23 @@ export function StoryUpload({
           aria-label="Texto de la historia"
           className="h-9 text-xs"
         />
+        <div className="mt-2">
+          <StoryCtaFields
+            idPrefix="new-story"
+            kind={ctaKind}
+            productId={ctaProductId}
+            products={products}
+            offerReady={offerReady}
+            offerTitle={flashTitle}
+            onKindChange={(kind) => {
+              setCtaKind(kind);
+              if (kind === "product" && !ctaProductId) {
+                setCtaProductId(products[0]?._id ?? "");
+              }
+            }}
+            onProductChange={setCtaProductId}
+          />
+        </div>
         <Button
           type="button"
           className="mt-2 h-10 w-full gap-2 bg-ember-gradient text-black"
@@ -248,7 +401,8 @@ export function StoryUpload({
         </Button>
         <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
           Foto hasta 8 MB o video hasta 30 MB. Dura 24 horas y aparece arriba de
-          “Todos los negocios” para las cuentas de comprador.
+          “Todos los negocios” para las cuentas de comprador. El botón elegido
+          abre tu catálogo, un producto o tu oferta flash.
         </p>
         <input
           ref={inputRef}
@@ -447,6 +601,9 @@ export function StoryUpload({
                   {previewStory.caption}
                 </p>
               )}
+              <p className="inline-flex rounded-full bg-white px-3 py-1 text-[11px] font-bold text-black">
+                {CTA_LABELS[(previewStory.ctaKind ?? "local") as StoryCtaKind]}
+              </p>
               <p className="inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold text-white/80 backdrop-blur">
                 Vista previa · así aparece en Negocios
               </p>
@@ -465,8 +622,8 @@ export function StoryUpload({
           <DialogHeader>
             <DialogTitle className="font-display">Editar historia</DialogTitle>
             <DialogDescription>
-              Cambiá el texto que aparece abajo de la foto o el video. También
-              podés borrar la historia.
+              Cambiá el texto y el botón que aparecen abajo de la foto o el
+              video. También podés borrar la historia.
             </DialogDescription>
           </DialogHeader>
           {editingStory && (
@@ -504,6 +661,21 @@ export function StoryUpload({
                   </p>
                 </div>
               </div>
+              <StoryCtaFields
+                idPrefix="edit-story"
+                kind={editCtaKind}
+                productId={editCtaProductId}
+                products={products}
+                offerReady={offerReady}
+                offerTitle={flashTitle}
+                onKindChange={(kind) => {
+                  setEditCtaKind(kind);
+                  if (kind === "product" && !editCtaProductId) {
+                    setEditCtaProductId(products[0]?._id ?? "");
+                  }
+                }}
+                onProductChange={setEditCtaProductId}
+              />
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <Button
                   type="button"

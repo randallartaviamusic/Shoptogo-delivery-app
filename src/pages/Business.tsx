@@ -216,6 +216,7 @@ export default function BusinessPage() {
   const [flashForm, setFlashForm] = useState({
     title: "",
     detail: "",
+    productId: "",
     duration: "4",
   });
   const [flashMediaStorageId, setFlashMediaStorageId] = useState<Id<"_storage"> | null>(null);
@@ -240,6 +241,7 @@ export default function BusinessPage() {
         : {
             title: current.flashTitle ?? "",
             detail: current.flashDetail ?? "",
+            productId: current.flashProductId ?? "",
             duration: "4",
           },
     );
@@ -860,6 +862,9 @@ export default function BusinessPage() {
       const result = await setFlashSale({
         title: flashForm.title,
         detail: flashForm.detail,
+        productId: flashForm.productId
+          ? (flashForm.productId as Id<"products">)
+          : undefined,
         durationHours: Number(flashForm.duration) || 4,
         mediaStorageId: flashMediaStorageId ?? undefined,
         removeMedia: removeFlashMedia || undefined,
@@ -1940,6 +1945,14 @@ export default function BusinessPage() {
                 enabled={proStoriesEnabled}
                 businessName={business.name}
                 businessImage={business.image}
+                products={products.map((product) => ({
+                  _id: product._id,
+                  name: product.name,
+                  price: product.price,
+                }))}
+                flashActive={flashActive && Boolean(business.flashProductId)}
+                flashTitle={business.flashTitle ?? undefined}
+                flashProductId={business.flashProductId ?? undefined}
               />
             </div>
           )}
@@ -2019,6 +2032,33 @@ export default function BusinessPage() {
                         placeholder="Ej.: 2x1 en hamburguesas hasta medianoche"
                         className="h-9 text-xs"
                       />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="flash-product">Producto de la oferta</Label>
+                      <Select
+                        value={flashForm.productId || undefined}
+                        onValueChange={(value) =>
+                          setFlashForm({ ...flashForm, productId: value })
+                        }
+                      >
+                        <SelectTrigger
+                          id="flash-product"
+                          className="h-9 text-xs"
+                        >
+                          <SelectValue placeholder="Elegí el producto" />
+                        </SelectTrigger>
+                        <SelectContent className="select-scroll">
+                          {products.map((product) => (
+                            <SelectItem key={product._id} value={product._id}>
+                              {product.name} · {money(product.price)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] leading-relaxed text-muted-foreground">
+                        El comprador puede sumarlo al carrito desde la card de la
+                        oferta que abre la historia.
+                      </p>
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="flash-detail">Detalle (opcional)</Label>

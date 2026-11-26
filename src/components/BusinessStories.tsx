@@ -8,6 +8,8 @@ export type StoryFeedItem = {
   kind: "image" | "video";
   url: string;
   caption?: string | null;
+  ctaKind?: "local" | "product" | "offer";
+  ctaProductId?: string;
   createdAt: number;
   expiresAt: number;
 };
@@ -272,11 +274,23 @@ function StoryViewer({
           )}
           <div className="flex items-center gap-2">
             <Link
-              to={`/negocios/${group.slug}`}
+              to={
+                story.ctaKind === "product" && story.ctaProductId
+                  ? `/negocios/${group.slug}?producto=${story.ctaProductId}`
+                  : story.ctaKind === "offer"
+                    ? `/negocios/${group.slug}?oferta=1`
+                    : `/negocios/${group.slug}`
+              }
+              onPointerDown={stop}
+              onPointerUp={stop}
               onClick={onClose}
               className="flex h-10 w-full items-center justify-center rounded-full bg-white text-[13px] font-bold text-black"
             >
-              Ver local
+              {story.ctaKind === "product"
+                ? "Ver producto"
+                : story.ctaKind === "offer"
+                  ? "Ver oferta"
+                  : "Ver local"}
             </Link>
           </div>
         </div>

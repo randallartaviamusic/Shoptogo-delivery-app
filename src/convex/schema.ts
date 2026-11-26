@@ -383,6 +383,8 @@ const schema = defineSchema(
       flashMediaUrl: v.optional(v.string()),
       flashMediaStorageId: v.optional(v.id("_storage")),
       flashMediaKind: v.optional(v.union(v.literal("image"), v.literal("video"))),
+      // Producto que el comprador puede sumar al carrito desde la oferta.
+      flashProductId: v.optional(v.id("products")),
       flashEndsAt: v.optional(v.number()),
       etaMinutes: v.number(),
       rating: v.number(),
@@ -446,6 +448,12 @@ const schema = defineSchema(
       url: v.string(),
       storageId: v.optional(v.id("_storage")),
       caption: v.optional(v.string()),
+      // Botón que el negocio elige para la historia. "local" abre su catálogo,
+      // "product" la card de ctaProductId y "offer" su oferta flash vigente.
+      ctaKind: v.optional(
+        v.union(v.literal("local"), v.literal("product"), v.literal("offer")),
+      ),
+      ctaProductId: v.optional(v.id("products")),
       createdAt: v.number(),
       expiresAt: v.number(),
     })

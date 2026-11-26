@@ -54,8 +54,8 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 const normalize = (value: string) =>
@@ -769,6 +769,7 @@ function BusinessCard({
 function Storefront({ slug }: { slug: string }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const toggleFavorite = useMutation(api.businesses.toggleFavorite);
   const data = useQuery(api.businesses.storefront, { slug });
   const coupons = useQuery(api.coupons.forSlug, { slug });
@@ -778,8 +779,36 @@ function Storefront({ slug }: { slug: string }) {
   const [optionProduct, setOptionProduct] = useState<
     NonNullable<typeof data>["products"][number] | null
   >(null);
+  // Ventanas que abre el botón de una historia: card del producto u oferta.
+  const [storyProduct, setStoryProduct] = useState<
+    NonNullable<typeof data>["products"][number] | null
+  >(null);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const productParam = searchParams.get("producto");
+  const offerParam = searchParams.get("oferta");
   // Vista del catálogo: cuadrícula de 2 columnas o lista de 1 columna grande.
   const [catalogView, setCatalogView] = useState<"grid" | "list">("grid");
+
+  useEffect(() => {
+    if (!data || (!productParam && !offerParam)) return;
+    if (productParam) {
+      const product = data.products.find((item) => item._id === productParam);
+      if (!product) {
+        toast.error("Ese producto ya no está disponible");
+      } else if ((product.optionGroups?.length ?? 0) > 0) {
+        setOptionProduct(product);
+      } else {
+        setStoryProduct(product);
+      }
+    } else if (offerParam) {
+      if (data.business.flash) setOfferOpen(true);
+      else toast.error("Esa oferta flash ya terminó");
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("producto");
+    next.delete("oferta");
+    setSearchParams(next, { replace: true });
+  }, [data, productParam, offerParam, searchParams, setSearchParams]);
 
   const handleProductTap = (
     product: NonNullable<typeof data>["products"][number],
@@ -826,6 +855,8 @@ function Storefront({ slug }: { slug: string }) {
       await addToCart({ productId, options });
       toast.success("Sumado al carrito", { description: name });
       setOptionProduct(null);
+      setStoryProduct(null);
+      setOfferOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No pudimos agregarlo");
     } finally {
@@ -861,6 +892,10 @@ function Storefront({ slug }: { slug: string }) {
 
   const business = data.business;
   const delivery = data.delivery;
+  const offerProduct = business.flash?.productId
+    ? (data.products.find((item) => item._id === business.flash?.productId) ??
+      null)
+    : null;
   const department = getDepartment(business.department);
   const cartCount = cart?.count ?? 0;
   const cartTotal = cart?.total ?? 0;
@@ -1238,6 +1273,193 @@ function Storefront({ slug }: { slug: string }) {
           }
         }}
       />
+
+      <Dialog
+        open={storyProduct !== null}
+        onOpenChange={(open) => {
+          if (!open) setStoryProduct(null);
+        }}
+      >
+        <DialogContent className="max-h-[88vh] overflow-y-auto border-border/80 bg-card sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              {storyProduct?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Producto de la historia de {business.name}. Podés añadirlo al
+              carrito desde acá.
+            </DialogDescription>
+          </DialogHeader>
+          {storyProduct && (
+            <div className="space-y-3">
+              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border/70">
+                <ProductMedia
+                  image={storyProduct.image}
+                  video={storyProduct.video}
+                  alt={storyProduct.name}
+                  className="size-full"
+                />
+                {!storyProduct.isAvailable && (
+                  <span className="absolute right-2 top-2 rounded-full border border-primary/50 bg-primary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+                    Agotado
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-display text-lg font-extrabold text-accent">
+                  {money(storyProduct.price)}
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {storyProduct.category}
+                </span>
+              </div>
+              <p className="whitespace-pre-line break-words text-xs leading-relaxed text-muted-foreground">
+                {storyProduct.description || "Sin descripción"}
+              </p>
+              <Button
+                className="w-full gap-2 bg-ember-gradient text-black"
+                disabled={
+                  !business.isOpen ||
+                  !storyProduct.isAvailable ||
+                  busy === storyProduct._id
+                }
+                onClick={() => {
+                  if ((storyProduct.optionGroups?.length ?? 0) > 0) {
+                    setOptionProduct(storyProduct);
+                    setStoryProduct(null);
+                  } else {
+                    void handleAdd(storyProduct._id, storyProduct.name);
+                  }
+                }}
+              >
+                {busy === storyProduct._id ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ShoppingCart className="size-4" />
+                )}
+                {!business.isOpen
+                  ? "Cerrado por ahora"
+                  : !storyProduct.isAvailable
+                    ? "Agotado"
+                    : (storyProduct.optionGroups?.length ?? 0) > 0
+                      ? "Elegir opciones y añadir"
+                      : "Añadir al carrito"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={offerOpen} onOpenChange={setOfferOpen}>
+        <DialogContent className="max-h-[88vh] overflow-y-auto border-amber-300/40 bg-card sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-display">
+              <Zap className="size-4 text-amber-300" />
+              {business.flash?.title ?? "Oferta flash"}
+            </DialogTitle>
+            <DialogDescription>
+              Oferta flash de {business.name}. Sumá el producto al carrito desde
+              esta ventana.
+            </DialogDescription>
+          </DialogHeader>
+          {business.flash ? (
+            <div className="space-y-3">
+              {business.flash.mediaUrl && (
+                <div className="aspect-video overflow-hidden rounded-2xl border border-amber-300/30">
+                  {business.flash.mediaKind === "video" ? (
+                    <video
+                      src={business.flash.mediaUrl}
+                      muted
+                      autoPlay
+                      loop
+                      playsInline
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={business.flash.mediaUrl}
+                      alt={`Oferta flash: ${business.flash.title}`}
+                      className="size-full object-cover"
+                    />
+                  )}
+                </div>
+              )}
+              {business.flash.detail && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {business.flash.detail}
+                </p>
+              )}
+              <p className="text-[11px] font-semibold text-amber-200">
+                <FlashCountdown endsAt={business.flash.endsAt} />
+              </p>
+              {offerProduct ? (
+                <div className="space-y-3 rounded-2xl border border-border/70 bg-black/20 p-3">
+                  <div className="flex gap-3">
+                    <div className="relative size-20 shrink-0 overflow-hidden rounded-xl border border-border/60">
+                      <ProductMedia
+                        image={offerProduct.image}
+                        video={offerProduct.video}
+                        alt={offerProduct.name}
+                        className="size-full"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">
+                        {offerProduct.name}
+                      </p>
+                      <p className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                        {offerProduct.description || "Sin descripción"}
+                      </p>
+                      <p className="mt-1 font-display text-base font-extrabold text-accent">
+                        {money(offerProduct.price)}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    className="w-full gap-2 bg-ember-gradient text-black"
+                    disabled={
+                      !business.isOpen ||
+                      !offerProduct.isAvailable ||
+                      busy === offerProduct._id
+                    }
+                    onClick={() => {
+                      if ((offerProduct.optionGroups?.length ?? 0) > 0) {
+                        setOptionProduct(offerProduct);
+                        setOfferOpen(false);
+                      } else {
+                        void handleAdd(offerProduct._id, offerProduct.name);
+                      }
+                    }}
+                  >
+                    {busy === offerProduct._id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="size-4" />
+                    )}
+                    {!business.isOpen
+                      ? "Cerrado por ahora"
+                      : !offerProduct.isAvailable
+                        ? "Agotado"
+                        : (offerProduct.optionGroups?.length ?? 0) > 0
+                          ? "Elegir opciones y añadir"
+                          : "Añadir la oferta al carrito"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed border-amber-300/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                  Esta oferta no tiene un producto enlazado. El local puede
+                  elegirlo en la pestaña Ofertas flash.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-dashed border-amber-300/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              La oferta flash ya terminó. Podés seguir viendo el catálogo del
+              local.
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {cartCount > 0 && (
         <div className="sticky bottom-20 z-20 mt-8 lg:bottom-4">

@@ -12,6 +12,12 @@ import { isAccountVerified } from "./verification";
 
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_ACTIVE_PER_BUSINESS = 20;
+
+const ctaKindValidator = v.union(
+  v.literal("local"),
+  v.literal("product"),
+  v.literal("offer"),
+);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 30 * 1024 * 1024;
 
@@ -35,6 +41,37 @@ async function requireProBusiness(ctx: MutationCtx, userId: Id<"users">) {
   return { business, access };
 }
 
+/** Producto que debe abrir el botón de una historia, validado contra el local. */
+async function validateStoryCta(
+  ctx: MutationCtx,
+  business: Doc<"businesses">,
+  kind: "local" | "product" | "offer",
+  productId?: Id<"products">,
+) {
+  if (kind === "local") return undefined;
+  if (kind === "product") {
+    if (!productId) throw new Error("Elegí el producto para el botón de la historia");
+    const product = await ctx.db.get(productId);
+    if (!product || product.businessId !== business._id) {
+      throw new Error("Ese producto no es de tu catálogo");
+    }
+    return product._id;
+  }
+  const offerLive =
+    Boolean(business.flashTitle?.trim()) && (business.flashEndsAt ?? 0) > Date.now();
+  if (!offerLive) {
+    throw new Error("Activá una oferta flash antes de usar el botón Ver oferta");
+  }
+  if (!business.flashProductId) {
+    throw new Error("Elegí el producto de la oferta flash");
+  }
+  const product = await ctx.db.get(business.flashProductId);
+  if (!product || product.businessId !== business._id) {
+    throw new Error("El producto de la oferta flash ya no está disponible");
+  }
+  return undefined;
+}
+
 /** URL temporal para subir la foto o el video de una historia. */
 export const generateStoryUploadUrl = mutation({
   args: {},
@@ -51,6 +88,8 @@ export const publish = mutation({
   args: {
     storageId: v.id("_storage"),
     caption: v.optional(v.string()),
+    ctaKind: v.optional(ctaKindValidator),
+    ctaProductId: v.optional(v.id("products")),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -78,6 +117,13 @@ export const publish = mutation({
     const url = await ctx.storage.getUrl(args.storageId);
     if (!url) throw new Error("No pudimos publicar la historia");
     const caption = args.caption?.trim().slice(0, 140) || undefined;
+    const ctaKind = args.ctaKind ?? "local";
+    const ctaProductId = await validateStoryCta(
+      ctx,
+      business,
+      ctaKind,
+      args.ctaProductId,
+    );
 
     const active = await ctx.db
       .query("businessStories")
@@ -95,6 +141,8 @@ export const publish = mutation({
       url,
       storageId: args.storageId,
       ...(caption ? { caption } : {}),
+      ctaKind,
+      ...(ctaProductId ? { ctaProductId } : {}),
       createdAt: now,
       expiresAt: now + STORY_TTL_MS,
     });
@@ -131,6 +179,8 @@ export const update = mutation({
   args: {
     storyId: v.id("businessStories"),
     caption: v.optional(v.string()),
+    ctaKind: v.optional(ctaKindValidator),
+    ctaProductId: v.optional(v.id("products")),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -145,7 +195,14 @@ export const update = mutation({
       throw new Error("Esa historia ya venció");
     }
     const caption = args.caption?.trim().slice(0, 140) || undefined;
-    await ctx.db.patch(args.storyId, { caption });
+    const ctaKind = args.ctaKind ?? story.ctaKind ?? "local";
+    const ctaProductId = await validateStoryCta(
+      ctx,
+      business,
+      ctaKind,
+      args.ctaProductId ?? story.ctaProductId,
+    );
+    await ctx.db.patch(args.storyId, { caption, ctaKind, ctaProductId });
     return await ctx.db.get(args.storyId);
   },
 });
@@ -203,6 +260,8 @@ export const feed = query({
         kind: "image" | "video";
         url: string;
         caption?: string;
+        ctaKind: "local" | "product" | "offer";
+        ctaProductId?: Id<"products">;
         createdAt: number;
         expiresAt: number;
       }>;
@@ -217,21 +276,49 @@ export const feed = query({
       ]);
       if (!access.hasAccess || !verified) continue;
       if (access.plan !== "pro" && access.plan !== "elite") continue;
+      const offerLive =
+        Boolean(business.flashTitle?.trim()) && (business.flashEndsAt ?? 0) > now;
+      const offerProduct = business.flashProductId
+        ? await ctx.db.get(business.flashProductId)
+        : null;
+      const offerReady =
+        offerLive && !!offerProduct && offerProduct.businessId === business._id;
+
+      const mapped = [];
+      for (const story of items.sort((a, b) => a.createdAt - b.createdAt)) {
+        let ctaKind = story.ctaKind ?? "local";
+        let ctaProductId: Id<"products"> | undefined;
+        if (ctaKind === "product") {
+          const product = story.ctaProductId
+            ? await ctx.db.get(story.ctaProductId)
+            : null;
+          if (product && product.businessId === business._id) {
+            ctaProductId = product._id;
+          } else {
+            ctaKind = "local";
+          }
+        } else if (ctaKind === "offer" && !offerReady) {
+          // La oferta venció o perdió su producto: el botón vuelve al local.
+          ctaKind = "local";
+        }
+        mapped.push({
+          _id: story._id,
+          kind: story.kind,
+          url: story.url,
+          caption: story.caption,
+          ctaKind,
+          ctaProductId,
+          createdAt: story.createdAt,
+          expiresAt: story.expiresAt,
+        });
+      }
+
       groups.push({
         businessId: business._id,
         name: business.name,
         slug: business.slug,
         image: business.image,
-        stories: items
-          .sort((a, b) => a.createdAt - b.createdAt)
-          .map((story) => ({
-            _id: story._id,
-            kind: story.kind,
-            url: story.url,
-            caption: story.caption,
-            createdAt: story.createdAt,
-            expiresAt: story.expiresAt,
-          })),
+        stories: mapped,
       });
     }
 
