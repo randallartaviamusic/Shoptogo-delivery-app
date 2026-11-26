@@ -132,8 +132,15 @@ export function AppShell() {
               <Button
                 variant="outline"
                 onClick={async () => {
-                  await signOut().catch(() => undefined);
-                  window.location.assign("/auth");
+                  const done = await Promise.race([
+                    signOut().catch(() => undefined),
+                    new Promise((r) => setTimeout(r, 4000)),
+                  ]);
+                  try {
+                    window.location.href = "/auth";
+                  } catch {
+                    window.location.assign("/auth");
+                  }
                 }}
               >
                 Entrar de nuevo
