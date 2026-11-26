@@ -1295,6 +1295,7 @@ export default function BusinessPage() {
             );
           });
         </motion.div>
+      )}
 
       {tab === "portada" && (
         <motion.div
