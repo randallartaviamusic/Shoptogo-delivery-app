@@ -186,7 +186,7 @@ export default function BusinessPage() {
   // La pestaña predeterminada del perfil es la de la portada y el nombre de la
   // tienda. Cuando el negocio no ha tocado esa sección, se abre directo ahí.
   const navigate = useNavigate();
-  const tab = params.get("tab") ?? "orders";
+  const tab = params.get("tab") ?? "portada";
 
   const mine = useQuery(api.businesses.mine);
   const board = useQuery(api.orders.businessBoard);
