@@ -126,6 +126,7 @@ const ADMIN_TABS = [
   { value: "marca", label: "Marca", icon: Palette },
   { value: "sonido", label: "Sonido", icon: BellRing },
   { value: "titulo", label: "Título", icon: Type },
+  { value: "mazo", label: "Mazo", icon: Crown },
   { value: "metricas", label: "Métricas", icon: BarChart3 },
   { value: "verificacion", label: "Verificación", icon: BadgeCheck },
   { value: "ayuda", label: "Ayuda", icon: LifeBuoy },
@@ -176,6 +177,10 @@ export default function ProfilePage() {
   const generateLogoUploadUrl = useMutation(api.branding.generateLogoUploadUrl);
   const setLogo = useMutation(api.branding.setLogo);
   const setLogoSize = useMutation(api.branding.setLogoSize);
+  const generateEliteBadgeUploadUrl = useMutation(api.branding.generateEliteBadgeUploadUrl);
+  const setEliteBadge = useMutation(api.branding.setEliteBadge);
+  const resetEliteBadge = useMutation(api.branding.resetEliteBadge);
+  const setSwipeDeckStyle = useMutation(api.branding.setSwipeDeckStyle);
   const resetLogo = useMutation(api.branding.resetLogo);
   const headline = useQuery(api.branding.brandHeadline);
   const setBrandHeadline = useMutation(api.branding.setBrandHeadline);
@@ -233,7 +238,12 @@ export default function ProfilePage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const soundInputRef = useRef<HTMLInputElement>(null);
+  const badgeInputRef = useRef<HTMLInputElement>(null);
   const [uploadingSound, setUploadingSound] = useState(false);
+  const [uploadingBadge, setUploadingBadge] = useState(false);
+  const [savingSwipeStyle, setSavingSwipeStyle] = useState(false);
+  const [swipeBadgeSizeDraft, setSwipeBadgeSizeDraft] = useState(36);
+  const [swipeTitleSizeDraft, setSwipeTitleSizeDraft] = useState(26);
   const [savingLogoSize, setSavingLogoSize] = useState(false);
   const [logoSizeDraft, setLogoSizeDraft] = useState(40);
 
@@ -267,7 +277,9 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (brand?.logoSize) setLogoSizeDraft(brand.logoSize);
-  }, [brand?.logoSize]);
+    if (brand?.swipeBadgeSize) setSwipeBadgeSizeDraft(brand.swipeBadgeSize);
+    if (brand?.swipeTitleSize) setSwipeTitleSizeDraft(brand.swipeTitleSize);
+  }, [brand?.logoSize, brand?.swipeBadgeSize, brand?.swipeTitleSize]);
 
   useEffect(() => {
     if (!headline) return;
@@ -434,6 +446,62 @@ export default function ProfilePage() {
       );
     } finally {
       setUploadingSound(false);
+    }
+  };
+
+  const handleEliteBadgeUpload = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Elegí una imagen para la insignia");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error("La insignia no puede pesar más de 4 MB");
+      return;
+    }
+    setUploadingBadge(true);
+    try {
+      const uploadUrl = await generateEliteBadgeUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("No pudimos subir la insignia");
+      const { storageId } = (await response.json()) as { storageId: string };
+      await setEliteBadge({ storageId: storageId as Id<"_storage"> });
+      toast.success("Insignia Elite actualizada");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos subir la insignia");
+    } finally {
+      setUploadingBadge(false);
+    }
+  };
+
+  const handleEliteBadgeReset = async () => {
+    setUploadingBadge(true);
+    try {
+      await resetEliteBadge();
+      toast.success("Insignia original restablecida");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos restablecerla");
+    } finally {
+      setUploadingBadge(false);
+    }
+  };
+
+  const handleSwipeStyleSave = async () => {
+    setSavingSwipeStyle(true);
+    try {
+      await setSwipeDeckStyle({
+        badgeSize: swipeBadgeSizeDraft,
+        titleSize: swipeTitleSizeDraft,
+      });
+      toast.success("Diseño del mazo guardado");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No pudimos guardar");
+    } finally {
+      setSavingSwipeStyle(false);
     }
   };
 
@@ -847,6 +915,106 @@ export default function ProfilePage() {
             PNG, JPG, WebP o SVG hasta 4 MB. Si subís un logo horizontal se
             respeta su proporción.
           </p>
+        </section>
+      )}
+
+      {isAdmin && adminTab === "mazo" && (
+        <section className="surface-raised mt-5 rounded-3xl p-5 sm:p-6">
+          <div>
+            <p className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent">
+              <ShieldCheck className="size-3.5" /> Perfil administrador · Mazo
+            </p>
+            <h2 className="font-display text-lg font-bold">Insignia y títulos del mazo</h2>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              Personalizá la insignia circular de los locales Elite y el tamaño de los títulos de productos en Swipe.
+            </p>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-4 rounded-2xl border border-border/70 bg-black/25 p-4">
+            {brand?.eliteBadgeUrl ? (
+              <img
+                src={brand.eliteBadgeUrl}
+                alt="Vista previa de la insignia Elite"
+                className="rounded-full border border-amber-300/60 object-cover"
+                style={{ width: swipeBadgeSizeDraft, height: swipeBadgeSizeDraft }}
+              />
+            ) : (
+              <span
+                className="flex items-center justify-center rounded-full border border-amber-300/60 bg-amber-300/10 text-amber-300"
+                style={{ width: swipeBadgeSizeDraft, height: swipeBadgeSizeDraft }}
+              >
+                <Crown className="size-1/2" />
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Insignia de Elite en Swipe</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Se muestra fuera de la barra del nombre del local.</p>
+            </div>
+          </div>
+          <input
+            ref={badgeInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              void handleEliteBadgeUpload(file);
+            }}
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              className="gap-2 bg-ember-gradient text-black"
+              disabled={uploadingBadge}
+              onClick={() => badgeInputRef.current?.click()}
+            >
+              {uploadingBadge ? <Loader2 className="size-4 animate-spin" /> : <ImageUp className="size-4" />}
+              {uploadingBadge ? "Subiendo" : brand?.eliteBadgeUrl ? "Cambiar insignia" : "Subir insignia"}
+            </Button>
+            {brand?.eliteBadgeUrl && (
+              <Button variant="outline" className="gap-2" disabled={uploadingBadge} onClick={() => void handleEliteBadgeReset()}>
+                <RotateCcw className="size-4" /> Restablecer insignia
+              </Button>
+            )}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">Imagen PNG, JPG o WebP hasta 4 MB.</p>
+
+          <div className="mt-5 space-y-5 rounded-2xl border border-border/70 bg-black/25 p-4">
+            <div>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="swipe-badge-size">Tamaño de insignia</Label>
+                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{swipeBadgeSizeDraft}px</span>
+              </div>
+              <Slider
+                id="swipe-badge-size"
+                className="py-2"
+                min={20}
+                max={72}
+                step={2}
+                value={[swipeBadgeSizeDraft]}
+                onValueChange={([value]) => setSwipeBadgeSizeDraft(value ?? 36)}
+              />
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="swipe-title-size">Tamaño del título del producto</Label>
+                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{swipeTitleSizeDraft}px</span>
+              </div>
+              <Slider
+                id="swipe-title-size"
+                className="py-2"
+                min={16}
+                max={40}
+                step={1}
+                value={[swipeTitleSizeDraft]}
+                onValueChange={([value]) => setSwipeTitleSizeDraft(value ?? 26)}
+              />
+            </div>
+            <Button className="gap-2" disabled={savingSwipeStyle} onClick={() => void handleSwipeStyleSave()}>
+              {savingSwipeStyle ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+              Guardar cambios del mazo
+            </Button>
+          </div>
         </section>
       )}
 

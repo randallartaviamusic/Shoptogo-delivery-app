@@ -191,6 +191,7 @@ export default function BusinessPage() {
   const mine = useQuery(api.businesses.mine);
   const board = useQuery(api.orders.businessBoard);
   const subscription = useQuery(api.subscriptions.mine);
+  const swipeStyle = useQuery(api.branding.brand);
   const updateBusiness = useMutation(api.businesses.update);
   const updateStatus = useMutation(api.orders.businessUpdateStatus);
   const addProduct = useMutation(api.businesses.addProduct);
@@ -2824,6 +2825,9 @@ export default function BusinessPage() {
                       dish={previewDish}
                       isTop={false}
                       onDecide={() => {}}
+                      eliteBadgeUrl={swipeStyle?.eliteBadgeUrl}
+                      eliteBadgeSize={swipeStyle?.swipeBadgeSize}
+                      titleSize={swipeStyle?.swipeTitleSize}
                     />
                   </div>
                   <p className="mt-3 text-center text-[11px] text-muted-foreground">

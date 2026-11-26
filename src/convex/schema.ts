@@ -971,6 +971,11 @@ const schema = defineSchema(
       brandTitleColor: v.optional(v.string()),
       brandTitleFont: v.optional(v.string()),
       brandTitleSize: v.optional(v.number()),
+      // Insignia Elite y presentación del mazo Swipe, configurables por admin.
+      eliteBadgeUrl: v.optional(v.string()),
+      eliteBadgeStorageId: v.optional(v.id("_storage")),
+      swipeBadgeSize: v.optional(v.number()),
+      swipeTitleSize: v.optional(v.number()),
       // Audio propio para la campanita de avisos (lo sube el administrador).
       notificationSoundUrl: v.optional(v.string()),
       notificationSoundName: v.optional(v.string()),

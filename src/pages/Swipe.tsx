@@ -117,6 +117,7 @@ export default function SwipePage() {
           filters: todosFilters,
         }
       : getDepartment(departmentSlug);
+  const swipeStyle = useQuery(api.branding.brand);
   const deck = useQuery(api.catalog.deck, {
     department: departmentSlug,
     filters,
@@ -522,6 +523,9 @@ export default function SwipePage() {
                     dish={dish}
                     isTop={index === 0}
                     onDecide={handleDecide}
+                    eliteBadgeUrl={swipeStyle?.eliteBadgeUrl}
+                    eliteBadgeSize={swipeStyle?.swipeBadgeSize}
+                    titleSize={swipeStyle?.swipeTitleSize}
                   />
                 </motion.div>
               ))}

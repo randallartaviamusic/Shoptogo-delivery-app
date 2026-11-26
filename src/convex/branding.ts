@@ -17,6 +17,7 @@ const APP_ICON_MAX_BYTES = 8 * 1024 * 1024;
 const APP_SPLASH_MAX_BYTES = 30 * 1024 * 1024;
 const NOTIFICATION_SOUND_MAX_BYTES = 2 * 1024 * 1024;
 const SHARE_QR_MAX_BYTES = 5 * 1024 * 1024;
+const ELITE_BADGE_MAX_BYTES = 4 * 1024 * 1024;
 
 export const DEFAULT_SHARE_APP_URL = "https://shoptogo.freebuff.app";
 
@@ -26,6 +27,12 @@ export const DEFAULT_BRAND_TITLE_FONT = "sora";
 export const DEFAULT_BRAND_TITLE_SIZE = 18;
 export const MIN_BRAND_TITLE_SIZE = 12;
 export const MAX_BRAND_TITLE_SIZE = 30;
+export const DEFAULT_SWIPE_BADGE_SIZE = 36;
+export const MIN_SWIPE_BADGE_SIZE = 20;
+export const MAX_SWIPE_BADGE_SIZE = 72;
+export const DEFAULT_SWIPE_TITLE_SIZE = 26;
+export const MIN_SWIPE_TITLE_SIZE = 16;
+export const MAX_SWIPE_TITLE_SIZE = 40;
 const BRAND_TITLE_FONTS = ["sora", "manrope", "serif", "mono"];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
@@ -61,13 +68,23 @@ export const brand = query({
     return {
       logoUrl: doc?.logoUrl ?? null,
       logoSize: Math.min(MAX_LOGO_SIZE, Math.max(MIN_LOGO_SIZE, size)),
+      eliteBadgeUrl: doc?.eliteBadgeUrl ?? null,
+      swipeBadgeSize: Math.min(
+        MAX_SWIPE_BADGE_SIZE,
+        Math.max(MIN_SWIPE_BADGE_SIZE, doc?.swipeBadgeSize ?? DEFAULT_SWIPE_BADGE_SIZE),
+      ),
+      swipeTitleSize: Math.min(
+        MAX_SWIPE_TITLE_SIZE,
+        Math.max(MIN_SWIPE_TITLE_SIZE, doc?.swipeTitleSize ?? DEFAULT_SWIPE_TITLE_SIZE),
+      ),
       updatedAt: doc?.updatedAt ?? null,
     };
   },
 });
 
 /**
- * Audio propio de la campanita de avisos. Es público porque lo reproduce la
+ * Audio propio de la campanita de avisos.
+ Es público porque lo reproduce la
  * app de cada persona; sólo el administrador puede cambiarlo.
  */
 export const notificationSound = query({
@@ -231,6 +248,102 @@ export const generateLogoUploadUrl = mutation({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const generateEliteBadgeUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const setEliteBadge = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, { storageId }) => {
+    await requireAdmin(ctx);
+    const metadata = await ctx.storage.getMetadata(storageId);
+    if (!metadata?.contentType?.startsWith("image/")) {
+      throw new Error("La insignia tiene que ser una imagen");
+    }
+    if (metadata.size > ELITE_BADGE_MAX_BYTES) {
+      throw new Error("La insignia no puede pesar más de 4 MB");
+    }
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new Error("No pudimos guardar la insignia");
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      const previous = doc.eliteBadgeStorageId;
+      await ctx.db.patch(doc._id, {
+        eliteBadgeUrl: url,
+        eliteBadgeStorageId: storageId,
+        updatedAt: Date.now(),
+      });
+      if (previous && previous !== storageId) {
+        try {
+          await ctx.storage.delete(previous);
+        } catch {
+          // El archivo anterior ya no estaba: no impide guardar el nuevo.
+        }
+      }
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        eliteBadgeUrl: url,
+        eliteBadgeStorageId: storageId,
+        updatedAt: Date.now(),
+      });
+    }
+    return url;
+  },
+});
+
+export const setSwipeDeckStyle = mutation({
+  args: { badgeSize: v.number(), titleSize: v.number() },
+  handler: async (ctx, { badgeSize, titleSize }) => {
+    await requireAdmin(ctx);
+    const nextBadgeSize = Math.min(MAX_SWIPE_BADGE_SIZE, Math.max(MIN_SWIPE_BADGE_SIZE, Math.round(badgeSize)));
+    const nextTitleSize = Math.min(MAX_SWIPE_TITLE_SIZE, Math.max(MIN_SWIPE_TITLE_SIZE, Math.round(titleSize)));
+    const doc = await brandDoc(ctx);
+    if (doc) {
+      await ctx.db.patch(doc._id, {
+        swipeBadgeSize: nextBadgeSize,
+        swipeTitleSize: nextTitleSize,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("settings", {
+        key: BRAND_KEY,
+        swipeBadgeSize: nextBadgeSize,
+        swipeTitleSize: nextTitleSize,
+        updatedAt: Date.now(),
+      });
+    }
+    return { badgeSize: nextBadgeSize, titleSize: nextTitleSize };
+  },
+});
+
+export const resetEliteBadge = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const doc = await brandDoc(ctx);
+    if (!doc) return null;
+    const previous = doc.eliteBadgeStorageId;
+    await ctx.db.patch(doc._id, {
+      eliteBadgeUrl: undefined,
+      eliteBadgeStorageId: undefined,
+      updatedAt: Date.now(),
+    });
+    if (previous) {
+      try {
+        await ctx.storage.delete(previous);
+      } catch {
+        // Si ya no estaba, igual queda limpia la preferencia.
+      }
+    }
+    return null;
   },
 });
 

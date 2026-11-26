@@ -1,6 +1,6 @@
 import { DishImage } from "@/components/DishImage";
 import { EliteAura } from "@/components/EliteAura";
-import { EliteVerifiedSeal, FlashSaleBadge } from "@/components/EliteBusiness";
+import { EliteSwipeBadge, FlashSaleBadge } from "@/components/EliteBusiness";
 import { ProductMedia } from "@/components/ProductMedia";
 import { PromoBadge } from "@/components/PromoBadge";
 import { Button } from "@/components/ui/button";
@@ -76,7 +76,19 @@ function deliveryText(delivery: Dish["delivery"], promo?: PromoKind | null) {
   return `Envío al 50% · ${money(clientFee)} · ${distance}`;
 }
 
-function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
+function CardBody({
+  dish,
+  dimmed,
+  eliteBadgeUrl,
+  eliteBadgeSize = 36,
+  titleSize = 26,
+}: {
+  dish: Dish;
+  dimmed?: boolean;
+  eliteBadgeUrl?: string | null;
+  eliteBadgeSize?: number;
+  titleSize?: number;
+}) {
   return (
     <>
       <ProductMedia
@@ -90,27 +102,22 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
       {dish.elite && <EliteAura />}
 
       <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
+        <div className="flex min-w-0 items-center gap-2">
         <Link
           to={`/negocios/${dish.businessSlug}`}
           aria-label={`Ver el catálogo de ${dish.businessName}`}
           title={`Ver el catálogo de ${dish.businessName}`}
           onPointerDown={(event) => event.stopPropagation()}
-          className="flex items-center gap-2 rounded-full border border-white/15 bg-black/45 py-1 pl-1 pr-3 backdrop-blur-md transition-colors hover:border-accent/60"
+          className="flex min-w-0 items-center gap-2 rounded-full border border-white/15 bg-black/45 py-1 pl-1 pr-3 backdrop-blur-md transition-colors hover:border-accent/60"
         >
           <DishImage
             src={dish.businessImage}
             alt={dish.businessName}
             className="size-7 rounded-full"
           />
-          <span className="leading-none">
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-white">
+          <span className="min-w-0 leading-none">
+            <span className="block truncate text-[11px] font-semibold text-white">
               {dish.businessName}
-              {dish.elite && (
-                <span className="rounded bg-amber-300 px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-black">
-                  Élite
-                </span>
-              )}
-              {dish.eliteVerified && <EliteVerifiedSeal />}
             </span>
             <span className="mt-0.5 flex items-center gap-1 text-[10px] text-white/65">
               <Star className="size-2.5 fill-accent text-accent" />
@@ -118,6 +125,10 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
             </span>
           </span>
         </Link>
+        {dish.elite && (
+          <EliteSwipeBadge size={eliteBadgeSize} imageUrl={eliteBadgeUrl} />
+        )}
+        </div>
         <div className="flex flex-col items-end gap-1.5">
           <span className="rounded-full bg-accent px-3 py-1.5 font-display text-sm font-bold text-accent-foreground">
             {money(dish.price)}
@@ -164,10 +175,13 @@ function CardBody({ dish, dimmed }: { dish: Dish; dimmed?: boolean }) {
             </span>
           )}
         </div>
-        <h2 className="text-shadow-dark font-display text-[26px] font-extrabold leading-tight text-white">
+        <h2
+          className="text-shadow-dark font-display font-extrabold leading-tight text-white"
+          style={{ fontSize: titleSize }}
+        >
           {dish.name}
         </h2>
-        <p className="mt-1.5 line-clamp-2 text-[13px] leading-snug text-white/70">
+        <p className="mt-1.5 line-clamp-2 text-[13px] font-bold leading-snug text-white text-shadow-dark">
           {dish.description}
         </p>
         <div className="mt-3 flex items-center gap-3 border-t border-white/10 pt-3 text-[11px] text-white/60">
@@ -193,10 +207,20 @@ type SwipeCardProps = {
   dish: Dish;
   onDecide: (id: string, direction: SwipeDirection) => void;
   isTop: boolean;
+  eliteBadgeUrl?: string | null;
+  eliteBadgeSize?: number;
+  titleSize?: number;
 };
 
 export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function SwipeCard(
-  { dish, onDecide, isTop }: SwipeCardProps,
+  {
+    dish,
+    onDecide,
+    isTop,
+    eliteBadgeUrl,
+    eliteBadgeSize,
+    titleSize,
+  }: SwipeCardProps,
   ref,
 ) {
   const x = useMotionValue(0);
@@ -232,7 +256,13 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
   if (!isTop) {
     return (
       <div className="pointer-events-none absolute inset-0 select-none overflow-hidden rounded-[30px] border border-white/10">
-        <CardBody dish={dish} dimmed />
+        <CardBody
+          dish={dish}
+          dimmed
+          eliteBadgeUrl={eliteBadgeUrl}
+          eliteBadgeSize={eliteBadgeSize}
+          titleSize={titleSize}
+        />
       </div>
     );
   }
@@ -264,7 +294,12 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
         await animate(x, 0, { type: "spring", stiffness: 380, damping: 30 });
       }}
     >
-      <CardBody dish={dish} />
+      <CardBody
+        dish={dish}
+        eliteBadgeUrl={eliteBadgeUrl}
+        eliteBadgeSize={eliteBadgeSize}
+        titleSize={titleSize}
+      />
 
       <motion.div
         style={{ opacity: likeOpacity, scale: stampScale }}

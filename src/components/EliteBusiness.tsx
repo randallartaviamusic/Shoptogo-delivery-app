@@ -69,6 +69,37 @@ export function EliteVerifiedSeal({ className }: { className?: string }) {
   );
 }
 
+/** Insignia circular configurable que se muestra separada del nombre del local en Swipe. */
+export function EliteSwipeBadge({
+  className,
+  size = 36,
+  imageUrl,
+}: {
+  className?: string;
+  size?: number;
+  imageUrl?: string | null;
+}) {
+  return (
+    <span
+      role="img"
+      aria-label="Negocio Élite"
+      title="Negocio Élite"
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-amber-300/70 bg-black/70 shadow-[0_0_14px_rgba(251,191,36,0.4)]",
+        className,
+      )}
+      style={{ width: size, height: size }}
+    >
+      {imageUrl ? (
+        <img src={imageUrl} alt="" className="size-full object-cover" />
+      ) : (
+        <Crown className="size-[55%] text-amber-300" />
+      )}
+    </span>
+  );
+}
+
+
 /** Insignia compacta de oferta flash con cuenta regresiva. */
 export function FlashSaleBadge({
   flash,
