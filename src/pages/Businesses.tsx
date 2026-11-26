@@ -910,10 +910,30 @@ function Storefront({ slug }: { slug: string }) {
   const offerParam = searchParams.get("oferta");
   // Vista del catálogo: cuadrícula de 2 columnas o lista de 1 columna grande.
   const [catalogView, setCatalogView] = useState<"grid" | "list">("grid");
+  // Marca qué parámetro de historia ya se abrió: evita reabrir la ventana con
+  // cada actualización en vivo y permite limpiar la URL después de que el
+  // diálogo ya se montó (limpiarla en el mismo commit lo cerraba solo).
+  const openedStoryParam = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!data || (!productParam && !offerParam)) return;
+    if (!data) return;
+    const clearStoryParamsLater = () => {
+      window.setTimeout(() => {
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete("producto");
+            next.delete("oferta");
+            return next;
+          },
+          { replace: true },
+        );
+      }, 250);
+    };
     if (productParam) {
+      const key = `producto:${productParam}`;
+      if (openedStoryParam.current === key) return;
+      openedStoryParam.current = key;
       const product = data.products.find((item) => item._id === productParam);
       if (!product) {
         toast.error("Ese producto ya no está disponible");
@@ -922,15 +942,18 @@ function Storefront({ slug }: { slug: string }) {
       } else {
         setStoryProduct(product);
       }
-    } else if (offerParam) {
+      clearStoryParamsLater();
+      return;
+    }
+    if (offerParam) {
+      const key = `oferta:${offerParam}`;
+      if (openedStoryParam.current === key) return;
+      openedStoryParam.current = key;
       if (data.business.flash) setOfferOpen(true);
       else toast.error("Esa oferta flash ya terminó");
+      clearStoryParamsLater();
     }
-    const next = new URLSearchParams(searchParams);
-    next.delete("producto");
-    next.delete("oferta");
-    setSearchParams(next, { replace: true });
-  }, [data, productParam, offerParam, searchParams, setSearchParams]);
+  }, [data, productParam, offerParam, setSearchParams]);
 
   const handleProductTap = (
     product: NonNullable<typeof data>["products"][number],
@@ -1418,7 +1441,10 @@ function Storefront({ slug }: { slug: string }) {
       <ProductOptionsDialog
         open={Boolean(optionProduct)}
         onOpenChange={(open) => {
-          if (!open) setOptionProduct(null);
+          if (!open) {
+            setOptionProduct(null);
+            openedStoryParam.current = null;
+          }
         }}
         product={optionProduct}
         busy={Boolean(optionProduct && busy === optionProduct._id)}
@@ -1432,7 +1458,10 @@ function Storefront({ slug }: { slug: string }) {
       <Dialog
         open={storyProduct !== null}
         onOpenChange={(open) => {
-          if (!open) setStoryProduct(null);
+          if (!open) {
+            setStoryProduct(null);
+            openedStoryParam.current = null;
+          }
         }}
       >
         <DialogContent className="max-h-[88vh] overflow-y-auto border-border/80 bg-card sm:max-w-lg">
@@ -1505,7 +1534,13 @@ function Storefront({ slug }: { slug: string }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={offerOpen} onOpenChange={setOfferOpen}>
+      <Dialog
+        open={offerOpen}
+        onOpenChange={(open) => {
+          setOfferOpen(open);
+          if (!open) openedStoryParam.current = null;
+        }}
+      >
         <DialogContent className="max-h-[88vh] overflow-y-auto border-amber-300/40 bg-card sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display">
