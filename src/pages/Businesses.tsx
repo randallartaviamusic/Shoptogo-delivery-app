@@ -688,14 +688,18 @@ function BusinessCard({
           {business.rating.toFixed(1)}
         </span>
         <div className="absolute inset-x-3 bottom-2.5">
-          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+          <p className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
             {business.elite && (
-              <span className="rounded bg-amber-300 px-1 py-0.5 text-[8px] font-extrabold tracking-wider text-black">
-                Élite
+              <span
+                role="img"
+                aria-label="Negocio Élite"
+                title="Negocio Élite"
+                className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-amber-300 text-black"
+              >
+                <Crown className="size-2.5" />
               </span>
             )}
-            {business.eliteVerified && <EliteVerifiedSeal />}
-            {business.category}
+            <span className="truncate">{business.category}</span>
           </p>
           <p className="truncate text-shadow-dark font-display text-sm font-extrabold text-white">
             {business.name}
