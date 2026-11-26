@@ -124,6 +124,14 @@ const TABS = [
   { key: "servicios", label: "Servicios", to: "/business?tab=servicios" },
 ];
 
+const PRODUCT_TABS = [
+  { key: "products", label: "Productos guardados", icon: PackagePlus },
+  { key: "stories", label: "Historias", icon: Sparkles },
+  { key: "flash", label: "Ofertas flash", icon: Zap },
+] as const;
+
+type ProductTab = (typeof PRODUCT_TABS)[number]["key"];
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Períodos del selector de "Últimos pedidos" en el panel del negocio. */
@@ -187,6 +195,7 @@ export default function BusinessPage() {
   // tienda. Cuando el negocio no ha tocado esa sección, se abre directo ahí.
   const navigate = useNavigate();
   const tab = params.get("tab") ?? "portada";
+  const [productTab, setProductTab] = useState<ProductTab>("products");
 
   const mine = useQuery(api.businesses.mine);
   const board = useQuery(api.orders.businessBoard);
@@ -220,6 +229,23 @@ export default function BusinessPage() {
     if (!flashMediaPreview?.startsWith("blob:")) return;
     return () => URL.revokeObjectURL(flashMediaPreview);
   }, [flashMediaPreview]);
+
+  // La oferta vigente queda cargada al abrir la pestaña de ofertas flash.
+  useEffect(() => {
+    const current = mine?.business;
+    if (!current) return;
+    setFlashForm((form) =>
+      form.title
+        ? form
+        : {
+            title: current.flashTitle ?? "",
+            detail: current.flashDetail ?? "",
+            duration: "4",
+          },
+    );
+    setFlashMediaPreview((preview) => preview ?? current.flashMediaUrl ?? null);
+    setFlashMediaKind((kind) => kind ?? current.flashMediaKind ?? null);
+  }, [mine?.business?._id]);
 
   const setCouponActive = useMutation(api.coupons.setActive);
   const removeCoupon = useMutation(api.coupons.remove);
@@ -784,15 +810,6 @@ export default function BusinessPage() {
         : DEFAULT_BUSINESS_HOURS.map((entry) => ({ ...entry })),
     });
     setCoverStorageId(null);
-    setFlashForm({
-      title: business.flashTitle ?? "",
-      detail: business.flashDetail ?? "",
-      duration: "4",
-    });
-    setFlashMediaStorageId(null);
-    setFlashMediaPreview(business.flashMediaUrl ?? null);
-    setFlashMediaKind(business.flashMediaKind ?? null);
-    setRemoveFlashMedia(false);
     setSettingsDialog(true);
   };
 
@@ -1748,26 +1765,41 @@ export default function BusinessPage() {
       )}
 
       {(tab === "menu" || tab === "stories" || tab === "portada") && (
-        <section className="mb-4 w-full rounded-2xl border border-border/70 bg-card/40 p-3 sm:p-4">
-          <div className="mb-3">
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
-              <Sparkles className="size-3.5" /> Historias del local
-            </p>
-            <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-              Fotos y videos de 24 horas que aparecen arriba de “Todos los
-              negocios” para los compradores. Incluidas en Pro y Élite.
-            </p>
+        <section className="mb-4 w-full min-w-0">
+          <div className="mb-3 overflow-x-auto no-scrollbar">
+            <div
+              role="tablist"
+              aria-label="Productos, historias y ofertas flash"
+              className="flex w-max min-w-full gap-1 rounded-full border border-border/70 bg-black/25 p-1"
+            >
+              {PRODUCT_TABS.map((item) => {
+                const Icon = item.icon;
+                const active = productTab === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setProductTab(item.key)}
+                    className={cn(
+                      "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold transition-colors",
+                      active
+                        ? "bg-ember-gradient text-black"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="size-3.5" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <StoryUpload
-            enabled={proStoriesEnabled}
-            businessName={business.name}
-            businessImage={business.image}
-          />
-        </section>
-      )}
 
-      <section className="w-full">
-        {products.length === 0 ? (
+          {productTab === "products" && (
+            <div className="w-full">
+              {products.length === 0 ? (
           <div className="flex w-full items-center justify-center rounded-2xl border border-dashed border-border/70 bg-black/20 p-6 text-center text-sm text-muted-foreground">
             <PackagePlus className="size-5 text-muted-foreground" />
             <span className="ml-2">Aún no publicaste productos.</span>
@@ -1874,7 +1906,271 @@ export default function BusinessPage() {
             </div>
           </div>
         )}
-      </section>
+            </div>
+          )}
+
+          {productTab === "stories" && (
+            <div className="rounded-2xl border border-border/70 bg-card/40 p-3 sm:p-4">
+              <div className="mb-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                  <Sparkles className="size-3.5" /> Historias del local
+                </p>
+                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                  Fotos y videos de 24 horas que aparecen arriba de “Todos los
+                  negocios” para los compradores. Incluidas en Pro y Élite.
+                </p>
+              </div>
+              <StoryUpload
+                enabled={proStoriesEnabled}
+                businessName={business.name}
+                businessImage={business.image}
+              />
+            </div>
+          )}
+
+          {productTab === "flash" && (
+            <div className="rounded-2xl border border-amber-300/30 bg-amber-300/[0.05] p-3 sm:p-4">
+              <div className="space-y-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-200">
+                    <Zap className="size-3.5" /> Oferta flash
+                    <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-200">
+                      Élite
+                    </span>
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                    Anuncio corto con cuenta regresiva en el directorio, el mazo
+                    y tu perfil. Dura de 1 a 24 horas y sólo se muestra con
+                    Élite vigente.
+                  </p>
+                </div>
+                {eliteVideoEnabled ? (
+                  <>
+                    {flashActive ? (
+                      <div className="flex items-center gap-3 rounded-xl border border-amber-300/30 bg-black/25 p-3">
+                        {business.flashMediaUrl && (
+                          <div className="size-12 shrink-0 overflow-hidden rounded-lg border border-amber-300/40">
+                            {business.flashMediaKind === "video" ? (
+                              <video
+                                src={business.flashMediaUrl}
+                                muted
+                                autoPlay
+                                loop
+                                playsInline
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <img
+                                src={business.flashMediaUrl}
+                                alt="Medio de la oferta flash activa"
+                                className="size-full object-cover"
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold text-amber-100">
+                            {business.flashTitle}
+                          </p>
+                          {business.flashDetail && (
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              {business.flashDetail}
+                            </p>
+                          )}
+                          <p className="mt-0.5 text-[10px] text-amber-200">
+                            Termina en{" "}
+                            <FlashCountdown endsAt={business.flashEndsAt ?? 0} />
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed border-amber-300/30 px-3 py-2 text-[10px] text-muted-foreground">
+                        No hay una oferta activa. Programá la próxima abajo.
+                      </p>
+                    )}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="flash-title">Título de la oferta</Label>
+                      <Input
+                        id="flash-title"
+                        value={flashForm.title}
+                        onChange={(event) =>
+                          setFlashForm({
+                            ...flashForm,
+                            title: event.target.value,
+                          })
+                        }
+                        maxLength={60}
+                        placeholder="Ej.: 2x1 en hamburguesas hasta medianoche"
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="flash-detail">Detalle (opcional)</Label>
+                      <Input
+                        id="flash-detail"
+                        value={flashForm.detail}
+                        onChange={(event) =>
+                          setFlashForm({
+                            ...flashForm,
+                            detail: event.target.value,
+                          })
+                        }
+                        maxLength={140}
+                        placeholder="Ej.: aplica en el local y para llevar"
+                        className="h-9 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-2 rounded-xl border border-border/70 bg-black/20 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <Label>Imagen o video de la oferta (opcional)</Label>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground">
+                            Imagen hasta 8 MB · video hasta 30 MB
+                          </p>
+                        </div>
+                        {flashMediaPreview && (
+                          <div className="size-14 shrink-0 overflow-hidden rounded-xl border border-amber-300/40">
+                            {flashMediaKind === "video" ? (
+                              <video
+                                src={flashMediaPreview}
+                                muted
+                                autoPlay
+                                loop
+                                playsInline
+                                className="size-full object-cover"
+                              />
+                            ) : (
+                              <img
+                                src={flashMediaPreview}
+                                alt="Vista previa del medio de la oferta flash"
+                                className="size-full object-cover"
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        ref={flashMediaInputRef}
+                        type="file"
+                        accept="image/*,video/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          void handleFlashMediaUpload(file);
+                        }}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 border-amber-300/40 text-amber-100"
+                          disabled={flashMediaUploading || flashBusy}
+                          onClick={() => flashMediaInputRef.current?.click()}
+                        >
+                          {flashMediaUploading ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <ImageUp className="size-3.5" />
+                          )}
+                          {flashMediaUploading
+                            ? "Subiendo"
+                            : flashMediaPreview
+                              ? "Cambiar medio"
+                              : "Subir desde galería"}
+                        </Button>
+                        {flashMediaPreview && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1.5 text-muted-foreground"
+                            disabled={flashMediaUploading || flashBusy}
+                            onClick={() => {
+                              setFlashMediaStorageId(null);
+                              setFlashMediaPreview(null);
+                              setFlashMediaKind(null);
+                              setRemoveFlashMedia(true);
+                            }}
+                          >
+                            <Trash2 className="size-3.5" /> Quitar medio
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="flex-1 space-y-1.5">
+                        <Label htmlFor="flash-duration">Duración</Label>
+                        <Input
+                          id="flash-duration"
+                          type="number"
+                          min={1}
+                          max={24}
+                          value={flashForm.duration}
+                          onChange={(event) =>
+                            setFlashForm({
+                              ...flashForm,
+                              duration: event.target.value,
+                            })
+                          }
+                          className="h-9 text-xs"
+                        />
+                      </div>
+                      <div className="flex flex-1 items-end gap-2 pb-0.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-9 flex-1 gap-1.5 bg-ember-gradient text-black"
+                          disabled={flashBusy || flashMediaUploading}
+                          onClick={() => void handleFlashSave()}
+                        >
+                          {flashBusy ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Zap className="size-3.5" />
+                          )}
+                          Publicar
+                        </Button>
+                        {flashActive && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-9 border-border/80"
+                            disabled={flashBusy}
+                            onClick={() => void handleFlashClear()}
+                          >
+                            Terminar
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Duración en horas, de 1 a 24.
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 flex-1 text-[10px] leading-relaxed text-muted-foreground">
+                      Exclusivo del plan Élite: se activa solo con tu
+                      suscripción vigente.
+                    </p>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 border-amber-300/40 text-amber-200"
+                    >
+                      <Link to="/suscripcion">Ver Élite</Link>
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       <Dialog
         open={reviewCourier !== null}
@@ -2614,183 +2910,6 @@ export default function BusinessPage() {
                   );
                 })}
               </div>
-            </div>
-
-            <div className="space-y-2 rounded-2xl border border-amber-300/30 bg-amber-300/[0.05] p-3">
-              <div>
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-200">
-                  <Zap className="size-3.5" /> Oferta flash
-                  <span className="rounded-full border border-amber-300/50 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-200">
-                    Élite
-                  </span>
-                </p>
-                <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-                  Anuncio corto con cuenta regresiva en el directorio, el mazo y
-                  tu perfil. Dura de 1 a 24 horas y sólo se muestra con Élite
-                  vigente.
-                </p>
-              </div>
-              {eliteVideoEnabled ? (
-                <>
-                  {flashActive && (
-                    <p className="rounded-xl border border-amber-300/30 bg-black/25 px-3 py-2 text-[11px] text-amber-100">
-                      Activa: {business.flashTitle} ·{" "}
-                      <FlashCountdown endsAt={business.flashEndsAt ?? 0} />
-                    </p>
-                  )}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="flash-title">Título de la oferta</Label>
-                    <Input
-                      id="flash-title"
-                      value={flashForm.title}
-                      onChange={(event) =>
-                        setFlashForm({ ...flashForm, title: event.target.value })
-                      }
-                      maxLength={60}
-                      placeholder="Ej.: 2x1 en hamburguesas hasta medianoche"
-                      className="h-9 text-xs"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="flash-detail">Detalle (opcional)</Label>
-                    <Input
-                      id="flash-detail"
-                      value={flashForm.detail}
-                      onChange={(event) =>
-                        setFlashForm({ ...flashForm, detail: event.target.value })
-                      }
-                      maxLength={140}
-                      placeholder="Ej.: aplica en el local y para llevar"
-                      className="h-9 text-xs"
-                    />
-                  </div>
-                  <div className="space-y-2 rounded-xl border border-border/70 bg-black/20 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <Label>Imagen o video de la oferta (opcional)</Label>
-                        <p className="mt-0.5 text-[10px] text-muted-foreground">
-                          Imagen hasta 8 MB · video hasta 30 MB
-                        </p>
-                      </div>
-                      {flashMediaPreview && (
-                        <div className="size-14 shrink-0 overflow-hidden rounded-xl border border-amber-300/40">
-                          {flashMediaKind === "video" ? (
-                            <video src={flashMediaPreview} muted autoPlay loop playsInline className="size-full object-cover" />
-                          ) : (
-                            <img src={flashMediaPreview} alt="Vista previa del medio de la oferta flash" className="size-full object-cover" />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <input
-                      ref={flashMediaInputRef}
-                      type="file"
-                      accept="image/*,video/*"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        void handleFlashMediaUpload(file);
-                      }}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 border-amber-300/40 text-amber-100"
-                        disabled={flashMediaUploading || flashBusy}
-                        onClick={() => flashMediaInputRef.current?.click()}
-                      >
-                        {flashMediaUploading ? <Loader2 className="size-3.5 animate-spin" /> : <ImageUp className="size-3.5" />}
-                        {flashMediaUploading ? "Subiendo" : flashMediaPreview ? "Cambiar medio" : "Subir desde galería"}
-                      </Button>
-                      {flashMediaPreview && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1.5 text-muted-foreground"
-                          disabled={flashMediaUploading || flashBusy}
-                          onClick={() => {
-                            setFlashMediaStorageId(null);
-                            setFlashMediaPreview(null);
-                            setFlashMediaKind(null);
-                            setRemoveFlashMedia(true);
-                          }}
-                        >
-                          <Trash2 className="size-3.5" /> Quitar medio
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="flex-1 space-y-1.5">
-                      <Label htmlFor="flash-duration">Duración</Label>
-                      <Input
-                        id="flash-duration"
-                        type="number"
-                        min={1}
-                        max={24}
-                        value={flashForm.duration}
-                        onChange={(event) =>
-                          setFlashForm({
-                            ...flashForm,
-                            duration: event.target.value,
-                          })
-                        }
-                        className="h-9 text-xs"
-                      />
-                    </div>
-                    <div className="flex flex-1 items-end gap-2 pb-0.5">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="h-9 flex-1 gap-1.5 bg-ember-gradient text-black"
-                        disabled={flashBusy || flashMediaUploading}
-                        onClick={() => void handleFlashSave()}
-                      >
-                        {flashBusy ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Zap className="size-3.5" />
-                        )}
-                        Publicar
-                      </Button>
-                      {flashActive && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-9 border-border/80"
-                          disabled={flashBusy}
-                          onClick={() => void handleFlashClear()}
-                        >
-                          Terminar
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Duración en horas, de 1 a 24.
-                  </p>
-                </>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="min-w-0 flex-1 text-[10px] leading-relaxed text-muted-foreground">
-                    Exclusivo del plan Élite: se activa solo con tu suscripción
-                    vigente.
-                  </p>
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 border-amber-300/40 text-amber-200"
-                  >
-                    <Link to="/suscripcion">Ver Élite</Link>
-                  </Button>
-                </div>
-              )}
             </div>
 
             <div className="space-y-3 rounded-2xl border border-border/70 bg-black/20 p-3">
