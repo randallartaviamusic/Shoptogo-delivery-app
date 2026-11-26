@@ -632,3 +632,18 @@ html[data-text-scale="xl"] body,
 html[data-text-scale="xxl"] body {
   hyphens: auto;
 }
+
+/* Tamaño de títulos independiente: se multiplican las medidas de texto de
+   los encabezados y textos de título sin tocar el resto del contenido. */
+html[data-title-scale] :is(h1, h2, h3, h4, h5, h6, .font-display) {
+  --text-xs: calc(0.75rem * var(--stg-title-scale, 1));
+  --text-sm: calc(0.875rem * var(--stg-title-scale, 1));
+  --text-base: calc(1rem * var(--stg-title-scale, 1));
+  --text-lg: calc(1.125rem * var(--stg-title-scale, 1));
+  --text-xl: calc(1.25rem * var(--stg-title-scale, 1));
+  --text-2xl: calc(1.5rem * var(--stg-title-scale, 1));
+  --text-3xl: calc(1.875rem * var(--stg-title-scale, 1));
+  --text-4xl: calc(2.25rem * var(--stg-title-scale, 1));
+  --text-5xl: calc(3rem * var(--stg-title-scale, 1));
+  --text-6xl: calc(3.75rem * var(--stg-title-scale, 1));
+}

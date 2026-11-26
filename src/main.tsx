@@ -12,12 +12,12 @@ import { createRoot } from "react-dom/client";
 import { useLocation } from "react-router";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import "./index.css";
-import { applyTextScale, getTextScaleId } from "@/lib/textSize";
+import { applyTextPreferences } from "@/lib/textSize";
 
-// Aplica el tamaño de letra guardado antes del primer pintado para que
-// ninguna ventana parpadee con otro tamaño al abrir la plataforma.
+// Aplica los tamaños de texto y títulos guardados antes del primer pintado
+// para que ninguna ventana parpadee con otro tamaño al abrir la plataforma.
 try {
-  applyTextScale(getTextScaleId());
+  applyTextPreferences();
 } catch {
   // Si el almacenamiento falla, la app sigue con el tamaño normal.
 }
@@ -25,7 +25,7 @@ try {
 function TextSizeBootstrap() {
   useEffect(() => {
     try {
-      applyTextScale(getTextScaleId());
+      applyTextPreferences();
     } catch {
       // Tamaño normal por defecto.
     }

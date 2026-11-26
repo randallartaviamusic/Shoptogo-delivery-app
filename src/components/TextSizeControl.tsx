@@ -1,123 +1,24 @@
-import { TEXT_SCALE_OPTIONS, useTextScale } from "@/lib/textSize";
-import { cn } from "@/lib/utils";
 import {
-  ArrowDown,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  EyeClosed,
-  Eye,
-} from "lucide-react";
-import { useState, useTransition, type HTMLProps } from "react";
-
-interface LinePreview {
-  text: string;
-  maxLines: number;
-}
-
-function ellipsizeLine(line: string, maxChars: number): string {
-  if (line.length <= maxChars) return line;
-  return line.slice(0, maxChars - 1).replace(/\s+\S*$/, "") + "…";
-}
-
-function previewLines({ text, maxLines }: LinePreview): readonly string[] {
-  return text.split("\n").map((raw) => raw.trimEnd()).slice(0, maxLines);
-}
-
-interface SizeSelectorProps {
-  id: string;
-  href: string;
-  label: string;
-  picture: React.ReactNode;
-  hint: string;
-  active: boolean;
-  onPick: () => void;
-}
-
-function SizeSelector({
-  label,
-  picture,
-  hint,
-  active,
-  onPick,
-}: SizeSelectorProps) {
-  const [open, setOpen] = useState(false);
-  const [nextOpen, setNextOpen] = useState(false);
-  const [activeId, setActiveId] = useState("small");
-  const [pictureLines, setPictureLines] = useState<readonly string[]>([]);
-
-  return (
-    <div className="inline-block">
-      <button
-        type="button"
-        className={cn(
-          "inline-flex h-9 items-center gap-2 rounded-xl border px-2.5 text-[11px] font-semibold transition-colors sm:mr-1",
-          active
-            ? "border-accent/50 bg-accent/[0.1] text-foreground"
-            : "border-border/80 bg-black/20 text-muted-foreground hover:border-accent/30 hover:text-foreground"
-        )}
-        onClick={() => {
-          setNextOpen(true);
-          setActiveId(label);
-          setTimeout(() => setPictureLines([]), 0);
-        }}
-        onPointerEnter={() => {}}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={`Tamaño de letra: ${label}`}
-      >
-        {picture}
-        <span className="truncate">{label}</span>
-        {open ? <ChevronDown className="size-3 shrink-0" /> : <ArrowDown className="size-3 shrink-0" />}
-      </button>
-
-      {open && (
-        <ul
-          role="listbox"
-          aria-label={`Tamaños de letra disponibles`}
-          className="absolute left-0 z-30 mt-1 min-w-[168px] overflow-hidden rounded-xl border border-border/70 bg-[#111113] p-1 shadow-xl"
-        >
-          {TEXT_SCALE_OPTIONS.map((option) => {
-            const itemActive = option.id === activeId;
-            return (
-              <li key={option.id}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={itemActive}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] transition-colors",
-                    itemActive
-                      ? "bg-accent/15 text-foreground"
-                      : "text-muted-foreground hover:bg-black/30"
-                  )}
-                  onClick={() => {
-                    onPick();
-                    setActiveId(label);
-                    setOpen(false);
-                  }}
-                >
-                  {itemActive && <Check className="size-3.5 shrink-0 text-accent" />}
-                  <span>{option.label}</span>
-                  <span className="margin-left-auto text-[10px] text-muted-foreground">
-                    {option.hint}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
+  TEXT_SCALE_OPTIONS,
+  TITLE_SCALE_OPTIONS,
+  useTextScale,
+  type TextScaleId,
+} from "@/lib/textSize";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Eye, Heading, Type } from "lucide-react";
 
 export function TextSizeControl({
   contextLabel = "Se aplica en toda la plataforma y se guarda en este teléfono.",
 }: {
   contextLabel?: string;
 }) {
-  const { scaleId, select } = useTextScale();
+  const { scaleId, titleScaleId, select, selectTitle } = useTextScale();
 
   return (
     <section
@@ -129,54 +30,83 @@ export function TextSizeControl({
           <Eye className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-lg font-bold">
-            Tamaño de la letra
-          </h2>
+          <h2 className="font-display text-lg font-bold">Tamaño de la letra</h2>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            Elegí qué tan grande se ve el texto. {contextLabel}
+            Elegí el tamaño del texto y de los títulos por separado.{" "}
+            {contextLabel}
           </p>
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-2 overflow-hidden">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Tamaño
-        </span>
-        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
-          {TEXT_SCALE_OPTIONS.map((option) => {
-            const active = option.id === scaleId;
-            return (
-              <SizeSelector
-                key={option.id}
-                id={option.id}
-                href=""
-                label={option.label}
-                picture={
-                  <span
-                    aria-hidden
-                    className="font-display font-extrabold leading-none"
-                    style={{
-                      fontSize:
-                        option.id === "small"
-                          ? "15px"
-                          : option.id === "normal"
-                            ? "17px"
-                            : option.id === "large"
-                              ? "20px"
-                              : option.id === "xl"
-                                ? "23px"
-                                : "26px",
-                    }}
-                  >
-                    Aa
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="min-w-0">
+          <label
+            htmlFor="text-size-select"
+            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            <Type className="size-3.5 shrink-0" />
+            Texto general
+          </label>
+          <Select
+            value={scaleId}
+            onValueChange={(value) => select(value as TextScaleId)}
+          >
+            <SelectTrigger
+              id="text-size-select"
+              className="mt-1.5 h-11 w-full rounded-xl border-border/80 bg-black/30 px-3 text-sm"
+            >
+              <SelectValue placeholder="Elegí el tamaño">
+                {TEXT_SCALE_OPTIONS.find((option) => option.id === scaleId)?.label}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="border-border/70 bg-[#111113]">
+              {TEXT_SCALE_OPTIONS.map((option) => (
+                <SelectItem key={option.id} value={option.id} className="text-sm">
+                  <span>{option.label}</span>
+                  <span className="ml-auto pl-3 text-[10px] text-muted-foreground">
+                    {option.hint}
                   </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="min-w-0">
+          <label
+            htmlFor="title-size-select"
+            className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+          >
+            <Heading className="size-3.5 shrink-0" />
+            Títulos
+          </label>
+          <Select
+            value={titleScaleId}
+            onValueChange={(value) => selectTitle(value as TextScaleId)}
+          >
+            <SelectTrigger
+              id="title-size-select"
+              className="mt-1.5 h-11 w-full rounded-xl border-border/80 bg-black/30 px-3 text-sm"
+            >
+              <SelectValue placeholder="Elegí el tamaño">
+                {
+                  TITLE_SCALE_OPTIONS.find(
+                    (option) => option.id === titleScaleId
+                  )?.label
                 }
-                hint={option.hint}
-                active={active}
-                onPick={() => select(option.id)}
-              />
-            );
-          })}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="border-border/70 bg-[#111113]">
+              {TITLE_SCALE_OPTIONS.map((option) => (
+                <SelectItem key={option.id} value={option.id} className="text-sm">
+                  <span>{option.label}</span>
+                  <span className="ml-auto pl-3 text-[10px] text-muted-foreground">
+                    {option.hint}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -185,9 +115,12 @@ export function TextSizeControl({
           <Eye className="size-3.5 shrink-0" />
           Vista previa
         </p>
-        <p className="mt-1 leading-snug">
-          Así se ve el texto con el tamaño elegido. Todo el contenido se mantiene
-          dentro del ancho del celular, sin salirse por los lados.
+        <p className="mt-2 font-display text-xl font-extrabold leading-tight">
+          Título de ejemplo
+        </p>
+        <p className="mt-1 text-sm leading-snug text-muted-foreground">
+          Así se ve el texto con los tamaños elegidos. Todo el contenido se
+          mantiene dentro del ancho del celular, sin salirse por los lados.
         </p>
       </div>
     </section>
