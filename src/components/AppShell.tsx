@@ -96,24 +96,43 @@ export function AppShell() {
   const ensureCatalog = useMutation(api.seed.ensure);
   const seeded = useRef(false);
   const headerHidden = useHideOnScroll();
+  const loadingRef = useRef<number | undefined>(undefined);
+  const triedReload = useRef(false);
 
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    ensureCatalog().catch(() => {
+    void ensureCatalog().catch(() => {
       /* the demo catalog already exists or the network hiccuped */
     });
   }, [ensureCatalog]);
 
-  // Si la sesión no resuelve, mostramos una salida en vez de girar para siempre.
-  const [authStuck, setAuthStuck] = useState(false);
+  // Si la sesión no resuelve, recargamos una vez en vez de dejar al visitante
+  // parado esperando un estado que no llega.
   useEffect(() => {
+    const t = loadingRef.current;
+    if (t !== undefined) window.clearTimeout(t);
     if (!isLoading) {
-      setAuthStuck(false);
+      loadingRef.current = undefined;
       return;
     }
-    const timer = setTimeout(() => setAuthStuck(true), 6000);
-    return () => clearTimeout(timer);
+    loadingRef.current = window.setTimeout(() => {
+      loadingRef.current = undefined;
+      if (!isLoading || (user !== undefined && user !== null)) return;
+      if (!triedReload.current) {
+        triedReload.current = true;
+        try {
+          window.location.reload();
+        } catch {
+          // Sin recargar no hay escape: el usuario sigue parado.
+        }
+      }
+    }, 6000);
+    return () => {
+      const t = loadingRef.current;
+      if (t !== undefined) window.clearTimeout(t);
+      loadingRef.current = undefined;
+    };
   }, [isLoading, user]);
 
   // Mientras se resuelve la sesión no mostramos la app vacía. Sin sesión sí
@@ -121,21 +140,25 @@ export function AppShell() {
   if (isLoading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-6 text-center">
-        {authStuck ? (
+        {isLoading && (user === undefined || user === null) ? (
           <>
             <p className="font-display text-lg font-bold">No pudimos abrir tu sesión</p>
             <p className="max-w-xs text-sm text-muted-foreground">
               Revisá tu conexión e intentá de nuevo.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={() => window.location.reload()}>Reintentar</Button>
+              <Button onClick={() => window.location.reload()}>Recargar</Button>
               <Button
                 variant="outline"
                 onClick={async () => {
-                  const done = await Promise.race([
-                    signOut().catch(() => undefined),
-                    new Promise((r) => setTimeout(r, 4000)),
-                  ]);
+                  try {
+                    await Promise.race([
+                      signOut(),
+                      new Promise<void>((r) => setTimeout(() => r(), 7000)),
+                    ]).catch(() => undefined);
+                  } catch {
+                    // El signOut puede no resolverse: igual intentamos salir.
+                  }
                   try {
                     window.location.href = "/auth";
                   } catch {
@@ -177,6 +200,7 @@ export function AppShell() {
 
   const nav = navFor(role);
   const current = `${location.pathname}${location.search}`;
+
   const cartCount = cart?.count ?? 0;
   const cartTotal = cart?.total ?? 0;
   const availableDeliveries =
@@ -201,7 +225,7 @@ export function AppShell() {
           <Wordmark />
         </Link>
 
-        <div className="mt-8 space-y-1.5">
+                          <div className="mt-8 space-y-1.5">
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/70">
             {isGuest ? "Visitante" : isAdmin ? "Administrador" : ROLE_LABEL[role]}
           </p>
@@ -263,213 +287,288 @@ export function AppShell() {
               Ayuda y soporte
             </Link>
           </div>
-        </div>
 
-        {role === "buyer" && isGuest && (
-          <div className="surface-raised mt-6 rounded-2xl p-4">
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <ShoppingBag className="size-4 text-accent" />
-              Sin cuenta
-            </p>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              Mirá el mazo tranquilo. Cuando deslices o toques un botón te
-              pedimos tu cuenta.
-            </p>
-          </div>
-        )}
-
-        {role === "buyer" && !isGuest && (
-          <Link
-            to="/cart"
-            className="surface-raised mt-6 block rounded-2xl p-4 transition-colors hover:border-accent/30"
-          >
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {role === "buyer" && isGuest && (
+            <div className="surface-raised mt-6 rounded-2xl p-4">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <ShoppingBag className="size-4 text-accent" />
-                Tu antojo
-              </span>
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </div>
-            <p className="mt-3 font-display text-2xl font-bold">{money(cartTotal)}</p>
-            <p className="text-xs text-muted-foreground">
-              {cartCount === 0
-                ? "Todavía no elegiste nada"
-                : `${cartCount} ${cartCount === 1 ? "producto" : "productos"} en el carrito`}
-            </p>
-          </Link>
-        )}
-
-        {isGuest ? (
-          <div className="mt-auto grid gap-2">
-            <Button asChild className="bg-ember-gradient text-black">
-              <Link to="/auth?role=buyer&returnTo=%2Fswipe">Crear cuenta</Link>
-            </Button>
-            <Button asChild variant="outline" className="border-border/80">
-              <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fswipe">
-                Iniciar sesión
-              </Link>
-            </Button>
-          </div>
-        ) : (
-        <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
-            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
-              {user?.image ? (
-                <img
-                  src={user?.image}
-                  alt={user?.name ?? "Foto de perfil"}
-                  className="size-full object-cover"
-                />
-              ) : (
-                initials(user?.name)
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">
-                {user?.name ?? "Sin nombre"}
+                Sin cuenta
               </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {isAdmin ? "Administrador" : ROLE_LABEL[role]}
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                Mirá el mazo tranquilo. Cuando deslices o toques un botón te
+                pedimos tu cuenta.
               </p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Cerrar sesión"
-              className="size-8 text-muted-foreground hover:text-primary"
-              onClick={handleSignOut}
-            >
-              <LogOut className="size-4" />
-            </Button>
-        </div>
-        )}
-      </aside>
+          )}
 
-      <header
-        className={cn(
-          "sticky top-0 z-30 flex items-center justify-between header-atmosphere px-4 py-3 backdrop-blur-xl transition-transform duration-300 ease-out lg:hidden print:hidden",
-          headerHidden ? "-translate-y-full" : "translate-y-0",
-        )}
-      >
-        <Link
-          to={home}
-          aria-label="Shop To Go"
-          className="flex min-w-0 max-w-[58%] items-center"
-        >
-          <Wordmark markSize={30} />
-        </Link>
-        <div className="flex items-center gap-1">
-          {!isGuest && (
-            <Link to="/ayuda" aria-label="Ayuda">
-              <Button variant="ghost" size="icon">
-                <LifeBuoy className="size-5" />
-              </Button>
-            </Link>
-          )}
-          {role === "buyer" && (
-            <Link to="/cart" className="relative">
-              <Button variant="ghost" size="icon" aria-label="Carrito">
-                <ShoppingCart className="size-5" />
-              </Button>
-              {cartCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                  {cartCount}
-                </span>
-              )}
-            </Link>
-          )}
-          {role === "business" && (
-            <Link to="/business" aria-label="Mi local">
-              <Button variant="ghost" size="icon">
-                <Store className="size-5" />
-              </Button>
-            </Link>
-          )}
-          {isGuest ? (
+          {role === "buyer" && !isGuest && (
             <Link
-              to="/auth?role=buyer&returnTo=%2Fswipe"
-              className="ml-1 rounded-xl bg-ember-gradient px-3 py-1.5 text-xs font-semibold text-black"
-            >
-              Entrar
-            </Link>
-          ) : (
-            <Link to="/profile" aria-label="Perfil" className="ml-1">
-              {user?.image ? (
-                <img
-                  src={user.image}
-                  alt={user.name ?? "Tu perfil"}
-                  className="size-9 rounded-xl object-cover ring-1 ring-border/80"
-                />
-              ) : (
-                <div className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
-                  {initials(user?.name)}
-                </div>
-              )}
+              to="/cart"
+              className="surface-raised mt-6 block rounded-2xl p-4 transition-colors hover:border-accent/30">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <ShoppingBag className="size-4 text-accent" />
+                  Tu antojo
+                </span>
+                <ChevronRight className="size-4 text-muted-foreground" />
+              </div>
+              <p className="mt-3 font-display text-2xl font-bold">{money(cartTotal)}</p>
+              <p className="text-xs text-muted-foreground">
+                {cartCount === 0
+                  ? "Todavía no elegiste nada"
+                  : `${cartCount} ${cartCount === 1 ? "producto" : "productos"} en el carrito`}
+              </p>
             </Link>
           )}
-        </div>
-      </header>
 
-      <main className="mx-auto w-full max-w-6xl min-w-0 overflow-x-clip px-4 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-14 lg:pt-10 print:max-w-none print:p-0">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={`${location.pathname}${location.search}`}
-            className="w-full max-w-full min-w-0 overflow-x-clip"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
-          >
-            {outlet as ReactNode}
-          </motion.div>
-        </AnimatePresence>
-      </main>
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 bg-background/90 bg-[linear-gradient(to_top,#fff_0%,rgba(255,255,255,0.7)_10%,rgba(255,255,255,0.24)_22%,rgba(255,255,255,0.06)_40%,rgba(255,255,255,0)_62%)] px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden print:hidden">
-        <div className="mx-auto flex max-w-md items-stretch justify-between">
-          {nav.map((item) => {
-            const active =
-              current === item.to || location.pathname.startsWith(`${item.to}/`);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className="relative flex flex-1 flex-col items-center gap-1 py-3 text-[10px] font-semibold uppercase tracking-wider"
+          {isGuest ? (
+            <div className="mt-auto grid gap-2">
+              <Button asChild className="bg-ember-gradient text-black">
+                <Link to="/auth?role=buyer&returnTo=%2Fswipe">Crear cuenta</Link>
+              </Button>
+              <Button asChild variant="outline" className="border-border/80">
+                <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fswipe">
+                  Iniciar sesión
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
+              <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
+                {user?.image ? (
+                  <img
+                    src={user?.image}
+                    alt={user?.name ?? "Foto de perfil"}
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  initials(user?.name)
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">
+                  {user?.name ?? "Sin nombre"}
+                </p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {isAdmin ? "Administrador" : ROLE_LABEL[role]}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Cerrar sesión"
+                className="size-8 text-muted-foreground hover:text-primary"
+                onClick={handleSignOut}
               >
-                <span className="relative">
-                  <Icon
-                    className={cn(
-                      "size-5 transition-colors",
-                      active ? "text-primary" : "text-muted-foreground",
-                    )}
-                  />
-                  {item.to === "/courier" && availableDeliveries > 0 && (
-                    <span className="absolute -right-2 -top-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                      {availableDeliveries}
-                    </span>
-                  )}
+                <LogOut className="size-4" />
+              </Button>
+            </div>
+          )}
+        </aside>
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <ShoppingBag className="size-4 text-accent" />
+                Sin cuenta
+              </p>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                Mirá el mazo tranquilo. Cuando deslices o toques un botón te
+                pedimos tu cuenta.
+              </p>
+            </div>
+          )}
+
+          {role === "buyer" && !isGuest && (
+            <Link
+              to="/cart"
+              className="surface-raised mt-6 block rounded-2xl p-4 transition-colors hover:border-accent/30"
+            >
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <ShoppingBag className="size-4 text-accent" />
+                  Tu antojo
                 </span>
-                <span
-                  className={cn(
-                    "transition-colors",
-                    active ? "text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  {item.label}
-                </span>
-                {active && (
-                  <motion.span
-                    layoutId="mobile-active"
-                    className="absolute -top-px h-[2px] w-10 rounded-full bg-primary"
-                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                <ChevronRight className="size-4 text-muted-foreground" />
+              </div>
+              <p className="mt-3 font-display text-2xl font-bold">{money(cartTotal)}</p>
+              <p className="text-xs text-muted-foreground">
+                {cartCount === 0
+                  ? "Todavía no elegiste nada"
+                  : `${cartCount} ${cartCount === 1 ? "producto" : "productos"} en el carrito`}
+              </p>
+            </Link>
+          )}
+
+          {isGuest ? (
+                        <div className="mt-auto grid gap-2">
+              <Button asChild className="bg-ember-gradient text-black">
+                <Link to="/auth?role=buyer&returnTo=%2Fswipe">Crear cuenta</Link>
+              </Button>
+              <Button asChild variant="outline" className="border-border/80">
+                <Link to="/auth?role=buyer&mode=signin&returnTo=%2Fswipe">
+                  Iniciar sesión
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-auto flex items-center gap-3 rounded-2xl border border-border/70 p-3">
+              <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/15 text-sm font-bold text-primary">
+                {user?.image ? (
+                  <img
+                    src={user?.image}
+                    alt={user?.name ?? "Foto de perfil"}
+                    className="size-full object-cover"
                   />
+                ) : (
+                  initials(user?.name)
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">
+                  {user?.name ?? "Sin nombre"}
+                </p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {isAdmin ? "Administrador" : ROLE_LABEL[role]}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Cerrar sesión"
+                className="size-8 text-muted-foreground hover:text-primary"
+                onClick={handleSignOut}
+              >
+                <LogOut className="size-4" />
+              </Button>
+            </div>
+          )}
+        </aside>
+
+          <header
+          className={cn(
+            "sticky top-0 z-30 flex items-center justify-between header-atmosphere px-4 py-3 backdrop-blur-xl transition-transform duration-300 ease-out lg:hidden print:hidden",
+            headerHidden ? "-translate-y-full" : "translate-y-0",
+          )}
+        >
+          <Link
+            to={home}
+            aria-label="Shop To Go"
+            className="flex min-w-0 max-w-[58%] items-center"
+          >
+            <Wordmark markSize={30} />
+          </Link>
+          <div className="flex items-center gap-1">
+            {!isGuest && (
+              <Link to="/ayuda" aria-label="Ayuda">
+                <Button variant="ghost" size="icon">
+                  <LifeBuoy className="size-5" />
+                </Button>
+              </Link>
+            )}
+            {role === "buyer" && (
+              <Link to="/cart" className="relative">
+                <Button variant="ghost" size="icon" aria-label="Carrito">
+                  <ShoppingCart className="size-5" />
+                </Button>
+                {cartCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                    {cartCount}
+                  </span>
                 )}
               </Link>
-            );
-          })}
-        </div>
-        <div aria-hidden className="glass-sheen pointer-events-none absolute inset-0" />
-      </nav>
+            )}
+            {role === "business" && (
+              <Link to="/business" aria-label="Mi local">
+                <Button variant="ghost" size="icon">
+                  <Store className="size-5" />
+                </Button>
+              </Link>
+            )}
+            {isGuest ? (
+              <Link
+                to="/auth?role=buyer&returnTo=%2Fswipe"
+                className="ml-1 rounded-xl bg-ember-gradient px-3 py-1.5 text-xs font-semibold text-black"
+              >
+                Entrar
+              </Link>
+            ) : (
+              <Link to="/profile" aria-label="Perfil" className="ml-1">
+                {user?.image ? (
+                  <img
+                    src={user.image}
+                    alt={user.name ?? "Tu perfil"}
+                    className="size-9 rounded-xl object-cover ring-1 ring-border/80"
+                  />
+                ) : (
+                  <div className="flex size-9 items-center justify-center rounded-xl bg-primary/15 text-xs font-bold text-primary">
+                    {initials(user?.name)}
+                  </div>
+                )}
+              </Link>
+            )}
+          </div>
+        </header>
+
+        <main className="mx-auto w-full max-w-6xl min-w-0 overflow-x-clip px-4 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-14 lg:pt-10 print:max-w-none print:p-0">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={`${location.pathname}${location.search}`}
+              className="w-full max-w-full min-w-0 overflow-x-clip"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+            >
+              {outlet as ReactNode}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+
+        <nav className="fixed inset-x-0 bottom-0 z-40 bg-background/90 bg-[linear-gradient(to_top,#fff_0%,rgba(255,255,255,0.7)_10%,rgba(255,255,255,0.24)_22%,rgba(255,255,255,0.06)_40%,rgba(255,255,255,0)_62%)] px-2 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden print:hidden">
+          <div className="mx-auto flex max-w-md items-stretch justify-between">
+            {nav.map((item) => {
+              const active =
+                current === item.to || location.pathname.startsWith(`${item.to}/`);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className="relative flex flex-1 flex-col items-center gap-1 py-3 text-[10px] font-semibold uppercase tracking-wider"
+                >
+                  <span className="relative">
+                    <Icon
+                      className={cn(
+                        "size-5 transition-colors",
+                        active ? "text-primary" : "text-muted-foreground",
+                      )}
+                    />
+                    {item.to === "/courier" && availableDeliveries > 0 && (
+                      <span className="absolute -right-2 -top-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
+                        {availableDeliveries}
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      "transition-colors",
+                      active ? "text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                  {active && (
+                    <motion.span
+                      layoutId="mobile-active"
+                      className="absolute -top-px h-[2px] w-10 rounded-full bg-primary"
+                      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+          <div aria-hidden className="glass-sheen pointer-events-none absolute inset-0" />
+        </nav>
+      </div>
     </div>
   );
 }

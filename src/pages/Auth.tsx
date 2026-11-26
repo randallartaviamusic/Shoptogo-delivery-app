@@ -116,7 +116,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       setSlow(false);
       return;
     }
-    const timer = setTimeout(() => setSlow(true), 8000);
+    const timer = setTimeout(() => setSlow(true), 5000);
     return () => clearTimeout(timer);
   }, [authLoading]);
 
