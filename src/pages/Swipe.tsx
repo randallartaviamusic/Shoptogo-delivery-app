@@ -25,7 +25,6 @@ import {
   getDepartment,
   type CatalogFilter,
 } from "@/lib/departments";
-import { money } from "@/lib/format";
 import type { ProductOptionChoice } from "@/lib/productOptions";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "convex/react";
@@ -36,7 +35,6 @@ import {
   Heart,
   Loader2,
   RotateCcw,
-  ShoppingCart,
   SlidersHorizontal,
   Sparkles,
   Star,
@@ -123,7 +121,6 @@ export default function SwipePage() {
     filters,
     seed: deckSeed,
   });
-  const cart = useQuery(api.cart.myCart, {});
   const stats = useQuery(api.catalog.myStats);
   const swipe = useMutation(api.catalog.swipe);
   const resetDeck = useMutation(api.catalog.resetDeck);
@@ -616,29 +613,6 @@ export default function SwipePage() {
             Arrastrá la tarjeta o usá ← → ↑
           </p>
 
-          <Link
-            to="/cart"
-            className="surface-raised mt-4 flex items-center justify-between gap-3 rounded-2xl px-4 py-3 transition-colors hover:border-accent/30"
-          >
-            <span className="flex items-center gap-2.5 text-sm">
-              <span className="relative flex size-9 items-center justify-center rounded-xl bg-accent/12 text-accent">
-                <ShoppingCart className="size-4" />
-              </span>
-              <span>
-                <span className="block font-semibold">
-                  {cart?.count
-                    ? `${cart.count} en el carrito`
-                    : "Tu carrito está vacío"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {cart?.count
-                    ? money(cart.total)
-                    : "Deslizá a la derecha para agregar"}
-                </span>
-              </span>
-            </span>
-            <ArrowRight className="size-4 text-muted-foreground" />
-          </Link>
         </div>
 
         <aside className="hidden space-y-4 lg:block">
