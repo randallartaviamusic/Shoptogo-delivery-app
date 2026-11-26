@@ -990,6 +990,7 @@ const schema = defineSchema(
       eliteBadgeStorageId: v.optional(v.id("_storage")),
       swipeBadgeSize: v.optional(v.number()),
       swipeTitleSize: v.optional(v.number()),
+      swipeBusinessNameSize: v.optional(v.number()),
       // Audio propio para la campanita de avisos (lo sube el administrador).
       notificationSoundUrl: v.optional(v.string()),
       notificationSoundName: v.optional(v.string()),

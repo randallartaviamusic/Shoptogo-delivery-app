@@ -526,6 +526,7 @@ export default function SwipePage() {
                     eliteBadgeUrl={swipeStyle?.eliteBadgeUrl}
                     eliteBadgeSize={swipeStyle?.swipeBadgeSize}
                     titleSize={swipeStyle?.swipeTitleSize}
+                    businessNameSize={swipeStyle?.swipeBusinessNameSize}
                   />
                 </motion.div>
               ))}

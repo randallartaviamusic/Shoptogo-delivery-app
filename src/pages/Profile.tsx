@@ -248,6 +248,7 @@ export default function ProfilePage() {
   const [savingSwipeStyle, setSavingSwipeStyle] = useState(false);
   const [swipeBadgeSizeDraft, setSwipeBadgeSizeDraft] = useState(36);
   const [swipeTitleSizeDraft, setSwipeTitleSizeDraft] = useState(26);
+  const [swipeBusinessNameSizeDraft, setSwipeBusinessNameSizeDraft] = useState(11);
   const [savingLogoSize, setSavingLogoSize] = useState(false);
   const [logoSizeDraft, setLogoSizeDraft] = useState(40);
 
@@ -283,7 +284,15 @@ export default function ProfilePage() {
     if (brand?.logoSize) setLogoSizeDraft(brand.logoSize);
     if (brand?.swipeBadgeSize) setSwipeBadgeSizeDraft(brand.swipeBadgeSize);
     if (brand?.swipeTitleSize) setSwipeTitleSizeDraft(brand.swipeTitleSize);
-  }, [brand?.logoSize, brand?.swipeBadgeSize, brand?.swipeTitleSize]);
+    if (brand?.swipeBusinessNameSize) {
+      setSwipeBusinessNameSizeDraft(brand.swipeBusinessNameSize);
+    }
+  }, [
+    brand?.logoSize,
+    brand?.swipeBadgeSize,
+    brand?.swipeTitleSize,
+    brand?.swipeBusinessNameSize,
+  ]);
 
   useEffect(() => {
     if (!headline) return;
@@ -526,6 +535,7 @@ export default function ProfilePage() {
       await setSwipeDeckStyle({
         badgeSize: swipeBadgeSizeDraft,
         titleSize: swipeTitleSizeDraft,
+        businessNameSize: swipeBusinessNameSizeDraft,
       });
       toast.success("Diseño del mazo guardado");
     } catch (error) {
@@ -963,7 +973,7 @@ export default function ProfilePage() {
             </p>
             <h2 className="font-display text-lg font-bold">Insignia y títulos del mazo</h2>
             <p className="mt-1 max-w-md text-sm text-muted-foreground">
-              Personalizá la insignia circular de los locales Elite y el tamaño de los títulos de productos en Swipe.
+              Personalizá la insignia circular de los locales Elite y los tamaños del nombre de la tienda y del título del producto en Swipe.
             </p>
           </div>
 
@@ -1046,6 +1056,24 @@ export default function ProfilePage() {
                 value={[swipeTitleSizeDraft]}
                 onValueChange={([value]) => setSwipeTitleSizeDraft(value ?? 26)}
               />
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="swipe-business-name-size">Tamaño del nombre de la tienda</Label>
+                <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{swipeBusinessNameSizeDraft}px</span>
+              </div>
+              <Slider
+                id="swipe-business-name-size"
+                className="py-2"
+                min={8}
+                max={20}
+                step={1}
+                value={[swipeBusinessNameSizeDraft]}
+                onValueChange={([value]) => setSwipeBusinessNameSizeDraft(value ?? 11)}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Aplica al nombre del local en la barra superior de la tarjeta del mazo.
+              </p>
             </div>
             <Button className="gap-2" disabled={savingSwipeStyle} onClick={() => void handleSwipeStyleSave()}>
               {savingSwipeStyle ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}

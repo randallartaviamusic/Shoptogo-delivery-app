@@ -33,6 +33,9 @@ export const MAX_SWIPE_BADGE_SIZE = 72;
 export const DEFAULT_SWIPE_TITLE_SIZE = 26;
 export const MIN_SWIPE_TITLE_SIZE = 16;
 export const MAX_SWIPE_TITLE_SIZE = 40;
+export const DEFAULT_SWIPE_BUSINESS_NAME_SIZE = 11;
+export const MIN_SWIPE_BUSINESS_NAME_SIZE = 8;
+export const MAX_SWIPE_BUSINESS_NAME_SIZE = 20;
 const BRAND_TITLE_FONTS = ["sora", "manrope", "serif", "mono"];
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
@@ -76,6 +79,13 @@ export const brand = query({
       swipeTitleSize: Math.min(
         MAX_SWIPE_TITLE_SIZE,
         Math.max(MIN_SWIPE_TITLE_SIZE, doc?.swipeTitleSize ?? DEFAULT_SWIPE_TITLE_SIZE),
+      ),
+      swipeBusinessNameSize: Math.min(
+        MAX_SWIPE_BUSINESS_NAME_SIZE,
+        Math.max(
+          MIN_SWIPE_BUSINESS_NAME_SIZE,
+          doc?.swipeBusinessNameSize ?? DEFAULT_SWIPE_BUSINESS_NAME_SIZE,
+        ),
       ),
       updatedAt: doc?.updatedAt ?? null,
     };
@@ -300,16 +310,25 @@ export const setEliteBadge = mutation({
 });
 
 export const setSwipeDeckStyle = mutation({
-  args: { badgeSize: v.number(), titleSize: v.number() },
-  handler: async (ctx, { badgeSize, titleSize }) => {
+  args: {
+    badgeSize: v.number(),
+    titleSize: v.number(),
+    businessNameSize: v.number(),
+  },
+  handler: async (ctx, { badgeSize, titleSize, businessNameSize }) => {
     await requireAdmin(ctx);
     const nextBadgeSize = Math.min(MAX_SWIPE_BADGE_SIZE, Math.max(MIN_SWIPE_BADGE_SIZE, Math.round(badgeSize)));
     const nextTitleSize = Math.min(MAX_SWIPE_TITLE_SIZE, Math.max(MIN_SWIPE_TITLE_SIZE, Math.round(titleSize)));
+    const nextBusinessNameSize = Math.min(
+      MAX_SWIPE_BUSINESS_NAME_SIZE,
+      Math.max(MIN_SWIPE_BUSINESS_NAME_SIZE, Math.round(businessNameSize)),
+    );
     const doc = await brandDoc(ctx);
     if (doc) {
       await ctx.db.patch(doc._id, {
         swipeBadgeSize: nextBadgeSize,
         swipeTitleSize: nextTitleSize,
+        swipeBusinessNameSize: nextBusinessNameSize,
         updatedAt: Date.now(),
       });
     } else {
@@ -317,10 +336,15 @@ export const setSwipeDeckStyle = mutation({
         key: BRAND_KEY,
         swipeBadgeSize: nextBadgeSize,
         swipeTitleSize: nextTitleSize,
+        swipeBusinessNameSize: nextBusinessNameSize,
         updatedAt: Date.now(),
       });
     }
-    return { badgeSize: nextBadgeSize, titleSize: nextTitleSize };
+    return {
+      badgeSize: nextBadgeSize,
+      titleSize: nextTitleSize,
+      businessNameSize: nextBusinessNameSize,
+    };
   },
 });
 

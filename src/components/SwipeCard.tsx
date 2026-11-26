@@ -82,6 +82,7 @@ function CardBody({
   eliteBadgeUrl,
   eliteBadgeSize = 36,
   titleSize = 26,
+  businessNameSize = 11,
   soundToggle = false,
 }: {
   dish: Dish;
@@ -89,6 +90,7 @@ function CardBody({
   eliteBadgeUrl?: string | null;
   eliteBadgeSize?: number;
   titleSize?: number;
+  businessNameSize?: number;
   soundToggle?: boolean;
 }) {
   return (
@@ -119,7 +121,10 @@ function CardBody({
             className="size-7 rounded-full"
           />
           <span className="min-w-0 leading-none">
-            <span className="block truncate text-[11px] font-semibold text-white">
+            <span
+              className="block truncate font-semibold leading-tight text-white"
+              style={{ fontSize: businessNameSize }}
+            >
               {dish.businessName}
             </span>
             <span className="mt-0.5 flex items-center gap-1 text-[10px] text-white/65">
@@ -213,6 +218,7 @@ type SwipeCardProps = {
   eliteBadgeUrl?: string | null;
   eliteBadgeSize?: number;
   titleSize?: number;
+  businessNameSize?: number;
 };
 
 export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function SwipeCard(
@@ -223,6 +229,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
     eliteBadgeUrl,
     eliteBadgeSize,
     titleSize,
+    businessNameSize,
   }: SwipeCardProps,
   ref,
 ) {
@@ -265,6 +272,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
           eliteBadgeUrl={eliteBadgeUrl}
           eliteBadgeSize={eliteBadgeSize}
           titleSize={titleSize}
+          businessNameSize={businessNameSize}
         />
       </div>
     );
@@ -302,6 +310,7 @@ export const SwipeCard = forwardRef<SwipeCardHandle, SwipeCardProps>(function Sw
         eliteBadgeUrl={eliteBadgeUrl}
         eliteBadgeSize={eliteBadgeSize}
         titleSize={titleSize}
+        businessNameSize={businessNameSize}
         soundToggle
       />
 

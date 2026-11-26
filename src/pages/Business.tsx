@@ -3150,6 +3150,7 @@ export default function BusinessPage() {
                       eliteBadgeUrl={swipeStyle?.eliteBadgeUrl}
                       eliteBadgeSize={swipeStyle?.swipeBadgeSize}
                       titleSize={swipeStyle?.swipeTitleSize}
+                      businessNameSize={swipeStyle?.swipeBusinessNameSize}
                     />
                   </div>
                   <p className="mt-3 text-center text-[11px] text-muted-foreground">
