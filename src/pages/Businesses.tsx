@@ -913,96 +913,129 @@ function Storefront({ slug }: { slug: string }) {
         </Link>
       </div>
 
-      <div className="relative overflow-hidden rounded-3xl border border-border/70">
-        <DishImage src={business.image} alt={business.name} className="h-44 w-full sm:h-56" />
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-3xl border",
+          business.elite ? "border-amber-300/60" : "border-border/70",
+        )}
+      >
+        <DishImage
+          src={business.image}
+          alt={business.name}
+          className="h-44 w-full sm:h-52"
+        />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,6,7,0.15)_0%,rgba(6,6,7,0.92)_100%)]" />
         <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-end justify-between gap-3 p-5">
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-              {department.label} · {business.category}
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-                {business.name}
-              </h1>
-              {business.eliteVerified && <EliteVerifiedSeal />}
-              <button
-                type="button"
-                aria-label={business.isFavorite ? "Quitar local de favoritos" : "Guardar local en favoritos"}
-                aria-pressed={business.isFavorite}
-                onClick={() => {
-                  if (!user || user.isAnonymous) {
-                    toast("Iniciá sesión para guardar locales", {
-                      description:
-                        "Con tu cuenta tus locales favoritos quedan guardados.",
-                    });
-                    navigate(
-                      `/auth?role=buyer&returnTo=${encodeURIComponent(`/negocios/${slug}`)}`,
-                    );
-                    return;
-                  }
-                  void toggleFavorite({ businessId: business._id })
-                    .then((result) =>
-                      toast.success(
-                        result.favorite
-                          ? "Local guardado"
-                          : "Local quitado de favoritos",
-                      ),
-                    )
-                    .catch((error) =>
-                      toast.error(
-                        favoriteErrorMessage(
-                          error,
-                          "No pudimos guardar el local",
-                        ),
-                      ),
-                    );
-                }}
-                className="relative z-10 flex size-9 shrink-0 items-center justify-center rounded-full border border-white/20 bg-black/50 text-accent"
-              >
-                <Star className={cn("size-4", business.isFavorite && "fill-current")} />
-              </button>
-            </div>
-            <p className="mt-1 max-w-md text-xs leading-relaxed text-white/70">
-              {business.tagline}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/65">
-              <span className="flex items-center gap-1">
-                <Star className="size-3 fill-accent text-accent" />
-                {business.rating.toFixed(1)} ({business.reviews})
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="size-3 text-accent" />
-                {business.etaMinutes + (delivery.minutes ?? 0)} min aprox.
-              </span>
-              <span className="flex items-center gap-1">
-                <Truck className="size-3 text-accent" />
-                {deliveryLabel(delivery, business.deliveryPromo)}
-              </span>
-              <span className="flex items-center gap-1">
-                <MapPin className="size-3 text-accent" />
-                {business.address}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <span
+            <p
               className={cn(
-                "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider",
-                business.isOpen ? "bg-accent text-accent-foreground" : "bg-black/70 text-white/70",
+                "flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em]",
+                business.elite ? "text-amber-200" : "text-accent",
               )}
             >
-              {business.isOpen ? "Abierto" : "Cerrado ahora"}
-            </span>
-            {cartCount > 0 && (
-              <Button asChild size="sm" className="gap-1.5 bg-ember-gradient text-black">
-                <Link to="/cart">
-                  <ShoppingCart className="size-3.5" />
-                  Carrito · {money(cartTotal)}
-                </Link>
-              </Button>
+              {business.elite && <Crown className="size-3.5" />}
+              {business.elite
+                ? "Local Élite"
+                : `${department.label} · ${business.category}`}
+              {business.eliteVerified && <EliteVerifiedSeal />}
+            </p>
+            <h1 className="mt-1 truncate font-display text-xl font-extrabold tracking-tight text-white text-shadow-dark sm:text-2xl">
+              {business.name}
+            </h1>
+            <p className="mt-0.5 line-clamp-1 text-xs text-white/70">
+              {business.tagline}
+            </p>
+            {business.flash && (
+              <div className="mt-2">
+                <FlashSaleBadge flash={business.flash} />
+              </div>
             )}
           </div>
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-extrabold",
+              business.isOpen
+                ? "bg-amber-300 text-black"
+                : "bg-black/70 text-white/70",
+            )}
+          >
+            {business.isOpen ? "Abierto" : "Cerrado ahora"}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-border/70 bg-card/50 px-4 py-3 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Star className="size-3.5 fill-accent text-accent" />
+          {business.rating.toFixed(1)} ({business.reviews})
+        </span>
+        <span className="flex items-center gap-1">
+          <Clock className="size-3.5 text-accent" />
+          {business.etaMinutes + (delivery.minutes ?? 0)} min aprox.
+        </span>
+        <span className="flex items-center gap-1">
+          <Truck className="size-3.5 text-accent" />
+          {deliveryLabel(delivery, business.deliveryPromo)}
+        </span>
+        <span className="flex w-full min-w-0 items-center gap-1 sm:w-auto">
+          <MapPin className="size-3.5 shrink-0 text-accent" />
+          <span className="truncate">{business.address}</span>
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            aria-label={
+              business.isFavorite
+                ? "Quitar local de favoritos"
+                : "Guardar local en favoritos"
+            }
+            aria-pressed={business.isFavorite}
+            onClick={() => {
+              if (!user || user.isAnonymous) {
+                toast("Iniciá sesión para guardar locales", {
+                  description:
+                    "Con tu cuenta tus locales favoritos quedan guardados.",
+                });
+                navigate(
+                  `/auth?role=buyer&returnTo=${encodeURIComponent(`/negocios/${slug}`)}`,
+                );
+                return;
+              }
+              void toggleFavorite({ businessId: business._id })
+                .then((result) =>
+                  toast.success(
+                    result.favorite
+                      ? "Local guardado"
+                      : "Local quitado de favoritos",
+                  ),
+                )
+                .catch((error) =>
+                  toast.error(
+                    favoriteErrorMessage(
+                      error,
+                      "No pudimos guardar el local",
+                    ),
+                  ),
+                );
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border/70 text-accent transition-colors hover:border-accent/50"
+          >
+            <Star
+              className={cn("size-4", business.isFavorite && "fill-current")}
+            />
+          </button>
+          {cartCount > 0 && (
+            <Button
+              asChild
+              size="sm"
+              className="h-8 gap-1.5 bg-ember-gradient text-black"
+            >
+              <Link to="/cart">
+                <ShoppingCart className="size-3.5" />
+                Carrito · {money(cartTotal)}
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
