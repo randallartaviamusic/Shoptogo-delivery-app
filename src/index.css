@@ -510,6 +510,26 @@
     scrollbar-width: none;
   }
 
+  /* Alto acotado para que categorías y filtros largos se desplacen. */
+  [data-slot="select-content"].select-scroll {
+    max-height: min(18rem, var(--radix-select-content-available-height, 18rem));
+  }
+
+  /* Barra vertical visible en los desplegables largos (categorías y filtros). */
+  [data-slot="select-content"] {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(1 0 0 / 28%) transparent;
+  }
+
+  [data-slot="select-content"]::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  [data-slot="select-content"]::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: oklch(1 0 0 / 28%);
+  }
+
   .safe-bottom {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
   }

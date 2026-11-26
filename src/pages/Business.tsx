@@ -57,7 +57,7 @@ import {
 import type { CashIssueKind, OrderStatus } from "@/convex/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { CASH_ISSUE_LABELS } from "@/lib/cash";
-import { getDepartment, normalizeSubcategory } from "@/lib/departments";
+import { allProductCategories, getDepartment, normalizeSubcategory } from "@/lib/departments";
 import {
   BUSINESS_DAY_LABELS,
   BUSINESS_DAY_ORDER,
@@ -404,7 +404,9 @@ export default function BusinessPage() {
     ? isBusinessOpenAt(business.hours, now)
     : business.isOpen;
   const departmentInfo = getDepartment(business.department);
-  const productCategories = departmentInfo.subcategories;
+  // Cualquier producto puede usar las categorías de todos los rubros de la
+  // plataforma, no sólo las del departamento del local.
+  const productCategories = allProductCategories();
   // Los productos viejos pueden tener una categoría que ya no está en la
   // lista (por ejemplo, "Hamburguesas"): la mostramos para no perderla al editar.
   const categoryOptions =
@@ -1968,7 +1970,7 @@ export default function BusinessPage() {
                   <SelectTrigger className="w-full min-w-0">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="select-scroll">
                     {categoryOptions.map((category) => (
                       <SelectItem key={category} value={category}>
                         {category}
@@ -2010,7 +2012,7 @@ export default function BusinessPage() {
                         <SelectTrigger className="w-full min-w-0">
                           <SelectValue placeholder="Sin especificar" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="select-scroll">
                           <SelectItem value="__none">
                             Sin especificar
                           </SelectItem>

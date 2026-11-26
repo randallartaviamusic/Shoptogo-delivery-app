@@ -199,7 +199,7 @@ export default function OnboardingPage() {
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="select-scroll">
                       {DEPARTMENTS.map((item) => (
                         <SelectItem key={item.slug} value={item.slug}>
                           {item.label}
@@ -218,7 +218,7 @@ export default function OnboardingPage() {
                     <SelectTrigger>
                       <SelectValue placeholder="Elegí un rubro" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="select-scroll">
                       {getDepartment(form.department).subcategories.map((category) => (
                         <SelectItem key={category} value={category}>
                           {category}

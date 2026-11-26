@@ -733,6 +733,20 @@ export const DEPARTMENT_MAP: Record<string, Department> = Object.fromEntries(
   DEPARTMENTS.map((department) => [department.slug, department]),
 );
 
+/** Todas las categorías de producto de la plataforma, sin repetir. */
+export function allProductCategories(): string[] {
+  const seen = new Set<string>();
+  const categories: string[] = [];
+  for (const department of DEPARTMENTS) {
+    for (const subcategory of department.subcategories) {
+      if (seen.has(subcategory)) continue;
+      seen.add(subcategory);
+      categories.push(subcategory);
+    }
+  }
+  return categories;
+}
+
 export function getDepartment(slug?: string | null): Department {
   return DEPARTMENT_MAP[slug ?? DEFAULT_DEPARTMENT] ?? DEPARTMENT_MAP[DEFAULT_DEPARTMENT];
 }
