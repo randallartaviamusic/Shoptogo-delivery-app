@@ -127,12 +127,9 @@ export function AppShell() {
             <p className="max-w-xs text-sm text-muted-foreground">
               Revisá tu conexión e intentá de nuevo.
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={() => window.location.reload()}>Reintentar</Button>
-              <Button variant="outline" onClick={() => window.location.reload()}>
-                Reintentar sin cerrar sesión
-              </Button>
-            </div>
+            <p className="max-w-xs text-xs text-muted-foreground">
+              Conservamos tu sesión; la app podrá retomarla cuando responda el servidor.
+            </p>
           </>
         ) : (
           <Loader2 className="size-6 animate-spin text-primary" />

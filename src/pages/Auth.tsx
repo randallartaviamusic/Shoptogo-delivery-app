@@ -184,12 +184,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <p className="max-w-xs text-sm text-muted-foreground">
               Revisá tu conexión y volvé a intentar.
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={() => window.location.reload()}>Reintentar</Button>
-              <Button variant="outline" onClick={() => window.location.reload()}>
-                Reintentar sin cerrar sesión
-              </Button>
-            </div>
+            <p className="max-w-xs text-xs text-muted-foreground">
+              Conservamos la sesión guardada y seguimos esperando que el servidor responda.
+            </p>
           </>
         ) : (
           <Loader2 className="size-6 animate-spin text-primary" />
@@ -222,9 +219,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const handleSubmit = async () => {
     setSaving(true);
     setError(null);
-    // Si quedó una sesión vieja abierta, el cliente de Convex no vuelve a leer el
-    // token por su cuenta: recargamos en el destino ya con la cuenta nueva.
-    const hadSession = isAuthenticated;
     const email = form.email.trim().toLowerCase();
     try {
       await withTimeout(
@@ -252,11 +246,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
       const destination = resolveRedirectAfterAuth(redirectParam, redirectAfterAuth);
       const target = destination === "/cart" ? "/cart?confirm=1" : destination;
-      if (hadSession) {
-        window.location.replace(target);
-      } else {
-        navigate(target, { replace: true });
-      }
+      navigate(target, { replace: true });
     } catch (submitError) {
       setError(friendlyError(submitError, mode));
     } finally {
@@ -477,14 +467,6 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     no está respondiendo. Conservamos la sesión guardada en este
                     teléfono; no crees otra cuenta ni borres los datos de la app.
                   </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-2 h-8 border-primary/30 text-primary"
-                    onClick={() => window.location.reload()}
-                  >
-                    Reintentar sesión
-                  </Button>
                 </div>
               )}
 
