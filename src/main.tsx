@@ -69,7 +69,7 @@ function RouteLoading() {
  * volvemos a la pantalla de entrada, en vez de dejar a la persona trabada.
  */
 function AuthSessionGuard() {
-  const { isLoading, isAuthenticated, user, signOut } = useAuth();
+  const { isLoading, isAuthenticated, user, signOut, stuck } = useAuth();
   const guestSignedOut = useRef(false);
 
   useEffect(() => {
@@ -78,14 +78,14 @@ function AuthSessionGuard() {
     void signOut();
   }, [isLoading, user, signOut]);
 
+  // La sesión guardada no se pudo confirmar: la borramos para que la persona
+  // pueda entrar de nuevo. Si no había sesión, no hay nada que borrar y la app
+  // sigue como visitante.
   useEffect(() => {
-    if (!isAuthenticated || user !== undefined) return;
-    const timer = setTimeout(() => {
-      if (!canResetSession()) return;
-      restartSession();
-    }, 10_000);
-    return () => clearTimeout(timer);
-  }, [isAuthenticated, user]);
+    if (!stuck || !isAuthenticated) return;
+    if (!canResetSession()) return;
+    restartSession();
+  }, [stuck, isAuthenticated]);
 
   return null;
 }
