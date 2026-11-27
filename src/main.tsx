@@ -13,6 +13,7 @@ import { useLocation } from "react-router";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import "./index.css";
 import { applyTextPreferences } from "@/lib/textSize";
+import { canResetSession, restartSession } from "@/lib/auth-session";
 
 // Aplica los tamaños de texto y títulos guardados antes del primer pintado
 // para que ninguna ventana parpadee con otro tamaño al abrir la plataforma.
@@ -61,38 +62,30 @@ function RouteLoading() {
 /**
  * Ya no hay cuentas de invitado. Si en este navegador quedó abierta una sesión
  * anónima de antes, la cerramos para que la persona entre con su cuenta.
+ *
+ * Además vigila el caso en el que hay un token guardado pero el servidor no lo
+ * acepta: la consulta de la cuenta se queda esperando para siempre y la app se
+ * queda en "Cargando...". En ese caso borramos la sesión local una sola vez y
+ * volvemos a la pantalla de entrada, en vez de dejar a la persona trabada.
  */
-function LegacyGuestCleanup() {
-  const { isLoading, user, signOut } = useAuth();
-  const handled = useRef(false);
-  const once = useRef(false);
+function AuthSessionGuard() {
+  const { isLoading, isAuthenticated, user, signOut } = useAuth();
+  const guestSignedOut = useRef(false);
 
   useEffect(() => {
-    if (handled.current || isLoading || !user?.isAnonymous) return;
-    handled.current = true;
+    if (guestSignedOut.current || isLoading || !user?.isAnonymous) return;
+    guestSignedOut.current = true;
     void signOut();
   }, [isLoading, user, signOut]);
 
-  // Una sesión anónima de antes de este cambio no cuenta como cuenta: hay que
-  // entrar o registrarse con correo y contraseña.
-  //
-  // En el edge de producción el cierre de la sesión puede tardar o no propagarse
-  // de inmediato; si el auth volvió a entrar en carga y no resolvía luego de
-  // esperar un poco, recargamos la página una sola vez para que el cliente de
-  // Convex vuelva a negociar la sesión en vez de dejar al visitante parado.
   useEffect(() => {
-    if (!isLoading || once.current) return;
-    once.current = true;
+    if (!isAuthenticated || user !== undefined) return;
     const timer = setTimeout(() => {
-      try {
-        window.location.reload();
-      } catch {
-        // Sin recargar no hay escape: el usuario sigue parado, pero al menos no
-        // quedamos en un bucle silencioso.
-      }
-    }, 5000);
+      if (!canResetSession()) return;
+      restartSession();
+    }, 10_000);
     return () => clearTimeout(timer);
-  }, [isLoading]);
+  }, [isAuthenticated, user]);
 
   return null;
 }
@@ -237,7 +230,7 @@ createRoot(document.getElementById("root")!).render(
       <ConvexAuthProvider client={convex}>
         <AppSplash />
         <BrowserRouter>
-          <LegacyGuestCleanup />
+          <AuthSessionGuard />
           <TextSizeBootstrap />
           <RouteSyncer />
           <Suspense fallback={<RouteLoading />}>

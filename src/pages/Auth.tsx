@@ -10,6 +10,7 @@ import {
   rememberCredentials,
   usesNativeCredentialStore,
 } from "@/lib/credential-store";
+import { restartSession } from "@/lib/auth-session";
 import { motion } from "framer-motion";
 import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -154,7 +155,14 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <p className="max-w-xs text-sm text-muted-foreground">
               Revisá tu conexión y volvé a intentar.
             </p>
-            <Button onClick={() => window.location.reload()}>Reintentar</Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button onClick={() => window.location.reload()}>Reintentar</Button>
+              {/* Una sesión guardada que el servidor ya no acepta deja esta
+                  pantalla cargando: borrarla permite entrar con la cuenta. */}
+              <Button variant="outline" onClick={restartSession}>
+                Entrar de nuevo
+              </Button>
+            </div>
           </>
         ) : (
           <Loader2 className="size-6 animate-spin text-primary" />
