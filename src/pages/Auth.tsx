@@ -32,6 +32,31 @@ const AFTER_AUTH_FALLBACK = "/profile";
 // Volver a estas rutas dejaría a la persona otra vez fuera de su cuenta.
 const PUBLIC_RETURNS = ["/", "/auth", "/bienvenida"];
 
+// Si el servidor no contesta, el botón no puede quedarse girando para siempre.
+const SIGN_IN_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          "El servidor no respondió. Revisá tu conexión e intentá de nuevo en un momento.",
+        ),
+      );
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 function isRole(value: string | null | undefined): value is Role {
   return value === "buyer" || value === "business" || value === "courier";
 }
@@ -200,13 +225,16 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     const hadSession = isAuthenticated;
     const email = form.email.trim().toLowerCase();
     try {
-      await signIn("password", {
-        email,
-        password: form.password,
-        role,
-        name: form.name,
-        flow: mode === "signup" ? "signUp" : "signIn",
-      });
+      await withTimeout(
+        signIn("password", {
+          email,
+          password: form.password,
+          role,
+          name: form.name,
+          flow: mode === "signup" ? "signUp" : "signIn",
+        }),
+        SIGN_IN_TIMEOUT_MS,
+      );
 
       // Guardamos después de que Convex confirmó la cuenta. Si el guardado
       // falla, no bloqueamos la entrada a la app.
