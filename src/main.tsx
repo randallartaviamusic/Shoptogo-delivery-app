@@ -9,11 +9,10 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import React, { StrictMode, lazy, Suspense, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { useLocation } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import "./index.css";
 import { applyTextPreferences } from "@/lib/textSize";
-import { canResetSession, restartSession } from "@/lib/auth-session";
 
 // Aplica los tamaños de texto y títulos guardados antes del primer pintado
 // para que ninguna ventana parpadee con otro tamaño al abrir la plataforma.
@@ -63,14 +62,15 @@ function RouteLoading() {
  * Ya no hay cuentas de invitado. Si en este navegador quedó abierta una sesión
  * anónima de antes, la cerramos para que la persona entre con su cuenta.
  *
- * Además vigila el caso en el que hay un token guardado pero el servidor no lo
- * acepta: la consulta de la cuenta se queda esperando para siempre y la app se
- * queda en "Cargando...". En ese caso borramos la sesión local una sola vez y
- * volvemos a la pantalla de entrada, en vez de dejar a la persona trabada.
+ * Si la consulta de la cuenta queda esperando por un problema del servidor,
+ * no borramos automáticamente el token guardado: puede ser una caída temporal
+ * del backend y borrar el token impediría recuperar la sesión al volver.
  */
 function AuthSessionGuard() {
-  const { isLoading, isAuthenticated, user, signOut, stuck } = useAuth();
+  const { isLoading, user, signOut, stuck } = useAuth();
   const guestSignedOut = useRef(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (guestSignedOut.current || isLoading || !user?.isAnonymous) return;
@@ -78,14 +78,16 @@ function AuthSessionGuard() {
     void signOut();
   }, [isLoading, user, signOut]);
 
-  // La sesión guardada no se pudo confirmar: la borramos para que la persona
-  // pueda entrar de nuevo. Si no había sesión, no hay nada que borrar y la app
-  // sigue como visitante.
+  // Si había una sesión persistida pero no se pudo verificar, no mostramos el
+  // catálogo como visitante: mantenemos el token y llevamos a la entrada. Si
+  // Convex vuelve a responder, la sesión guardada se reanuda automáticamente.
   useEffect(() => {
-    if (!stuck || !isAuthenticated) return;
-    if (!canResetSession()) return;
-    restartSession();
-  }, [stuck, isAuthenticated]);
+    if (!stuck || location.pathname === "/auth") return;
+    const returnTo = `${location.pathname}${location.search}`;
+    navigate(`/auth?mode=signin&returnTo=${encodeURIComponent(returnTo)}`, {
+      replace: true,
+    });
+  }, [stuck, location.pathname, location.search, navigate]);
 
   return null;
 }

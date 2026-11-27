@@ -10,7 +10,6 @@ import {
   rememberCredentials,
   usesNativeCredentialStore,
 } from "@/lib/credential-store";
-import { restartSession } from "@/lib/auth-session";
 import { motion } from "framer-motion";
 import { Bike, Eye, EyeOff, Loader2, ShoppingBag, Store } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -110,7 +109,12 @@ interface AuthProps {
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const { isLoading: authLoading, isAuthenticated, user } = useAuth();
+  const {
+    isLoading: authLoading,
+    isAuthenticated,
+    user,
+    stuck: authStuck,
+  } = useAuth();
   const { signIn, signOut } = useAuthActions();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -182,10 +186,8 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => window.location.reload()}>Reintentar</Button>
-              {/* Una sesión guardada que el servidor ya no acepta deja esta
-                  pantalla cargando: borrarla permite entrar con la cuenta. */}
-              <Button variant="outline" onClick={restartSession}>
-                Entrar de nuevo
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Reintentar sin cerrar sesión
               </Button>
             </div>
           </>
@@ -467,6 +469,24 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   </span>
                 </span>
               </label>
+
+              {authStuck && isAuthenticated && !user && (
+                <div className="rounded-xl border border-primary/30 bg-primary/10 p-3 text-xs text-primary">
+                  <p>
+                    No pudimos validar tu sesión porque el backend de producción
+                    no está respondiendo. Conservamos la sesión guardada en este
+                    teléfono; no crees otra cuenta ni borres los datos de la app.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-2 h-8 border-primary/30 text-primary"
+                    onClick={() => window.location.reload()}
+                  >
+                    Reintentar sesión
+                  </Button>
+                </div>
+              )}
 
               {error && (
                 <p className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 text-xs text-primary">

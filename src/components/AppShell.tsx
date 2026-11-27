@@ -9,7 +9,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useHideOnScroll } from "@/hooks/use-hide-on-scroll";
 import { money, ROLE_HOME, ROLE_LABEL, initials } from "@/lib/format";
 import { removeNativePushToken } from "@/lib/native-push";
-import { restartSession } from "@/lib/auth-session";
 import { cn } from "@/lib/utils";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -130,11 +129,8 @@ export function AppShell() {
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => window.location.reload()}>Reintentar</Button>
-              {/* Si el token guardado ya no sirve, cerrar sesión también se
-                  queda esperando: borramos la sesión local y volvemos a la
-                  pantalla de entrada. */}
-              <Button variant="outline" onClick={restartSession}>
-                Entrar de nuevo
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Reintentar sin cerrar sesión
               </Button>
             </div>
           </>
